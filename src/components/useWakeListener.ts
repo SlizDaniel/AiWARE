@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { transcribeAudio } from '@/lib/api'
+import { transcribeAudioDetailed, type SpeechTranscription } from '@/lib/api'
+import { speechCorrectionNote } from '@/lib/speechInventory'
 import { createOrderedQueue } from '@/lib/orderedQueue'
 import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
@@ -9,6 +10,7 @@ import {
   commandFromServerText,
   createRecognition,
   decideWakeAction,
+  matchWakeWord,
   resultEntries,
   speechRecognitionSupported,
   ttsSpeaking,
@@ -89,6 +91,7 @@ type Options = {
   /** karta zmiany czeka (`pending`) i jest świeża (`fresh` — decyzja także bez prefiksu) */
   cardStatus: () => CardStatus
   onEvent: (event: WakeEvent) => void
+  onCorrection: (note: string) => void
 }
 
 /**
@@ -97,7 +100,7 @@ type Options = {
  * z prefiksem idzie do STT na serwerze (dokładniejszy tekst komendy). Decyzje o karcie
  * zmiany („zatwierdź”/„odrzuć”) rozpoznaje sama przeglądarka. Wstrzymany, gdy mówi TTS.
  */
-export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused, cardStatus, onEvent }: Options) {
+export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused, cardStatus, onEvent, onCorrection }: Options) {
   const supported = useSpeechRecognitionSupported()
   // na serwerze i przy hydratacji „wyłączony” — mikrofon rusza dopiero w przeglądarce
   const userOff = useSyncExternalStore(subscribeOff, readOff, () => true)
@@ -118,13 +121,13 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   const networkErrorsRef = useRef(0)
   const cuePlayedRef = useRef(false)
   const hearingCueRef = useRef(false)
-  const optionsRef = useRef({ prefix, cardStatus, onEvent, refine: refineEnabled, paused })
-  const refineQueueRef = useRef(createOrderedQueue<string>())
+  const optionsRef = useRef({ prefix, cardStatus, onEvent, onCorrection, refine: refineEnabled, paused })
+  const refineQueueRef = useRef(createOrderedQueue<SpeechTranscription | null>())
   const pendingRefinesRef = useRef(0)
   const commandBufferRef = useRef<ReturnType<typeof createSpeechCommandBuffer> | null>(null)
 
   useEffect(() => {
-    optionsRef.current = { prefix, cardStatus, onEvent, refine: refineEnabled, paused }
+    optionsRef.current = { prefix, cardStatus, onEvent, onCorrection, refine: refineEnabled, paused }
   })
 
   const recorder = useCallback(() => {
@@ -165,6 +168,10 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
     [stopAll],
   )
 
+  useEffect(() => {
+    stopAll()
+  }, [prefix, refineEnabled, stopAll])
+
   // Nie czekaj na nadzorcę: stara sesja może jeszcze dopisać słowa do tego samego wyniku.
   const resetForReply = useCallback(() => {
     stopAll()
@@ -177,25 +184,26 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   const refine = useCallback((startMs: number, browserText: string) => {
     const session = sessionRef.current
     const pcm = recorderRef.current
-    const transcribe = async (): Promise<string> => {
+    const transcribe = async (): Promise<SpeechTranscription | null> => {
       // nagranie wstrzymane (brak gestu) albo niedostępne → komendą zostaje tekst przeglądarki
-      if (!pcm?.isRunning || pcm.suspended) return ''
+      if (!pcm?.isRunning || pcm.suspended) return null
       await delay(TAIL_MS)
-      if (session !== sessionRef.current) return ''
+      if (session !== sessionRef.current) return null
       const samples = pcm.slice(Math.max(0, startMs - LEAD_MS), pcm.now())
-      if (samples.length < (pcm.sampleRate * MIN_AUDIO_MS) / 1000) return ''
+      if (samples.length < (pcm.sampleRate * MIN_AUDIO_MS) / 1000) return null
       try {
-        return await transcribeAudio(wavBlob(samples, pcm.sampleRate))
+        return await transcribeAudioDetailed(wavBlob(samples, pcm.sampleRate))
       } catch {
-        return '' // 429 / 503 / sieć → zostaje tekst przeglądarki
+        return null // 429 / 503 / sieć → zostaje tekst przeglądarki
       }
     }
     pendingRefinesRef.current++
     setPhase('refining')
-    void refineQueueRef.current.push(transcribe(), (serverText) => {
+    void refineQueueRef.current.push(transcribe(), (serverResult) => {
       pendingRefinesRef.current = Math.max(0, pendingRefinesRef.current - 1)
       if (session !== sessionRef.current) return
-      const result = commandFromServerText(serverText, optionsRef.current.prefix, browserText)
+      if (serverResult?.corrections?.length) optionsRef.current.onCorrection(speechCorrectionNote(serverResult.corrections))
+      const result = commandFromServerText(serverResult?.text ?? '', optionsRef.current.prefix, browserText)
       if (result.type === 'armed') {
         armedUntilRef.current = Date.now() + ARMED_MS
         setPhase('hearing')
@@ -225,6 +233,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   const handle = useCallback(
     (transcript: string, isFinal: boolean, startMs: number | null, index: number) => {
       const { prefix: currentPrefix, cardStatus: card, onEvent: emit } = optionsRef.current
+      if (!isFinal && matchWakeWord(transcript, currentPrefix).matched) armedUntilRef.current = Date.now() + ARMED_MS
       // decyzja wykonana już z wyniku pośredniego — jego wersja końcowa nic nie robi
       if (isFinal && decidedIndexRef.current === index) {
         decidedIndexRef.current = -1
@@ -267,7 +276,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
         return
       }
       if (action.type === 'submit' || (action.type === 'interim' && (action.text || commandBufferRef.current?.pending))) {
-        const text = commandBuffer().update(index, action.text, isFinal, startMs)
+        const text = commandBuffer().update(index, action.text, isFinal, startMs, matchWakeWord(transcript, currentPrefix).matched)
         setPhase('hearing')
         emit({ type: 'interim', text })
         return
@@ -306,7 +315,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
       if (recognitionRef.current !== recognition || optionsRef.current.paused) return
       networkErrorsRef.current = 0
       const starts = utteranceStartRef.current
-      const entries = resultEntries(event)
+      const entries = resultEntries(event, optionsRef.current.prefix)
       for (const entry of entries) {
         if (starts.has(entry.index)) continue
         // początek wypowiedzi na zegarze nagrania: pierwszy wynik pod tym indeksem (lub speechstart)
@@ -399,6 +408,8 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
       setAudioSuspended(recorderRef.current?.suspended ?? false)
       if (optionsRef.current.paused || ttsSpeaking()) {
         commandBufferRef.current?.clear()
+        armedUntilRef.current = 0
+        hearingCueRef.current = false
         cuePlayedRef.current = false
         if (recognitionRef.current) stopRecognition()
         setPhase('paused')

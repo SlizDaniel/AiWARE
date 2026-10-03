@@ -19,7 +19,10 @@ export function createSpeechCommandBuffer(onReady: (text: string, startMs: numbe
     clear,
     flush,
     get pending() { return segments.size > 0 },
-    update(index: number, text: string, final: boolean, startMs: number | null): string {
+    update(index: number, text: string, final: boolean, startMs: number | null, startsCommand = false): string {
+      // Nowy prefiks zastępuje jeszcze niewysłaną komendę. Rewizja tego samego
+      // indeksu nadal należy do jednej wypowiedzi i zachowuje początek nagrania.
+      if (startsCommand && !segments.has(index)) clear()
       clearTimeout(timer)
       segments.set(index, { text, final, startMs: segments.get(index)?.startMs ?? startMs })
       if ([...segments.values()].every(segment => segment.final)) timer = setTimeout(flush, pauseMs)

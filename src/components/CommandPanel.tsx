@@ -4,7 +4,7 @@ import {
   fetchZones,
   sendCommand,
   isForbidden,
-  transcribeAudio,
+  transcribeAudioDetailed,
   updateAgentMode,
   type AgentMode,
   type AppSettings,
@@ -17,6 +17,7 @@ import {
 import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
 import { abortRecognition, createRecognition, fullTranscript, voiceDecision, type SpeechRecognitionLike } from '@/lib/speech'
+import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
 import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
 import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/commandConversation'
@@ -140,6 +141,7 @@ export default function CommandPanel({
     prefix,
     refine: sttRefine,
     paused: busy,
+    onCorrection: setVoiceNote,
     cardStatus: () => {
       const pending = stateRef.current?.kind === 'proposal'
       return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
@@ -147,11 +149,16 @@ export default function CommandPanel({
     onEvent: (event: WakeEvent) => {
       if (busyRef.current) return
       const actions = latestRef.current
-      if (event.type === 'interim') setText(event.text)
+      if (event.type === 'interim') {
+        setText(event.text)
+        setVoiceNote('')
+      }
       else if (event.type === 'armed') setText('')
       else if (event.type === 'submit') {
-        setText(event.text)
-        if (!actions.busy) void actions.runCommand(event.text)
+        const corrected = correctInventorySpeech(event.text, items.map((item) => item.name), prefix)
+        if (corrected.corrections.length) setVoiceNote(speechCorrectionNote(corrected.corrections))
+        setText(corrected.text)
+        if (!actions.busy) void actions.runCommand(corrected.text)
       } else if (event.type === 'confirm') {
         if (!actions.busy) void actions.confirm()
       } else actions.reject()
@@ -367,7 +374,7 @@ export default function CommandPanel({
     recognition.onstart = ready
     recognition.onresult = (event) => {
       if (pushToTalkRef.current !== session) return
-      session.browserText = fullTranscript(event.results)
+      session.browserText = fullTranscript(event.results, prefix)
       setText(session.browserText)
     }
     recognition.onerror = (event) => {
@@ -429,11 +436,12 @@ export default function CommandPanel({
         if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
         return
       }
-      const heard = (await transcribeAudio(wavBlob(samples, sampleRate))).trim()
+      const transcription = await transcribeAudioDetailed(wavBlob(samples, sampleRate))
+      const heard = transcription.text.trim()
       if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       if (heard) {
         applyVoiceTranscript(heard)
-        setVoiceNote('')
+        if (transcription.corrections?.length) setVoiceNote(speechCorrectionNote(transcription.corrections))
         setVoiceFallback(false)
       } else if (!session.browserText) {
         setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
@@ -452,7 +460,9 @@ export default function CommandPanel({
 
   // Decyzja z nowego nagrania dotyczy oczekującej karty; nie wysyłamy jej ponownie do LLM.
   const applyVoiceTranscript = (heard: string) => {
-    setText(heard)
+    const corrected = correctInventorySpeech(heard, items.map((item) => item.name), prefix)
+    setText(corrected.text)
+    setVoiceNote(corrected.corrections.length ? speechCorrectionNote(corrected.corrections) : '')
     if (stateRef.current?.kind !== 'proposal' || busyRef.current) return
     const decision = voiceDecision(heard, prefix)
     if (decision === 'confirm') void latestRef.current.confirm()

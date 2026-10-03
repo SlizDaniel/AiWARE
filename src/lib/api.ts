@@ -370,7 +370,13 @@ export function audioUploadInfo(type: string): { mime: string; ext: string } {
 
 // Audio z mikrofonu → transkrypcja (Gemini po stronie serwera).
 // Błąd STT (np. 503) rzuca Error z polskim komunikatem — UI podświetla pole tekstowe.
+export type SpeechTranscription = { text: string; original_text?: string; corrections?: { heard: string; name: string }[] }
+
 export async function transcribeAudio(blob: Blob): Promise<string> {
+  return (await transcribeAudioDetailed(blob)).text
+}
+
+export async function transcribeAudioDetailed(blob: Blob): Promise<SpeechTranscription> {
   if (blob.size > MAX_UPLOAD_BYTES) {
     throw new Error('Nagranie przekracza limit 4 MB — nagraj krótszą komendę lub wpisz ją ręcznie.')
   }
@@ -380,7 +386,7 @@ export async function transcribeAudio(blob: Blob): Promise<string> {
     headers: { 'Content-Type': mime },
     body: blob,
   })
-  return json<{ text: string }>(response).then((d) => d.text)
+  return json<SpeechTranscription>(response)
 }
 
 // --- kolejka zamówień -------------------------------------------------------------

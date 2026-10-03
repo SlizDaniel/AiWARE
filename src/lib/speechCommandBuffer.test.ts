@@ -44,4 +44,15 @@ describe('bufor wypowiedzi', () => {
     vi.advanceTimersByTime(2000)
     expect(ready).toHaveBeenCalledExactlyOnceWith('nowa komenda', null)
   })
+
+  it('nowy prefiks oddziela komendy, a rewizja tego samego indeksu nie gubi początku', () => {
+    const ready = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready)
+    buffer.update(0, 'weź dwie sztuki kartonów', true, 10, true)
+    vi.advanceTimersByTime(400)
+    expect(buffer.update(1, 'ile mamy', false, 50, true)).toBe('ile mamy')
+    expect(buffer.update(1, 'ile mamy szkła', true, 60, true)).toBe('ile mamy szkła')
+    vi.advanceTimersByTime(1000)
+    expect(ready).toHaveBeenCalledExactlyOnceWith('ile mamy szkła', 50)
+  })
 })

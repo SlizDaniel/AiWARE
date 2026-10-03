@@ -6,6 +6,7 @@ import { enforceRateLimit, RATE_LIMITS } from '@/server/rateLimit'
 import { session } from '@/server/session'
 import { getAppSettings, TEXT_ONLY_STT_DETAIL } from '@/server/settings'
 import { STTUnavailable, sttVocabulary, transcribe } from '@/server/stt'
+import { correctInventorySpeech } from '@/lib/speechInventory'
 
 export const maxDuration = 45
 
@@ -33,7 +34,11 @@ export const POST = route(async (request: Request) => {
       zones: zones.map((zone) => zone.name),
       topics: procedures.map((procedure) => procedure.topic),
     })
-    return Response.json({ text: await transcribe(data, mimeType, { vocabulary }) })
+    const original = await transcribe(data, mimeType, { vocabulary })
+    const result = correctInventorySpeech(original, items.map((item) => item.name), settings.prefix)
+    return Response.json(result.corrections.length
+      ? { text: result.text, original_text: original, corrections: result.corrections }
+      : { text: original })
   } catch (error) {
     if (error instanceof STTUnavailable) throw new HttpError(503, error.message)
     throw error
