@@ -65,7 +65,7 @@ export function createRecognition({ continuous }: { continuous: boolean }): Spee
     recognition.lang = 'pl-PL'
     recognition.interimResults = true
     recognition.continuous = continuous
-    recognition.maxAlternatives = 1
+    recognition.maxAlternatives = 3
     return recognition
   } catch {
     return null
@@ -73,9 +73,9 @@ export function createRecognition({ continuous }: { continuous: boolean }): Spee
 }
 
 /** Cały dotychczasowy tekst sesji (wyniki końcowe + bieżący pośredni). */
-export function fullTranscript(results: SpeechResultListLike): string {
+export function fullTranscript(results: SpeechResultListLike, prefix = ''): string {
   const parts: string[] = []
-  for (let index = 0; index < results.length; index++) parts.push(results[index]?.[0]?.transcript ?? '')
+  for (let index = 0; index < results.length; index++) parts.push(preferredSpeechTranscript(results[index], prefix))
   return parts.join(' ').replace(/\s+/g, ' ').trim()
 }
 
@@ -94,14 +94,32 @@ export function changedResults(event: SpeechRecognitionEventLike): { finals: str
 }
 
 /** Wyniki zmienione w tym zdarzeniu z ich indeksami (do śledzenia początku wypowiedzi). */
-export function resultEntries(event: SpeechRecognitionEventLike): { index: number; transcript: string; isFinal: boolean }[] {
+export function resultEntries(event: SpeechRecognitionEventLike, prefix = ''): { index: number; transcript: string; isFinal: boolean }[] {
   const entries: { index: number; transcript: string; isFinal: boolean }[] = []
   for (let index = event.resultIndex; index < event.results.length; index++) {
     const result = event.results[index]
-    const transcript = result?.[0]?.transcript?.trim() ?? ''
+    const transcript = preferredSpeechTranscript(result, prefix).trim()
     if (transcript) entries.push({ index, transcript, isFinal: Boolean(result.isFinal) })
   }
   return entries
+}
+
+/** Only repair a wake word when an alternative keeps the entire command intact. */
+export function preferredSpeechTranscript(result: SpeechResultLike | undefined, prefix = ''): string {
+  const top = result?.[0]?.transcript ?? ''
+  if (!result?.isFinal || !prefix || matchWakeWord(top, prefix).matched || isConfirmPhrase(top) || isRejectPhrase(top)) return top
+  for (let index = 1; index < Math.min(result.length, 3); index++) {
+    const alternative = result[index]
+    if (!alternative || alternative.confidence < 0.5) continue
+    const wake = matchWakeWord(alternative.transcript, prefix)
+    if (!wake.matched || isConfirmPhrase(wake.rest) || isRejectPhrase(wake.rest)) continue
+    const heard = normalizeSpeech(top)
+    const rest = normalizeSpeech(wake.rest)
+    if (rest && !heard.endsWith(` ${rest}`)) continue
+    const heardPrefix = rest ? heard.slice(0, -(rest.length + 1)) : heard
+    if (levenshtein(heardPrefix.replace(/ /g, ''), normalizeSpeech(prefix)) <= 2) return alternative.transcript
+  }
+  return top
 }
 
 /** Czy syntezator mowy właśnie mówi (nasłuch nie powinien słyszeć samego siebie). */
@@ -151,24 +169,29 @@ function wordMatchesPrefix(word: string, prefix: string): boolean {
   return prefix.length >= 4 ? levenshtein(heard, prefix) <= 1 : heard === prefix
 }
 
+function wakeAt(text: string, words: RegExpMatchArray[], index: number, prefix: string): { matched: boolean; rest: string } {
+  const first = words[index]
+  if (!first) return { matched: false, rest: '' }
+  const next = words[index + 1]
+  // Check a split prefix before fuzzy matching its first fragment ("Mag u").
+  const split = prefix.length >= 4 && next && normalizeSpeech(first[0] + next[0]) === prefix
+  if (!split && !wordMatchesPrefix(first[0], prefix)) return { matched: false, rest: '' }
+  const last = split ? next : first
+  return { matched: true, rest: text.slice(last.index! + last[0].length).replace(/^[\s,.:;!?—–-]+/, '').trim() }
+}
+
 /**
  * Prefix jako pierwsze słowo wypowiedzi (z tolerancją jednej litery dla ≥ 4 liter),
  * ewentualnie po „hej”/„ej”. `rest` to oryginalny tekst po prefiksie.
  */
 export function matchWakeWord(transcript: string, prefix: string): { matched: boolean; rest: string } {
   const wanted = normalizeSpeech(prefix)
-  const words = transcript.trim().split(/\s+/).filter(Boolean)
+  const words = [...transcript.matchAll(/[\p{L}\p{N}]+/gu)]
   if (!wanted || words.length === 0) return { matched: false, rest: '' }
-  let index = -1
-  if (wordMatchesPrefix(words[0], wanted)) index = 0
-  else if (words.length > 1 && WAKE_FILLERS.has(normalizeSpeech(words[0])) && wordMatchesPrefix(words[1], wanted)) index = 1
-  if (index < 0) return { matched: false, rest: '' }
-  const rest = words
-    .slice(index + 1)
-    .join(' ')
-    .replace(/^[\s,.:;!?—–-]+/, '')
-    .trim()
-  return { matched: true, rest }
+  const first = wakeAt(transcript, words, 0, wanted)
+  if (first.matched) return first
+  return WAKE_FILLERS.has(normalizeSpeech(words[0][0]))
+    ? wakeAt(transcript, words, 1, wanted) : { matched: false, rest: '' }
 }
 
 /**
@@ -177,17 +200,12 @@ export function matchWakeWord(transcript: string, prefix: string): { matched: bo
  */
 export function findWakeWord(transcript: string, prefix: string, maxOffset = 3): { matched: boolean; rest: string } {
   const wanted = normalizeSpeech(prefix)
-  const words = transcript.trim().split(/\s+/).filter(Boolean)
+  const words = [...transcript.matchAll(/[\p{L}\p{N}]+/gu)]
   if (!wanted) return { matched: false, rest: '' }
   const limit = Math.min(maxOffset, words.length - 1)
   for (let index = 0; index <= limit; index++) {
-    if (!wordMatchesPrefix(words[index], wanted)) continue
-    const rest = words
-      .slice(index + 1)
-      .join(' ')
-      .replace(/^[\s,.:;!?—–-]+/, '')
-      .trim()
-    return { matched: true, rest }
+    const match = wakeAt(transcript, words, index, wanted)
+    if (match.matched) return match
   }
   return { matched: false, rest: '' }
 }

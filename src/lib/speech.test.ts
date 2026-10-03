@@ -11,6 +11,7 @@ import {
   levenshtein,
   matchWakeWord,
   normalizeSpeech,
+  preferredSpeechTranscript,
   resultEntries,
   speechRecognitionSupported,
   ttsSpeaking,
@@ -50,6 +51,13 @@ describe('matchWakeWord', () => {
     expect(matchWakeWord('magu wzięliśmy paletę kartonów', 'Magu')).toEqual({ matched: true, rest: 'wzięliśmy paletę kartonów' })
     expect(matchWakeWord('Magu', 'Magu')).toEqual({ matched: true, rest: '' })
     expect(matchWakeWord('Magu , tak', 'Magu')).toEqual({ matched: true, rest: 'tak' })
+  })
+
+  test('recognises a split wake word and punctuation without spaces', () => {
+    expect(matchWakeWord('Mag u, ile mamy bułek?', 'Magu')).toEqual({ matched: true, rest: 'ile mamy bułek?' })
+    expect(matchWakeWord('Magu,ile mamy bułek?', 'Magu')).toEqual({ matched: true, rest: 'ile mamy bułek?' })
+    expect(matchWakeWord('Hej Ma gu! Gdzie leży szkło?', 'Magu')).toEqual({ matched: true, rest: 'Gdzie leży szkło?' })
+    expect(matchWakeWord('ma dużo bułek', 'Magu').matched).toBe(false)
   })
 
   test('tolerates one letter for prefixes of 4+ letters and Polish letters', () => {
@@ -204,6 +212,18 @@ describe('decideWakeAction', () => {
 })
 
 describe('recognition results', () => {
+  test('uses a wake-word alternative without changing the command or a decision', () => {
+    const alternative = Object.assign([
+      { transcript: 'mamy, ile mamy bułek?', confidence: 0.8 },
+      { transcript: 'Magu, ile mamy bułek?', confidence: 0.75 },
+    ], { isFinal: true })
+    expect(preferredSpeechTranscript(alternative, 'Magu')).toBe('Magu, ile mamy bułek?')
+    alternative[1].transcript = 'Magu, weź 5 bułek'
+    expect(preferredSpeechTranscript(alternative, 'Magu')).toBe(alternative[0].transcript)
+    alternative[0].transcript = 'nie'
+    alternative[1].transcript = 'Magu, tak'
+    expect(preferredSpeechTranscript(alternative, 'Magu')).toBe('nie')
+  })
   test('fullTranscript joins final and interim results', () => {
     expect(fullTranscript(results(['ile mamy', true], [' kartonów', false]))).toBe('ile mamy kartonów')
     expect(fullTranscript(results())).toBe('')
@@ -241,7 +261,7 @@ describe('browser support', () => {
       lang: 'pl-PL',
       continuous: true,
       interimResults: true,
-      maxAlternatives: 1,
+      maxAlternatives: 3,
     })
     expect(ttsSpeaking()).toBe(true)
   })

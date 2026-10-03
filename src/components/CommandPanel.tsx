@@ -4,7 +4,7 @@ import {
   fetchZones,
   sendCommand,
   isForbidden,
-  transcribeAudio,
+  transcribeAudioDetailed,
   updateAgentMode,
   type AgentMode,
   type AppSettings,
@@ -18,6 +18,7 @@ import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import { createRecognition, fullTranscript, type SpeechRecognitionLike } from '@/lib/speech'
 import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
+import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
 import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/commandConversation'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
@@ -133,17 +134,20 @@ export default function CommandPanel({
     enabled: wakeMode,
     prefix,
     refine: sttRefine,
+    onCorrection: setVoiceNote,
     cardStatus: () => {
       const pending = stateRef.current?.kind === 'proposal'
       return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
     },
     onEvent: (event: WakeEvent) => {
       const actions = latestRef.current
-      if (event.type === 'interim') setText(event.text)
+      if (event.type === 'interim') { setText(event.text); setVoiceNote('') }
       else if (event.type === 'armed') setText('')
       else if (event.type === 'submit') {
-        setText(event.text)
-        if (!actions.busy) void actions.runCommand(event.text)
+        const corrected = correctInventorySpeech(event.text, items.map((item) => item.name))
+        if (corrected.corrections.length) setVoiceNote(speechCorrectionNote(corrected.corrections))
+        setText(corrected.text)
+        if (!actions.busy) void actions.runCommand(corrected.text)
       } else if (event.type === 'confirm') {
         if (!actions.busy) void actions.confirm()
       } else actions.reject()
@@ -325,7 +329,7 @@ export default function CommandPanel({
     if (!recognition) return
     recognition.onresult = (event) => {
       if (pushToTalkRef.current !== session) return
-      session.browserText = fullTranscript(event.results)
+      session.browserText = fullTranscript(event.results, prefix)
       setText(joinText(session.base, session.browserText))
     }
     recognition.onerror = (event) => {
@@ -366,6 +370,9 @@ export default function CommandPanel({
     setListening(false)
     if (!session.serverStt) {
       // tekst przeglądarki jest ostateczny — nic nie wysyłamy
+      const corrected = correctInventorySpeech(session.browserText, items.map((item) => item.name), prefix)
+      setText(joinText(session.base, corrected.text))
+      if (corrected.corrections.length) setVoiceNote(speechCorrectionNote(corrected.corrections))
       if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
       inputRef.current?.focus()
       return
@@ -383,10 +390,11 @@ export default function CommandPanel({
         if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
         return
       }
-      const heard = (await transcribeAudio(wavBlob(samples, sampleRate))).trim()
+      const transcription = await transcribeAudioDetailed(wavBlob(samples, sampleRate))
+      const heard = transcription.text.trim()
       if (heard) {
         setText(joinText(session.base, heard))
-        setVoiceNote('')
+        setVoiceNote(speechCorrectionNote(transcription.corrections ?? []))
         setVoiceFallback(false)
       } else if (!session.browserText) {
         setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
