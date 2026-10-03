@@ -30,6 +30,10 @@ W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, s
 
 Aktualne stany, minima, lokalizacje i jednostki pobierzesz z sekcji **Stany** przyciskami **Eksportuj CSV** lub **Eksportuj XLSX**. Oba formaty można ponownie zaimportować bez utraty danych ani tworzenia duplikatów.
 
+W **Ustawieniach** zmienisz prefix agenta, tryb LLM/offline/mock, źródło danych, domyślne minimum i tryb mikrofonu. Zapis obowiązuje od następnej komendy i przetrwa restart (tabela `app_settings` w tej samej bazie SQLite). Komendy bez prefixu nadal działają; zastąpione prefixy są odrzucane. Domyślne minimum dotyczy nowych pozycji bez własnego progu; nie zmienia istniejących minimów ani jawnego zera w pliku. Import XLSX/CSV zapisuje dane w bazie i nie synchronizuje automatycznie pliku Excel. Sekcja zawiera wersję aplikacji oraz tekst o użyciu AI do skopiowania do zgłoszenia, bez ujawniania kluczy API.
+
+`LLM_MODE` ustawia tryb przy pierwszym uruchomieniu bazy; później obowiązuje zapisany wybór z UI. `DEMO_MODE=1` zawsze wymusza tryb mock i wyłącza zewnętrzne API. Tryb głosu „tylko tekst” blokuje również endpoint STT. Konfigurację odczytasz przez `GET /api/settings`, a zmienisz przez `PATCH /api/settings`; dotychczasowy `PUT /api/agent-mode` również zapisuje wybór trwale.
+
 Mapowanie kolumn działa offline na podstawie polskich i angielskich nagłówków; propozycje LLM wymagają podłączenia providera z karty 03.
 
 Parser tracerowy jest deterministyczny (offline): rozpoznaje **6 komend demo**

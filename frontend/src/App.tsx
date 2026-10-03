@@ -5,15 +5,15 @@ import InventoryExport from './components/InventoryExport'
 import InventoryImport from './components/InventoryImport'
 import Placeholder from './components/Placeholder'
 import ReorderQueue from './components/ReorderQueue'
+import SettingsPanel from './components/SettingsPanel'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
 import WarehouseMap from './components/WarehouseMap'
-import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type ReorderDraft, type Zone } from './api'
+import { connectWs, fetchHistory, fetchReorderDrafts, fetchSettings, fetchStock, fetchZones, type AppSettings, type HistoryEntry, type Item, type ReorderDraft, type Zone } from './api'
 import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
   procedury: '„Jak pakujemy szkło?” — pamięć proceduralna — karta 08.',
-  ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
 }
 
 const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
@@ -42,6 +42,9 @@ export default function App() {
   const [queueState, setQueueState] = useState<LoadState>('loading')
   const [queueError, setQueueError] = useState('')
   const [connected, setConnected] = useState(false)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [settingsError, setSettingsError] = useState('')
+  const [openImport, setOpenImport] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -89,12 +92,22 @@ export default function App() {
     }
   }, [])
 
+  const refreshSettings = useCallback(async () => {
+    try {
+      setSettings(await fetchSettings())
+      setSettingsError('')
+    } catch {
+      setSettingsError('Nie udało się pobrać konfiguracji. Odśwież stronę lub sprawdź połączenie.')
+    }
+  }, [])
+
   const refresh = useCallback(() => {
     void refreshStock()
     void refreshZones()
     void refreshHistory()
     void refreshQueue()
-  }, [refreshHistory, refreshQueue, refreshStock, refreshZones])
+    void refreshSettings()
+  }, [refreshHistory, refreshQueue, refreshSettings, refreshStock, refreshZones])
 
   useEffect(() => {
     refresh()
@@ -143,8 +156,9 @@ export default function App() {
         </header>
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
-          {section === 'stany' && <InventoryImport onImported={refresh} />}
-          <CommandPanel onApplied={onApplied} />
+          {section === 'stany' && <InventoryImport onImported={refresh} initialOpen={openImport || settings?.adapter === 'file_import'} />}
+          <CommandPanel onApplied={onApplied} settings={settings} settingsError={settingsError} showModeControl={section !== 'ustawienia'} onSettingsChanged={() => void refreshSettings()} />
+          {section === 'ustawienia' && <SettingsPanel onSaved={() => void refreshSettings()} onOpenImport={() => { setOpenImport(true); setSection('stany') }} />}
 
           {section === 'mapa' && (
             <WarehouseMap
@@ -186,7 +200,7 @@ export default function App() {
             </section>
           )}
 
-          {section !== 'mapa' && section !== 'stany' && section !== 'historia' && section !== 'kolejka' && (
+          {section === 'procedury' && (
             <Placeholder label={SECTIONS.find((s) => s.id === section)?.label ?? section} note={PLACEHOLDER_NOTES[section]} />
           )}
         </div>

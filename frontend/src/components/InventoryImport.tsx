@@ -16,13 +16,15 @@ const FIELDS: { id: ImportField; label: string; required?: boolean }[] = [
 
 type Mapping = Record<ImportField, number | null>
 
-export default function InventoryImport({ onImported }: { onImported: () => void }) {
-  const [open, setOpen] = useState(false)
+export default function InventoryImport({ onImported, initialOpen = false }: { onImported: () => void; initialOpen?: boolean }) {
+  const [openOverride, setOpen] = useState<boolean | null>(null)
+  const open = openOverride ?? initialOpen
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [mapping, setMapping] = useState<Mapping | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+
 
   const selectFile = async (file?: File) => {
     if (!file) return

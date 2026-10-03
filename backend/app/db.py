@@ -112,7 +112,7 @@ def list_items(db_path: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def import_items(db_path: str, items: list[dict]) -> dict[str, int]:
+def import_items(db_path: str, items: list[dict], *, default_minimum: int = 0) -> dict[str, int]:
     """Insert new inventory rows and update existing rows by their unique name."""
     with connect(db_path) as conn:
         inserted = 0
@@ -149,7 +149,7 @@ def import_items(db_path: str, items: list[dict]) -> dict[str, int]:
                 cursor = conn.execute(
                     """INSERT INTO items (name, quantity, minimum, unit, location)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (item["name"], item["quantity"], item["minimum"] or 0, item["unit"] or "szt", item["location"] or ""),
+                    (item["name"], item["quantity"], item["minimum"] if item["minimum"] is not None else default_minimum, item["unit"] or "szt", item["location"] or ""),
                 )
                 item_id = cursor.lastrowid
                 inserted += 1
