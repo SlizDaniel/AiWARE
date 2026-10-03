@@ -20,8 +20,8 @@ import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
-/** Karta zmiany przyjmuje głosowe „tak”/„nie” tylko przez tyle od pokazania. */
-const VOICE_DECISION_MS = 30_000
+/** Bez prefiksu („zatwierdź”) karta zmiany przyjmuje decyzję głosem tylko przez tyle od pokazania. */
+const VOICE_DECISION_MS = 60_000
 /** „Mów”: nagranie trwa najwyżej tyle (bufor PCM ma 30 s), po stopie dobieramy „ogon”. */
 const MAX_PUSH_TO_TALK_MS = 29_000
 const PUSH_TO_TALK_TAIL_MS = 300
@@ -126,8 +126,10 @@ export default function CommandPanel({
   const wake = useWakeListener({
     enabled: wakeMode,
     prefix,
-    proposalPending: () =>
-      stateRef.current?.kind === 'proposal' && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS,
+    cardStatus: () => {
+      const pending = stateRef.current?.kind === 'proposal'
+      return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
+    },
     onEvent: (event: WakeEvent) => {
       const actions = latestRef.current
       if (event.type === 'interim') setText(event.text)
@@ -158,7 +160,7 @@ export default function CommandPanel({
       : !voiceEnabled
         ? 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
         : wakeActive
-          ? `Włącz nasłuch i powiedz „${prefix}, …” — komenda wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „tak”, odrzucisz „nie”.`
+          ? `Mów bez klikania: „${prefix}, …” i komenda — wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „zatwierdź” albo „tak”, odrzucisz „odrzuć” albo „nie”.`
           : liveSpeech
             ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco, a po nagraniu serwer go poprawi. Sprawdź i kliknij Wyślij.'
             : 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
@@ -414,18 +416,7 @@ export default function CommandPanel({
           void submit()
         }}
       >
-        {wakeActive ? (
-          <button
-            type="button"
-            onClick={wake.toggle}
-            aria-pressed={wake.on}
-            title={wake.on ? 'Wyłącz nasłuch mikrofonu' : `Włącz nasłuch na „${prefix}”`}
-            className={micButtonClass(wake.on)}
-          >
-            <span aria-hidden className={'inline-block size-3 rounded-full ' + (wake.on ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
-            {wake.on ? 'Nasłuch: wyłącz' : 'Nasłuch: włącz'}
-          </button>
-        ) : (
+        {!wakeActive && (
           <button
             type="button"
             onClick={toggleMic}
@@ -477,27 +468,53 @@ export default function CommandPanel({
         </p>
       )}
       {wake.on && (
-        <p
-          className={'mt-3 flex items-center gap-2 text-sm font-semibold ' + (wake.phase === 'paused' ? 'text-[#646b64]' : 'text-[#8f3936]')}
-          role="status"
-        >
-          <span
-            aria-hidden
-            className={'inline-block size-2 shrink-0 rounded-full ' + (wake.phase === 'paused' ? 'bg-[#9a9e97]' : 'animate-pulse bg-[#8f3936]')}
-          />
-          {wake.phase === 'hearing'
-            ? 'Słucham…'
-            : wake.phase === 'refining'
-              ? 'Poprawiam transkrypcję…'
-              : wake.phase === 'paused'
-              ? 'Nasłuch wstrzymany, gdy Magazynier mówi.'
-              : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p
+            className={'flex min-w-0 items-center gap-2 text-sm font-semibold ' + (wake.phase === 'paused' ? 'text-[#646b64]' : 'text-[#8f3936]')}
+            role="status"
+          >
+            <span
+              aria-hidden
+              className={'inline-block size-2 shrink-0 rounded-full ' + (wake.phase === 'paused' ? 'bg-[#9a9e97]' : 'animate-pulse bg-[#8f3936]')}
+            />
+            {wake.phase === 'hearing'
+              ? 'Słucham…'
+              : wake.phase === 'refining'
+                ? 'Poprawiam transkrypcję…'
+                : wake.phase === 'paused'
+                  ? 'Nasłuch wstrzymany, gdy Magazynier mówi.'
+                  : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
+          </p>
+          <button type="button" onClick={wake.turnOff} className={smallButtonClass}>
+            Wyłącz nasłuch
+          </button>
+          {wake.audioSuspended && (
+            <p className="basis-full text-xs text-[#70756f]">Kliknij gdziekolwiek, aby włączyć dokładniejsze rozpoznawanie.</p>
+          )}
+        </div>
       )}
-      {wake.error && (
-        <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">
-          {wake.error}
-        </p>
+      {wakeActive && !wake.on && !wake.error && wake.userOff && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="flex items-center gap-2 text-sm text-[#646b64]" role="status">
+            <span aria-hidden className="inline-block size-2 shrink-0 rounded-full bg-[#9a9e97]" />
+            Nasłuch wyłączony w tej przeglądarce.
+          </p>
+          <button type="button" onClick={wake.turnOn} className={smallButtonClass}>
+            Włącz nasłuch
+          </button>
+        </div>
+      )}
+      {wakeActive && wake.error && (
+        <div className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">
+          <p>{wake.error}</p>
+          <button
+            type="button"
+            onClick={wake.retry}
+            className="mt-3 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
+          >
+            Spróbuj ponownie
+          </button>
+        </div>
       )}
       {voiceEnabled && !liveSpeech && (
         <p className="mt-3 text-xs text-[#805c12]">
@@ -584,6 +601,9 @@ function detachRecognition(session: PushToTalkSession) {
     /* już zatrzymany */
   }
 }
+
+const smallButtonClass =
+  'shrink-0 border border-[#d8d6cf] bg-white px-3 py-1.5 text-xs font-semibold text-[#454b46] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]'
 
 function micButtonClass(active: boolean): string {
   return (
