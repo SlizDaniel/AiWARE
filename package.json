@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "MAGAZYNIER — głosowy agent magazynowy (Next.js + libSQL/Turso + Gemini), gotowy na Vercel",
+  "description": "MAGAZYNIER — głosowy agent magazynowy (Next.js + Supabase/PGlite + Gemini), gotowy na Vercel",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
