@@ -7,80 +7,79 @@ const EVENT_LABELS: Record<string, string> = {
   procedure_saved: 'procedura',
 }
 
-const EVENT_ICONS: Record<string, string> = {
-  zone_added: '🗺',
-  item_added: '➕',
-  procedure_saved: '📝',
-  reorder_draft_created: '📦',
-  reorder_approved: '📦',
-  reorder_rejected: '📦',
+type Props = {
+  entries: HistoryEntry[]
+  state?: 'loading' | 'ready' | 'error'
+  error?: string
+  onRetry?: () => void
 }
 
-export default function HistoryList({ entries }: { entries: HistoryEntry[] }) {
+export default function HistoryList({ entries, state = 'ready', error = '', onRetry }: Props) {
+  if (state === 'loading') {
+    return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram historię zmian…</div>
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
+        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać historii zmian.</p>
+        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
+          >
+            Spróbuj ponownie
+          </button>
+        )}
+      </div>
+    )
+  }
+
   if (entries.length === 0) {
     return <Empty text="Brak zmian — zatwierdź pierwszą kartę zmiany, a pojawi się tutaj wpis." />
   }
+
   return (
     <ol className="space-y-3">
-      {entries.map((e) => {
-        // stock_change = zwykła zmiana stanu; reorder_* = kolejka (karta 08);
-        // pozostałe event_type to zdarzenia z narzędzi agenta (karta 02)
-        const isReorderEvent = e.event_type.startsWith('reorder_')
-        const isImportEvent = e.event_type === 'inventory_import'
-        const isStockChange = e.event_type === 'stock_change' || isImportEvent || !e.event_type
-        const icon = isStockChange ? (e.delta < 0 ? '↘' : '↗') : EVENT_ICONS[e.event_type] ?? '•'
-        const iconClass = e.event_type === 'reorder_rejected'
-          ? 'bg-slate-100 text-slate-600'
+      {entries.map((entry) => {
+        const isReorderEvent = entry.event_type.startsWith('reorder_')
+        const isImportEvent = entry.event_type === 'inventory_import'
+        const isStockChange = entry.event_type === 'stock_change' || isImportEvent || !entry.event_type
+        const markerClass = entry.event_type === 'reorder_rejected'
+          ? 'bg-[#f0efe9] text-[#646b64]'
           : isReorderEvent
-            ? 'bg-amber-100 text-amber-700'
+            ? 'bg-[#fbf3db] text-[#805c12]'
             : isStockChange
-              ? e.delta < 0
-                ? 'bg-rose-100 text-rose-600'
-                : 'bg-emerald-100 text-emerald-700'
-              : 'bg-indigo-100 text-indigo-600'
-        const eventLabel = !isStockChange && !isReorderEvent ? EVENT_LABELS[e.event_type] : undefined
+              ? entry.delta < 0
+                ? 'bg-[#fdebec] text-[#8f3936]'
+                : 'bg-[#edf3ec] text-[#315b37]'
+              : 'bg-[#edf0f3] text-[#475a70]'
+        const eventLabel = !isStockChange && !isReorderEvent ? EVENT_LABELS[entry.event_type] : undefined
 
         return (
-          <li key={e.id} className="flex items-start gap-4 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <span
-              className={'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg ' + iconClass}
-            >
-              {icon}
+          <li key={entry.id} className="flex items-start gap-4 border border-[#e8e5de] bg-white p-5">
+            <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center text-sm font-bold ${markerClass}`} aria-hidden="true">
+              {isReorderEvent ? 'Z' : isStockChange ? entry.delta < 0 ? '−' : '+' : '•'}
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-semibold">
-                  {isStockChange ? (
-                    <>
-                      {e.actor}: {e.item_name} {e.before}→{e.after}
-                    </>
-                  ) : (
-                    <>
-                      {e.actor}: {e.item_name}
-                    </>
-                  )}
+                  {isStockChange ? `${entry.actor}: ${entry.item_name} ${entry.before}→${entry.after}` : `${entry.actor}: ${entry.item_name}`}
                 </span>
                 {isStockChange && (
-                  <span
-                    className={
-                      'rounded-full px-2 py-0.5 text-xs font-bold ' +
-                      (e.delta < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700')
-                    }
-                  >
-                    {e.delta > 0 ? `+${e.delta}` : e.delta}
+                  <span className={'px-2 py-0.5 text-xs font-bold ' + (entry.delta < 0 ? 'bg-[#fdebec] text-[#8f3936]' : 'bg-[#edf3ec] text-[#315b37]')}>
+                    {entry.delta > 0 ? `+${entry.delta}` : entry.delta}
                   </span>
                 )}
-                {eventLabel && (
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-700">
-                    {eventLabel}
-                  </span>
-                )}
+                {eventLabel && <span className="bg-[#edf0f3] px-2 py-0.5 text-xs font-bold text-[#475a70]">{eventLabel}</span>}
               </div>
-              <div className="mt-0.5 truncate text-sm text-slate-600">
-                {isReorderEvent || isImportEvent ? e.details : `„${e.text}”`}
+              <div className="mt-0.5 truncate text-sm text-[#646b64]">
+                {isReorderEvent || isImportEvent ? entry.details || entry.text : `„${entry.text}”`}
               </div>
-              <div className="mt-1 text-xs text-slate-400">
-                {e.ts} · audyt #{e.id}
+              <div className="mt-1 text-xs text-[#70756f]">
+                {entry.ts} · audyt #{entry.id}
               </div>
             </div>
           </li>

@@ -11,7 +11,6 @@ import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
   mapa: 'Schematyczna mapa 2D magazynu ze strefami — karta 03.',
-  kolejka: 'Proaktywne szkice zamówień (progi/reorder) — karta 08.',
   procedury: '„Jak pakujemy szkło?” — pamięć proceduralna — karta 08.',
   ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
 }
@@ -25,20 +24,61 @@ const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
   ustawienia: { title: 'Ustawienia', subtitle: 'Konfiguracja agenta i adapterów' },
 }
 
+type LoadState = 'loading' | 'ready' | 'error'
+
 export default function App() {
   const [section, setSection] = useState<SectionId>('stany')
   const [items, setItems] = useState<Item[]>([])
+  const [stockState, setStockState] = useState<LoadState>('loading')
+  const [stockError, setStockError] = useState('')
   const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [historyState, setHistoryState] = useState<LoadState>('loading')
+  const [historyError, setHistoryError] = useState('')
   const [drafts, setDrafts] = useState<ReorderDraft[]>([])
+  const [queueState, setQueueState] = useState<LoadState>('loading')
+  const [queueError, setQueueError] = useState('')
   const [connected, setConnected] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  const refresh = useCallback(() => {
-    void fetchStock().then(setItems).catch(() => undefined)
-    void fetchHistory().then(setEntries).catch(() => undefined)
-    void fetchReorderDrafts().then(setDrafts).catch(() => undefined)
+  const refreshStock = useCallback(async () => {
+    try {
+      setItems(await fetchStock())
+      setStockState('ready')
+      setStockError('')
+    } catch (error) {
+      setStockState('error')
+      setStockError(error instanceof Error ? error.message : 'Nie udało się pobrać stanów magazynowych.')
+    }
   }, [])
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      setEntries(await fetchHistory())
+      setHistoryState('ready')
+      setHistoryError('')
+    } catch (error) {
+      setHistoryState('error')
+      setHistoryError(error instanceof Error ? error.message : 'Nie udało się pobrać historii zmian.')
+    }
+  }, [])
+
+  const refreshQueue = useCallback(async () => {
+    try {
+      setDrafts(await fetchReorderDrafts())
+      setQueueState('ready')
+      setQueueError('')
+    } catch (error) {
+      setQueueState('error')
+      setQueueError(error instanceof Error ? error.message : 'Nie udało się pobrać kolejki zatwierdzeń.')
+    }
+  }, [])
+
+  const refresh = useCallback(() => {
+    void refreshStock()
+    void refreshHistory()
+    void refreshQueue()
+  }, [refreshHistory, refreshQueue, refreshStock])
 
   useEffect(() => {
     refresh()
@@ -68,16 +108,25 @@ export default function App() {
   const heading = SECTION_TITLES[section]
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#f5f4f0] text-[#292d2b] lg:flex lg:h-screen lg:overflow-hidden">
       <Sidebar current={section} onNavigate={setSection} connected={connected} />
 
-      <main className="flex-1 overflow-y-auto">
-        <header className="border-b border-slate-200 bg-white px-8 py-6">
-          <h1 className="text-2xl font-extrabold tracking-tight">{heading.title}</h1>
-          <p className="mt-1 text-sm text-slate-500">{heading.subtitle}</p>
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <header className="border-b border-[#e8e5de] bg-[#fbfaf7] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
+          <div className="mx-auto flex max-w-[1440px] items-end justify-between gap-4">
+            <div>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#646b64]">Magazyn · panel operacyjny</p>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-[28px]">{heading.title}</h1>
+              <p className="mt-1 text-sm text-[#70756f]">{heading.subtitle}</p>
+            </div>
+            <div className="hidden items-center gap-2 text-xs font-medium text-[#646b64] sm:flex" aria-live="polite">
+              <span className={'h-2 w-2 rounded-full ' + (connected ? 'bg-[#527b58]' : 'bg-[#a45d52]')} aria-hidden="true" />
+              {connected ? 'Połączono' : 'Brak połączenia'}
+            </div>
+          </div>
         </header>
 
-        <div className="space-y-6 p-8">
+        <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
           {section === 'stany' && <InventoryImport onImported={refresh} />}
           <CommandPanel onApplied={onApplied} />
 
@@ -86,10 +135,18 @@ export default function App() {
               <h2 className="mb-3 text-lg font-bold">
                 {section === 'stany' ? 'Pozycje' : section === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
               </h2>
-              {section === 'stany' ? <StockTable items={items} /> : section === 'historia' ? (
-                <HistoryList entries={entries} />
+              {section === 'stany' ? (
+                <StockTable items={items} state={stockState} error={stockError} onRetry={() => void refreshStock()} />
+              ) : section === 'historia' ? (
+                <HistoryList entries={entries} state={historyState} error={historyError} onRetry={() => void refreshHistory()} />
               ) : (
-                <ReorderQueue drafts={drafts} onChanged={onQueueChanged} />
+                <ReorderQueue
+                  drafts={drafts}
+                  state={queueState}
+                  error={queueError}
+                  onRetry={() => void refreshQueue()}
+                  onChanged={onQueueChanged}
+                />
               )}
             </section>
           )}
@@ -101,8 +158,8 @@ export default function App() {
       </main>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 rounded-xl bg-slate-900 px-5 py-4 text-sm font-semibold text-white shadow-xl">
-          ✓ {toast}
+        <div className="fixed bottom-4 left-4 right-4 rounded-md border border-[#cbd8c9] bg-[#edf3ec] px-4 py-3 text-sm font-semibold text-[#315b37] sm:left-auto sm:right-6 sm:w-auto" role="status">
+          {toast}
         </div>
       )}
     </div>

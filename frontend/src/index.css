@@ -2,15 +2,26 @@
 
 :root {
   font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
+    'Aptos',
+    'Segoe UI Variable',
     'Helvetica Neue',
-    Arial,
     sans-serif;
+  color: #292d2b;
+  background: #f5f4f0;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  @apply m-0 min-h-screen antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  color: #292d2b;
+  background: #dce9dc;
 }
