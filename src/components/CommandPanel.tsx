@@ -708,8 +708,9 @@ export default function CommandPanel({
         </p>
       )}
       {voiceNote && (
-        <Notice tone="warn" role="status">
-          {voiceNote} Pole tekstowe jest podświetlone — komenda głosowa nie jest jedyną drogą.
+        <Notice tone={voiceFallback ? 'warn' : 'info'} role="status">
+          {voiceNote}
+          {voiceFallback && ' Pole tekstowe jest podświetlone — komenda głosowa nie jest jedyną drogą.'}
         </Notice>
       )}
 
