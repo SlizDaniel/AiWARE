@@ -49,7 +49,8 @@ export function sttVocabulary(parts: { prefix?: string; items?: string[]; zones?
   const seen = new Set<string>()
   const words: string[] = []
   let length = 0
-  for (const word of [parts.prefix ?? '', ...(parts.items ?? []), ...(parts.zones ?? []), ...(parts.topics ?? []), ...DOMAIN_WORDS]) {
+  // Prefix, zones and procedure topics are few and easy to mishear; items fill the remaining budget.
+  for (const word of [parts.prefix ?? '', ...(parts.zones ?? []), ...(parts.topics ?? []), ...(parts.items ?? []), ...DOMAIN_WORDS]) {
     const clean = word.replace(/\s+/g, ' ').trim()
     const key = clean.toLocaleLowerCase('pl')
     if (!clean || seen.has(key) || length + clean.length + 2 > MAX_VOCABULARY_CHARS) continue

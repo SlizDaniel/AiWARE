@@ -281,7 +281,7 @@ describe('transcribe — warehouse vocabulary and robustness', () => {
   const vocabulary = sttVocabulary({ prefix: 'Magu', items: ['Kartony', 'Folia stretch', 'kartony'], zones: ['C2'], topics: ['szkło'] })
 
   it('builds a de-duplicated vocabulary with domain words', () => {
-    expect(vocabulary.slice(0, 5)).toEqual(['Magu', 'Kartony', 'Folia stretch', 'C2', 'szkło'])
+    expect(vocabulary.slice(0, 5)).toEqual(['Magu', 'C2', 'szkło', 'Kartony', 'Folia stretch'])
     expect(vocabulary).toContain('paleta')
     expect(vocabulary.join(', ').length).toBeLessThanOrEqual(600)
     expect(whisperPrompt([])).toBe('')
@@ -292,7 +292,7 @@ describe('transcribe — warehouse vocabulary and robustness', () => {
     const fetchMock = stubFetch(() => jsonResponse({ text: 'Magu, wzięliśmy paletę kartonów' }))
     await expect(transcribe(AUDIO, 'audio/wav', { vocabulary })).resolves.toBe('Magu, wzięliśmy paletę kartonów')
     const form = fetchMock.mock.calls[0][1].body as FormData
-    expect(form.get('prompt')).toContain('Magu, Kartony, Folia stretch')
+    expect(form.get('prompt')).toContain('Magu, C2, szkło, Kartony, Folia stretch')
     expect(form.get('temperature')).toBe('0')
     expect((form.get('file') as File).name).toBe('audio.wav')
   })
