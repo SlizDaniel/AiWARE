@@ -28,6 +28,8 @@ docker compose up --build
 
 W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, sprawdź podgląd i przypisanie kolumn, popraw je w razie potrzeby i kliknij **Zatwierdź import**. Samo wczytanie pliku niczego nie zapisuje. Powtórny import aktualizuje pozycje o tej samej nazwie zamiast tworzyć duplikaty.
 
+Aktualne stany, minima, lokalizacje i jednostki pobierzesz z sekcji **Stany** przyciskami **Eksportuj CSV** lub **Eksportuj XLSX**. Oba formaty można ponownie zaimportować bez utraty danych ani tworzenia duplikatów.
+
 Mapowanie kolumn działa offline na podstawie polskich i angielskich nagłówków; propozycje LLM wymagają podłączenia providera z karty 03.
 
 Parser tracerowy jest deterministyczny (offline): rozpoznaje **6 komend demo**
@@ -90,6 +92,9 @@ standardowy wątek HTTP kończy się osobno (nie jest siłowo zatrzymywany).
 W jednym procesie mogą trwać najwyżej dwa wywołania LLM. Zajęte oba miejsca
 oznaczają natychmiastowy fallback offline; miejsce zwalnia się dopiero po
 rzeczywistym zakończeniu żądania HTTP.
+JSON odpowiedzi i argumentów funkcji z powtórzonymi kluczami jest odrzucany
+(agent nie wybiera po cichu ostatniej wartości). Nadmierne zagnieżdżenie JSON
+również uruchamia fallback offline zamiast błędu serwera.
 
 Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
 LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
@@ -98,6 +103,23 @@ Tryb offline nie wymaga zewnętrznych API. Integracja chmurowa została sprawdzo
 na kontrolowanych odpowiedziach API; próba z rzeczywistym modelem wymaga klucza.
 
 ## Demo offline (karta 13)
+
+### Automatyczne sprawdzenie przed próbą
+
+Z katalogu repo, po przygotowaniu zależności backendu i frontendu:
+
+```powershell
+.\backend\.venv\Scripts\python.exe .\scripts\check-demo.py
+# Dodatkowo sprawdź konfigurację Compose i działający daemon:
+.\backend\.venv\Scripts\python.exe .\scripts\check-demo.py --docker
+```
+
+Skrypt uruchamia istniejące testy backendu (w tym demo i import/eksport), build
+i typecheck frontendu oraz testy przypisania pozycji do mapy. Kończy się kodem 1,
+jeśli któryś krok się nie powiedzie. Nie instaluje zależności, nie resetuje bazy
+działającej aplikacji i usuwa klucze API z otoczenia procesów sprawdzających.
+Wynik nie zastępuje ręcznej próby GUI, próby prawdziwego LLM/STT ani uruchomienia
+przygotowanych obrazów Dockera bez internetu. Samo `--docker` nie uruchamia kontenerów.
 
 ### Jedna komenda na laptopie prezentacyjnym
 
