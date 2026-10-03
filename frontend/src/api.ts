@@ -62,9 +62,24 @@ export type AgentModeStatus = {
   warning: string | null
 }
 
+export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
+export type ImportPreview = {
+  import_id: string
+  headers: { index: number; label: string }[]
+  preview: string[][]
+  row_count: number
+  mapping: Record<ImportField, { column: number | null; confidence: number }>
+  missing_required: ImportField[]
+  warnings: string[]
+}
+
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json() as Promise<T>
+  const payload = await res.json()
+  if (!res.ok) {
+    const detail = payload && typeof payload.detail === 'string' ? payload.detail : `${res.status} ${res.statusText}`
+    throw new Error(detail)
+  }
+  return payload as T
 }
 
 export function fetchStock(): Promise<Item[]> {
@@ -97,11 +112,11 @@ export function updateAgentMode(mode: AgentMode): Promise<AgentModeStatus> {
 
 export function confirmProposal(id: string): Promise<{
   applied: boolean
-  audit_id: number
+  audit_id?: number
   reorder_draft?: ReorderDraft | null
 }> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id: number; reorder_draft?: ReorderDraft | null }>(r),
+    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null }>(r),
   )
 }
 
@@ -121,6 +136,26 @@ export function rejectReorderDraft(id: number): Promise<{ rejected: boolean }> {
   return fetch(`/api/reorder-drafts/${id}/reject`, { method: 'POST' }).then((r) =>
     json<{ rejected: boolean }>(r),
   )
+}
+
+export async function previewInventoryFile(file: File): Promise<ImportPreview> {
+  const response = await fetch(`/api/import/preview?filename=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+  return json<ImportPreview>(response)
+}
+
+export function confirmInventoryImport(
+  importId: string,
+  mapping: Record<ImportField, number | null>,
+): Promise<{ inserted: number; updated: number; total: number }> {
+  return fetch('/api/import/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ import_id: importId, mapping }),
+  }).then((response) => json<{ inserted: number; updated: number; total: number }>(response))
 }
 
 // WebSocket: push {"event": "updated"} po każdej zatwierdzonej zmianie.

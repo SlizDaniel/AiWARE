@@ -112,6 +112,88 @@ def list_items(db_path: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def import_items(db_path: str, items: list[dict]) -> dict[str, int]:
+    """Insert new inventory rows and update existing rows by their unique name."""
+    with connect(db_path) as conn:
+        inserted = 0
+        updated = 0
+        existing_by_name = {
+            str(row["name"]).casefold(): dict(row)
+            for row in conn.execute("SELECT id, name, quantity, minimum, unit, location FROM items").fetchall()
+        }
+        for item in items:
+            key = item["name"].casefold()
+            existing = existing_by_name.get(key)
+            if existing is not None:
+                item_id = existing["id"]
+                conn.execute(
+                    """UPDATE items SET quantity = ?,
+                           minimum = CASE WHEN ? IS NULL THEN minimum ELSE ? END,
+                           unit = CASE WHEN ? IS NULL OR ? = '' THEN unit ELSE ? END,
+                           location = CASE WHEN ? IS NULL THEN location ELSE ? END
+                       WHERE id = ?""",
+                    (
+                        item["quantity"],
+                        item["minimum"],
+                        item["minimum"],
+                        item["unit"],
+                        item["unit"],
+                        item["unit"],
+                        item["location"],
+                        item["location"],
+                        item_id,
+                    ),
+                )
+                updated += 1
+            else:
+                cursor = conn.execute(
+                    """INSERT INTO items (name, quantity, minimum, unit, location)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (item["name"], item["quantity"], item["minimum"] or 0, item["unit"] or "szt", item["location"] or ""),
+                )
+                item_id = cursor.lastrowid
+                inserted += 1
+            item_row = conn.execute(
+                "SELECT id, name, quantity, minimum, unit, location FROM items WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+            changed_fields = []
+            for label, field in (("minimum", "minimum"), ("jednostka", "unit"), ("lokalizacja", "location")):
+                previous = existing[field] if existing is not None else None
+                current = item_row[field]
+                if previous != current:
+                    previous_display = "—" if previous is None or previous == "" else previous
+                    current_display = "—" if current is None or current == "" else current
+                    changed_fields.append(f"{label}: {previous_display}→{current_display}")
+            if existing is None:
+                changed_fields.insert(0, "nowa pozycja")
+            conn.execute(
+                "INSERT INTO audit_log (actor, text, item_id, item_name, delta, before, after, event_type, details) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "import",
+                    "Import zatwierdzony",
+                    item_id,
+                    item_row["name"],
+                    item_row["quantity"] - (existing["quantity"] if existing is not None else 0),
+                    existing["quantity"] if existing is not None else 0,
+                    item_row["quantity"],
+                    "inventory_import",
+                    "; ".join(changed_fields) or "Dane pozycji potwierdzone importem.",
+                ),
+            )
+            _sync_pending_reorder(
+                conn,
+                item_id=item_row["id"],
+                item_name=item_row["name"],
+                quantity=item_row["quantity"],
+                minimum=item_row["minimum"],
+                unit=item_row["unit"],
+                source="imporcie",
+            )
+    return {"inserted": inserted, "updated": updated, "total": len(items)}
+
+
 def get_item(db_path: str, item_id: int) -> dict | None:
     with connect(db_path) as conn:
         row = conn.execute(
@@ -119,6 +201,83 @@ def get_item(db_path: str, item_id: int) -> dict | None:
             (item_id,),
         ).fetchone()
         return dict(row) if row else None
+
+
+def _sync_pending_reorder(
+    conn: sqlite3.Connection,
+    *,
+    item_id: int,
+    item_name: str,
+    quantity: int,
+    minimum: int,
+    unit: str,
+    source: str = "zmianie stanu",
+) -> dict | None:
+    pending = conn.execute(
+        "SELECT * FROM reorder_drafts WHERE item_id = ? AND status = 'pending'",
+        (item_id,),
+    ).fetchone()
+    if quantity < minimum:
+        order_quantity = max(DEMO_REORDER_QUANTITY, minimum - quantity)
+        if pending is not None:
+            if pending["quantity"] != order_quantity or pending["unit"] != unit:
+                conn.execute(
+                    "UPDATE reorder_drafts SET quantity = ?, unit = ?, item_name = ?, "
+                    "updated_at = datetime('now', 'localtime') WHERE id = ?",
+                    (order_quantity, unit, item_name, pending["id"]),
+                )
+                _write_order_audit(
+                    conn,
+                    item_id=item_id,
+                    item_name=item_name,
+                    quantity=order_quantity,
+                    unit=unit,
+                    deliver_on=pending["deliver_on"],
+                    event_type="reorder_draft_updated",
+                    text=f"Szkic zamówienia zaktualizowany po {source}: {item_name} — {order_quantity} {unit}",
+                    before=quantity,
+                )
+            return None
+
+        deliver_on = _next_tuesday().isoformat()
+        draft_cur = conn.execute(
+            "INSERT INTO reorder_drafts (item_id, item_name, quantity, unit, deliver_on) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (item_id, item_name, order_quantity, unit, deliver_on),
+        )
+        _write_order_audit(
+            conn,
+            item_id=item_id,
+            item_name=item_name,
+            quantity=order_quantity,
+            unit=unit,
+            deliver_on=deliver_on,
+            event_type="reorder_draft_created",
+            text=f"Szkic zamówienia: {item_name} — {order_quantity} {unit}",
+            before=quantity,
+        )
+        return dict(
+            conn.execute(
+                "SELECT id, item_id, item_name, quantity, unit, deliver_on, status, created_at, updated_at "
+                "FROM reorder_drafts WHERE id = ?",
+                (draft_cur.lastrowid,),
+            ).fetchone()
+        )
+
+    if pending is not None:
+        conn.execute("DELETE FROM reorder_drafts WHERE id = ?", (pending["id"],))
+        _write_order_audit(
+            conn,
+            item_id=item_id,
+            item_name=item_name,
+            quantity=pending["quantity"],
+            unit=pending["unit"],
+            deliver_on=pending["deliver_on"],
+            event_type="reorder_cancelled",
+            text=f"Szkic zamówienia anulowany po {source}: {item_name}",
+            before=quantity,
+        )
+    return None
 
 
 def confirm_stock_change(
@@ -147,38 +306,14 @@ def confirm_stock_change(
             (actor, text, item_id, row["name"], delta, before, after),
         )
         audit_id = cur.lastrowid
-        draft = None
-        if after < row["minimum"]:
-            order_quantity = max(DEMO_REORDER_QUANTITY, row["minimum"] - after)
-            pending = conn.execute(
-                "SELECT id FROM reorder_drafts WHERE item_id = ? AND status = 'pending'",
-                (item_id,),
-            ).fetchone()
-            if pending is None:
-                deliver_on = _next_tuesday().isoformat()
-                draft_cur = conn.execute(
-                    "INSERT INTO reorder_drafts (item_id, item_name, quantity, unit, deliver_on) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (item_id, row["name"], order_quantity, row["unit"], deliver_on),
-                )
-                draft = dict(
-                    conn.execute(
-                        "SELECT id, item_id, item_name, quantity, unit, deliver_on, status, created_at, updated_at "
-                        "FROM reorder_drafts WHERE id = ?",
-                        (draft_cur.lastrowid,),
-                    ).fetchone()
-                )
-                _write_order_audit(
-                    conn,
-                    item_id=item_id,
-                    item_name=row["name"],
-                    quantity=order_quantity,
-                    unit=row["unit"],
-                    deliver_on=deliver_on,
-                    event_type="reorder_draft_created",
-                    text=f"Szkic zamówienia: {row['name']} — {order_quantity} {row['unit']}",
-                    before=after,
-                )
+        draft = _sync_pending_reorder(
+            conn,
+            item_id=item_id,
+            item_name=row["name"],
+            quantity=after,
+            minimum=row["minimum"],
+            unit=row["unit"],
+        )
         return {
             "audit_id": audit_id,
             "item_id": item_id,

@@ -24,6 +24,12 @@ docker compose up --build
 4. Kliknij **Zatwierdź**
 5. Sekcja **Stany**: Kartony = 52 · sekcja **Historia**: nowy wpis audytu (co/kiedy)
 
+## Import stanów z Excela lub CSV
+
+W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, sprawdź podgląd i przypisanie kolumn, popraw je w razie potrzeby i kliknij **Zatwierdź import**. Samo wczytanie pliku niczego nie zapisuje. Powtórny import aktualizuje pozycje o tej samej nazwie zamiast tworzyć duplikaty.
+
+Mapowanie kolumn działa offline na podstawie polskich i angielskich nagłówków; propozycje LLM wymagają podłączenia providera z karty 03.
+
 Parser tracerowy jest deterministyczny (offline): rozpoznaje **6 komend demo**
 (wzięliśmy paletę X / doszła paleta X / strefa: X / ile mamy X? / gdzie leży X? / jak pakujemy X?)
 plus **„zapamiętaj: X …”** (zapis procedury), i mapuje je na rejestr 8 narzędzi z PRD
@@ -77,9 +83,11 @@ przekazaniem wywołania dalej. Błędna odpowiedź lub błąd sieci wraca do par
 zmiana stanu nadal wymaga zatwierdzenia karty. Tryb `mock` używa obecnie parsera offline;
 pełny seedowany scenariusz demo należy do karty 13.
 
-Parser offline obsługuje pełny rejestr narzędzi z karty 02. Obecna integracja LLM
-proponuje zmiany `update_stock`; pozostałe narzędzia zostaną podłączone w karcie 03.
-Tryb offline nie wymaga zewnętrznych API.
+Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
+LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
+kartę wymagającą zatwierdzenia. Oryginalną komendę do audytu dostarcza serwer.
+Tryb offline nie wymaga zewnętrznych API. Integracja chmurowa została sprawdzona
+na kontrolowanych odpowiedziach API; próba z rzeczywistym modelem wymaga klucza.
 
 ## Sekcje UI
 

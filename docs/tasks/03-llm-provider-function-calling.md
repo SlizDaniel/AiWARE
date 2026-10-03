@@ -12,11 +12,13 @@
 
 **Demo check:** ustawić tryb `llm`, wpisać 3 naturalne zdania niebędące komendami demo (np. „zabrakło nam opakowań, wzięliśmy 4 opakowania folii") — agent mapuje na narzędzie lub pyta; przełączyć na `offline` — wciąż działa 6 komend.
 
-**Status:** in progress — provider, function-call validation, runtime mode endpoint/UI, and offline fallback are implemented on `feature/llm-function-calling`; integration currently exposes the existing `update_stock` tool. Extend the tool list from card 02's registry when it is available, then complete the demo check.
+**Status:** implemented and verified locally on `feature/llm-function-calling` — all registry tools are exposed to the LLM; reads return answers, writes require confirmation, invalid calls fall back offline. Backend tests and frontend build pass. Provider behavior is verified with controlled API responses; a live-cloud demo check still requires an API key.
 
 **Integration contract for card 02:** the registry passes OpenAI-compatible function schemas to `LLMProvider.interpret(text, tools, context)`. The result is `Interpretation(tool_call=ToolCall(name, arguments))` or `Interpretation(clarification=...)`. The provider rejects unknown tool names, malformed JSON, missing required values, and arguments with the wrong JSON types. The command layer still validates that item IDs exist and only creates a proposal; writes happen after user confirmation.
 
-- [ ] klucz API z .env, brak klucza = automatyczny start w trybie offline z ostrzeżeniem na ekranie
+- [x] klucz API z .env, brak klucza = automatyczny start w trybie offline z ostrzeżeniem na ekranie
 - [ ] dowolne zdanie mapuje się na narzędzie lub generuje pytanie zwrotne na karcie
-- [ ] walidacja odpowiedzi LLM; śmieć → fallback na parser, UI żyje
-- [ ] przełączanie trybów konfiguracją, bez restartu dema
+- [x] walidacja odpowiedzi LLM; śmieć → fallback na parser, UI żyje
+- [x] przełączanie trybów konfiguracją, bez restartu dema
+
+The remaining unchecked natural-language criterion needs the live-cloud demo check.

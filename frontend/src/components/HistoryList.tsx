@@ -26,7 +26,8 @@ export default function HistoryList({ entries }: { entries: HistoryEntry[] }) {
         // stock_change = zwykła zmiana stanu; reorder_* = kolejka (karta 08);
         // pozostałe event_type to zdarzenia z narzędzi agenta (karta 02)
         const isReorderEvent = e.event_type.startsWith('reorder_')
-        const isStockChange = e.event_type === 'stock_change' || !e.event_type
+        const isImportEvent = e.event_type === 'inventory_import'
+        const isStockChange = e.event_type === 'stock_change' || isImportEvent || !e.event_type
         const icon = isStockChange ? (e.delta < 0 ? '↘' : '↗') : EVENT_ICONS[e.event_type] ?? '•'
         const iconClass = e.event_type === 'reorder_rejected'
           ? 'bg-slate-100 text-slate-600'
@@ -76,7 +77,7 @@ export default function HistoryList({ entries }: { entries: HistoryEntry[] }) {
                 )}
               </div>
               <div className="mt-0.5 truncate text-sm text-slate-600">
-                {isReorderEvent ? e.details : `„${e.text}”`}
+                {isReorderEvent || isImportEvent ? e.details : `„${e.text}”`}
               </div>
               <div className="mt-1 text-xs text-slate-400">
                 {e.ts} · audyt #{e.id}

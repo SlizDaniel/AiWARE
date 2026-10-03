@@ -21,19 +21,23 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import db
+from app.agent_contract import normalize_call, tool_schemas
 from app.llm import LLMProviderError, provider_from_env
+
+from app.inventory import FIELDS, MAX_UPLOAD_BYTES, REQUIRED_FIELDS, ImportFileError, read_inventory_file, suggest_mapping, validate_and_map_rows
+
 from app.models import ItemRef
 from app.parser import ParsedCommand, parse_command
-from app.tools import call_tool
+from app.tools import TOOL_REGISTRY, call_tool
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "magazyn.db")
 
-READ_TOOLS = {"get_stock", "get_location", "recall_procedure"}
+READ_TOOLS = {name for name, spec in TOOL_REGISTRY.items() if spec.kind == "read"}
 
 HINTS = [
     "wzięliśmy paletę X",
@@ -53,22 +57,10 @@ class AgentModeIn(BaseModel):
     mode: Literal["llm", "offline", "mock"]
 
 
-UPDATE_STOCK_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "update_stock",
-        "description": "Proponuje zmianę ilości jednej pozycji magazynowej.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "item_id": {"type": "integer", "description": "ID z kontekstu magazynu"},
-                "delta": {"type": "integer", "description": "Zmiana ilości; ujemna oznacza pobranie"},
-            },
-            "required": ["item_id", "delta"],
-            "additionalProperties": False,
-        },
-    },
-}
+class ImportConfirm(BaseModel):
+    import_id: str
+    mapping: dict[str, int | None]
+
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
@@ -92,6 +84,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     sockets: set[WebSocket] = set()
+    pending_imports: dict[str, tuple[list[str], list[list[str]]]] = {}
 
     @app.get("/api/health")
     def health() -> dict:
@@ -129,6 +122,57 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/history")
     def history() -> dict:
         return {"entries": db.list_audit(path)}
+
+    @app.post("/api/import/preview")
+    async def import_preview(request: Request, filename: str) -> dict:
+        """Read an uploaded CSV/XLSX and suggest a mapping without writing data."""
+        data = await request.body()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Plik jest za duży (limit 5 MB).")
+        try:
+            headers, rows = read_inventory_file(filename, data)
+        except ImportFileError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        import_id = uuid.uuid4().hex
+        pending_imports[import_id] = (headers, rows)
+        mapping = suggest_mapping(headers)
+        missing_required = [
+            field for field in REQUIRED_FIELDS if mapping[field]["column"] is None
+        ]
+        warnings = [
+            f"Nie znaleziono kolumny „{field}”. Wybierz ją ręcznie przed importem."
+            for field in missing_required
+        ]
+        if mapping["minimum"]["column"] is None:
+            warnings.append("Nie znaleziono minimum — nowe pozycje otrzymają 0, a istniejące zachowają obecny próg.")
+        if mapping["location"]["column"] is None:
+            warnings.append("Nie znaleziono lokalizacji — nowe pozycje pozostaną bez lokalizacji, a istniejące zachowają obecną.")
+        return {
+            "import_id": import_id,
+            "headers": [{"index": index, "label": header or f"Kolumna {index + 1}"} for index, header in enumerate(headers)],
+            "preview": rows[:5],
+            "row_count": len(rows),
+            "mapping": mapping,
+            "missing_required": missing_required,
+            "warnings": warnings,
+        }
+
+    @app.post("/api/import/confirm")
+    async def import_confirm(body: ImportConfirm) -> dict:
+        """Validate the user's selected mapping, then atomically upsert inventory."""
+        pending = pending_imports.get(body.import_id)
+        if pending is None:
+            raise HTTPException(status_code=404, detail="Podgląd importu wygasł. Wczytaj plik ponownie.")
+        headers, rows = pending
+        mapping = {field: body.mapping.get(field) for field in FIELDS}
+        try:
+            imported_items = validate_and_map_rows(headers, rows, mapping)
+        except ImportFileError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        result = db.import_items(path, imported_items)
+        pending_imports.pop(body.import_id, None)
+        await broadcast({"event": "updated"})
+        return result
 
     @app.get("/api/reorder-drafts")
     def reorder_drafts() -> dict:
@@ -168,12 +212,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
         if requested == "llm" and os.environ.get("LLM_API_KEY", "").strip():
             inventory_context = ", ".join(
-                f"id={row['id']}, nazwa={row['name']}, ilość={row['quantity']} {row['unit']}"
+                f"id={row['id']}, nazwa={row['name']}, ilość={row['quantity']} {row['unit']}, "
+                f"minimum={row['minimum']}, lokalizacja={row['location']}"
                 for row in rows
             )
             try:
                 interpretation = await provider_from_env().interpret(
-                    body.text, [UPDATE_STOCK_TOOL], inventory_context
+                    body.text, tool_schemas(), "W tym demo jedna paleta = 2 jednostki towaru. " + inventory_context
                 )
                 if interpretation.tool_call is None:
                     return {
@@ -181,28 +226,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                         "text": body.text,
                         "message": interpretation.clarification or "Doprecyzuj polecenie.",
                     }
-                call = interpretation.tool_call
-                args = call.arguments
-                row = next(
-                    (candidate for candidate in rows if candidate["id"] == args.get("item_id")),
-                    None,
-                )
-                delta = args.get("delta")
-                if (
-                    call.name != "update_stock"
-                    or row is None
-                    or not isinstance(delta, int)
-                    or isinstance(delta, bool)
-                    or delta == 0
-                ):
-                    raise LLMProviderError("Tool call does not match the inventory contract")
-                parsed = ParsedCommand(
-                    tool=call.name,
-                    item_id=row["id"],
-                    item_name=row["name"],
-                    args={"item_id": row["id"], "delta": delta},
-                    text=body.text,
-                )
+                parsed = normalize_call(interpretation.tool_call, body.text, items)
             except LLMProviderError:
                 parsed = parse_command(body.text, items)
                 warning = "LLM nie zwrócił poprawnej propozycji — użyto parsera offline."
@@ -248,6 +272,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if parsed.tool in READ_TOOLS:
             data = call_tool(path, parsed.tool, **parsed.args)
             return _answer(path, body.text, parsed, data)
+
+        if parsed.tool in {"add_item", "draft_order"}:
+            if parsed.tool == "add_item":
+                summary = f"Nowa pozycja: {parsed.args['name']} ({parsed.args.get('quantity', 0)} {parsed.args.get('unit', 'szt')})"
+            else:
+                summary = f"Szkic zamówienia: {parsed.item_name} — {parsed.args['quantity']}"
+            proposal = _proposal(tool=parsed.tool, text=body.text, args=parsed.args, summary=summary)
+            return {"type": "proposal", "proposal": proposal}
 
         if parsed.tool == "add_zone":
             proposal = _proposal(
@@ -310,6 +342,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
         if tool == "update_stock":
             payload: dict[str, Any] = {"applied": True, **result}
+        elif tool == "draft_order":
+            # create_reorder_draft already records the creation in the same transaction.
+            payload = {"applied": True, "tool": tool, "reorder_draft": result, **result}
         else:
             # audyt zmian innych niż stany — wartości spójne z kartą 08
             # (reorder_draft_created dla szkicu zamówień, zarówno proaktywnych,
@@ -358,6 +393,14 @@ def _proposal(**fields: Any) -> dict:
 
 def _answer(path: str, text: str, parsed: Any, data: dict) -> dict:
     """Odpowiedź na pytanie (read) — samo odczytanie bazy, nic nie zapisuje."""
+    if parsed.tool == "check_reorder":
+        if not data:
+            return {"type": "clarify", "text": text, "message": "Nie znaleziono pozycji."}
+        status = "poniżej minimum" if data["below_minimum"] else "minimum zachowane"
+        return {
+            "type": "answer", "tool": parsed.tool, "data": data,
+            "text": f"{data['item_name']}: {data['quantity']} (minimum {data['minimum']}) — {status}.",
+        }
     if parsed.tool == "get_stock":
         item = data.get("item")
         if item is not None:
