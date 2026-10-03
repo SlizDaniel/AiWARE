@@ -28,6 +28,8 @@ docker compose up --build
 
 W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, sprawdź podgląd i przypisanie kolumn, popraw je w razie potrzeby i kliknij **Zatwierdź import**. Samo wczytanie pliku niczego nie zapisuje. Powtórny import aktualizuje pozycje o tej samej nazwie zamiast tworzyć duplikaty.
 
+Przy aktywnym trybie `llm` mapowanie korzysta ze wspólnego providera: wysyła nagłówki oraz pierwsze 5 wierszy do skonfigurowanego API. UI pokazuje źródło sugestii i szacowaną pewność; zawsze możesz poprawić kolumny. Błędna odpowiedź, timeout lub brak klucza uruchamiają jawny fallback po nazwach kolumn. Tryby offline/mock oraz DEMO_MODE nie wysyłają plików do AI. Formuły Excela nie są obliczane. Integrację AI zweryfikowano kontrolowanymi odpowiedziami HTTP; próba z usługą wymaga `LLM_API_KEY`.
+
 Aktualne stany, minima, lokalizacje i jednostki pobierzesz z sekcji **Stany** przyciskami **Eksportuj CSV** lub **Eksportuj XLSX**. Oba formaty można ponownie zaimportować bez utraty danych ani tworzenia duplikatów.
 
 W **Ustawieniach** zmienisz prefix agenta, tryb LLM/offline/mock, źródło danych, domyślne minimum i tryb mikrofonu. Zapis obowiązuje od następnej komendy i przetrwa restart (tabela `app_settings` w tej samej bazie SQLite). Komendy bez prefixu nadal działają; zastąpione prefixy są odrzucane. Domyślne minimum dotyczy nowych pozycji bez własnego progu; nie zmienia istniejących minimów ani jawnego zera w pliku. Import XLSX/CSV zapisuje dane w bazie i nie synchronizuje automatycznie pliku Excel. Sekcja zawiera wersję aplikacji oraz tekst o użyciu AI do skopiowania do zgłoszenia, bez ujawniania kluczy API.

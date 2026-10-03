@@ -88,6 +88,7 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
 
       {open && (
         <div id="inventory-import-form" className="space-y-5 border-t border-[#e8e5de] px-6 py-5">
+          <p className="text-sm text-[#646b64]">Przy aktywnym LLM nagłówki i pierwsze 5 wierszy są wysyłane do dostawcy AI skonfigurowanego w Ustawieniach. W trybie offline plik jest mapowany lokalnie.</p>
           <label className="block">
             <span className="mb-2 block text-sm font-semibold text-[#454b46]">Wybierz plik magazynu</span>
             <input
@@ -116,6 +117,11 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
                   <span className="text-sm text-[#646b64]">{preview.row_count} wierszy danych · zapis dopiero po zatwierdzeniu</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <p className="text-sm text-[#646b64] sm:col-span-2">
+                    {preview.mapping_source === 'llm'
+                      ? 'Sugestia AI na podstawie nagłówków i pierwszych 5 wierszy. Procent to szacowana pewność modelu — sprawdź przypisania.'
+                      : 'Dopasowanie po nazwach kolumn (bez AI). Procent to ocena reguł dopasowania — sprawdź przypisania.'}
+                  </p>
                   {FIELDS.map((field) => (
                     <label key={field.id} className="block">
                       <span className="mb-1 block text-sm font-medium text-[#454b46]">

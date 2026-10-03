@@ -12,10 +12,10 @@
 
 **Demo check:** upload `demo-magazyn.xlsx` na ekranie importu → ekran mapowania pokazuje propozycje → Zatwierdź → sekcja Stany wypełniona danymi z pliku → ponowny import tego samego pliku nie duplikuje pozycji.
 
-**Status:** in progress — XLSX/CSV import, mapping preview, validation and confirm flow implemented. Deterministic Polish/English header mapping is available; actual LLM mapping awaits the shared provider from card 03.
+**Status:** implemented — mapowanie LLM podpięte do wspólnego providera z karty 03. Schemat waliduje indeksy kolumn i pewność; odrzucane są powtórzone indeksy i brak pól wymaganych. Awaria lub niepoprawna odpowiedź uruchamia jawny fallback. Offline/mock/demo nie korzystają z sieci. Testy HTTP sprawdzają AI kontrolowanymi odpowiedziami zewnętrznego transportu; próba z prawdziwą usługą wymaga klucza API. GUI zweryfikowane na pliku demo (podgląd i ręczna korekta); potwierdzenie i re-import sprawdzone testami na osobnej bazie.
 
 - [x] XLSX i CSV wchodzą tym samym ekranem
-- [ ] propozycja mapowania LLM + ręczna korekta dropdownem; nic nie zapisuje się przed zatwierdzeniem (ręczna korekta i confirm gotowe; LLM mapping pending card 03)
+- [x] propozycja mapowania LLM + ręczna korekta dropdownem; nic nie zapisuje się przed zatwierdzeniem
 - [x] brak dopasowania kolumny = wyraźne ostrzeżenie, nie cicha zguba danych
 - [x] re-import aktualizuje zamiast duplikować
 - [x] działa na pliku demo z brzydkimi nagłówkami i polskimi znakami

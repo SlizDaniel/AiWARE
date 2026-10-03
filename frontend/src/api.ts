@@ -112,6 +112,7 @@ export function saveSettings(changes: Partial<SettingsValues>): Promise<AppSetti
 
 export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
 export type ImportPreview = {
+  mapping_source: 'llm' | 'deterministic'
   import_id: string
   headers: { index: number; label: string }[]
   preview: string[][]
