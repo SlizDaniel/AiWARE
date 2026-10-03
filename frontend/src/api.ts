@@ -37,19 +37,22 @@ export type ReorderDraft = {
 export type Proposal = {
   id: string
   tool: string
-  item_id: number
-  item_name: string
-  unit: string
-  delta: number
-  before: number
-  after: number
+  args?: Record<string, unknown>
+  item_id?: number
+  item_name?: string
+  unit?: string
+  delta?: number
+  before?: number
+  after?: number
   summary: string
   text: string
 }
 
 export type CommandResponse =
   | { type: 'proposal'; proposal: Proposal }
-  | { type: 'unknown'; text: string }
+  | { type: 'answer'; tool: string; text: string; data: Record<string, unknown> }
+  | { type: 'clarify'; text: string; message: string }
+  | { type: 'unknown'; text: string; hints?: string[] }
 
 export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
 export type ImportPreview = {
