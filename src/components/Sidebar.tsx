@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ROLE_LABELS, type AuthMode, type CurrentUser } from '@/lib/api'
 import { visibleSections, type SectionId } from '@/lib/sections'
+import { signOutAndRedirect } from '@/lib/signOut'
 
 type Props = {
   current: SectionId
@@ -95,14 +96,7 @@ function Account({ user, compact = false }: { user: CurrentUser; compact?: boole
   const logout = async () => {
     if (busy) return
     setBusy(true)
-    try {
-      const { createClient } = await import('@/lib/supabase/client')
-      await createClient().auth.signOut()
-    } catch {
-      /* nawet przy błędzie wracamy do logowania — sesję i tak odrzuci serwer */
-    } finally {
-      window.location.href = '/login'
-    }
+    await signOutAndRedirect()
   }
 
   const name = user.display_name || user.email

@@ -95,7 +95,8 @@ export type ImportPreview = {
   warnings: string[]
 }
 
-export type Role = 'pracownik' | 'kierownik'
+/** `oczekujacy` — konto czeka na zatwierdzenie przez kierownika (brak dostępu do danych). */
+export type Role = 'pracownik' | 'kierownik' | 'oczekujacy'
 export type AuthMode = 'supabase' | 'disabled' | 'misconfigured'
 
 export type CurrentUser = {
@@ -170,6 +171,7 @@ export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 export const ROLE_LABELS: Record<Role, string> = {
   kierownik: 'Kierownik',
   pracownik: 'Pracownik',
+  oczekujacy: 'Oczekuje na zatwierdzenie',
 }
 
 export class ApiError extends Error {

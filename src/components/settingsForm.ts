@@ -47,3 +47,11 @@ export function validateSettings(form: SettingsValues): string | null {
   }
   return null
 }
+
+/** Konta czekające na zatwierdzenie na górze listy; poza tym kolejność z serwera (sortowanie stabilne). */
+export function pendingFirst<U extends { role: string }>(users: readonly U[]): U[] {
+  return users
+    .map((user, index) => ({ user, index }))
+    .sort((a, b) => Number(b.user.role === 'oczekujacy') - Number(a.user.role === 'oczekujacy') || a.index - b.index)
+    .map(({ user }) => user)
+}

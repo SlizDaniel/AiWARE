@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { AppSettings, SettingsValues } from '@/lib/api'
-import { changedSettings, settingsValues, validateSettings } from './settingsForm'
+import { changedSettings, pendingFirst, settingsValues, validateSettings } from './settingsForm'
 
 const saved: SettingsValues = {
   prefix: 'Magu',
@@ -61,4 +61,14 @@ test('numeric fields are integers within range', () => {
   expect(validateSettings({ ...saved, default_minimum: 1.5 })).toMatch(/minimum/)
   expect(validateSettings({ ...saved, reorder_default_quantity: 0 })).toMatch(/szkicu zamówienia/)
   expect(validateSettings({ ...saved, reorder_default_quantity: Number.NaN })).toMatch(/szkicu zamówienia/)
+})
+
+test('pending accounts are listed first, otherwise server order is kept', () => {
+  const users = [
+    { id: 'a', role: 'kierownik' },
+    { id: 'b', role: 'oczekujacy' },
+    { id: 'c', role: 'pracownik' },
+    { id: 'd', role: 'oczekujacy' },
+  ]
+  expect(pendingFirst(users).map((user) => user.id)).toEqual(['b', 'd', 'a', 'c'])
 })

@@ -9,6 +9,7 @@ import InventoryImport from './InventoryImport'
 import ProcedureList from './ProcedureList'
 import ReorderQueue from './ReorderQueue'
 import { confirmationMessage } from './reorderMessages'
+import { PendingApprovalScreen, StartupScreen } from './SessionScreens'
 import SettingsPanel from './SettingsPanel'
 import Sidebar from './Sidebar'
 import StatusBanner from './StatusBanner'
@@ -23,6 +24,7 @@ import {
   fetchSettings,
   fetchStock,
   fetchZones,
+  ApiError,
   onApiForbidden,
   undoHistoryEntry,
   type AppSettings,
@@ -81,7 +83,39 @@ function useLoader<T>(load: () => Promise<T>, initial: T, fallbackError: string)
   return { data, setData, state, error, reload, markLoading }
 }
 
+/** Komunikat 403 dla konta, które czeka na zatwierdzenie (wtedy pokazujemy ekran oczekiwania). */
+const PENDING_DETAIL = /czeka na zatwierdzenie/i
+
+/**
+ * Najpierw /api/me: konto oczekujące dostaje tylko ekran oczekiwania — bez pobierania danych,
+ * pollingu i mikrofonu. Pozostali (także przy błędzie /api/me) — pełna aplikacja.
+ */
 export default function AppShell() {
+  const [session, setSession] = useState<{ loaded: boolean; me: Me | null }>({ loaded: false, me: null })
+
+  const reloadMe = useCallback(
+    () =>
+      fetchMe().then(
+        (me) => setSession({ loaded: true, me }),
+        (reason: unknown) => {
+          // 401 → trwa przekierowanie do /login; inne błędy → aplikacja z ograniczeniami
+          if (reason instanceof ApiError && reason.status === 401) return
+          setSession((current) => ({ loaded: true, me: current.me }))
+        },
+      ),
+    [],
+  )
+
+  useEffect(() => {
+    void reloadMe()
+  }, [reloadMe])
+
+  if (!session.loaded) return <StartupScreen />
+  if (session.me?.user?.role === 'oczekujacy') return <PendingApprovalScreen me={session.me} onCheck={reloadMe} />
+  return <Workspace me={session.me} onReloadMe={reloadMe} />
+}
+
+function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promise<unknown> }) {
   const [section, setSection] = useState<SectionId>('stany')
   const stock = useLoader<Item[]>(fetchStock, [], 'Nie udało się pobrać stanów magazynowych.')
   const zones = useLoader<Zone[]>(fetchZones, [], 'Nie udało się pobrać stref magazynu.')
@@ -95,7 +129,6 @@ export default function AppShell() {
   )
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null)
   const [mapSelectionId, setMapSelectionId] = useState<number | null>(null)
-  const [me, setMe] = useState<Me | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const [healthError, setHealthError] = useState('')
   const [openImport, setOpenImport] = useState(false)
@@ -131,17 +164,9 @@ export default function AppShell() {
     }, setConnected)
   }, [refresh])
 
-  // Sesja i konfiguracja serwera — raz po wejściu.
+  // Konfiguracja serwera — raz po wejściu.
   useEffect(() => {
     let alive = true
-    fetchMe().then(
-      (value) => {
-        if (alive) setMe(value)
-      },
-      () => {
-        /* brak /api/me → widok z ograniczeniami; 401 przekierowuje do /login */
-      },
-    )
     fetchHealth().then(
       (value) => {
         if (alive) setHealth(value)
@@ -162,7 +187,15 @@ export default function AppShell() {
   }, [])
 
   // 403 z dowolnego wywołania API (brak uprawnień roli) → komunikat serwera w toaście.
-  useEffect(() => onApiForbidden((detail) => showToast(detail, 'error')), [showToast])
+  // Konto zablokowane w trakcie pracy („czeka na zatwierdzenie”) → sprawdzamy rolę i pokazujemy ekran oczekiwania.
+  useEffect(
+    () =>
+      onApiForbidden((detail) => {
+        if (PENDING_DETAIL.test(detail)) void onReloadMe()
+        else showToast(detail, 'error')
+      }),
+    [onReloadMe, showToast],
+  )
 
   const authMode = me?.auth_mode ?? health?.auth_mode ?? null
   // Bez logowania (tryb lokalny) serwer traktuje każdego jak kierownika.
@@ -216,8 +249,8 @@ export default function AppShell() {
   // 403 z dashboardu: uprawnienia odebrane — wracamy do Stanów i odświeżamy rolę
   const onDashboardForbidden = useCallback(() => {
     setSection('stany')
-    fetchMe().then(setMe, () => {})
-  }, [])
+    void onReloadMe()
+  }, [onReloadMe])
 
   const heading = SECTION_TITLES[visibleSection]
 
@@ -311,6 +344,7 @@ export default function AppShell() {
                   onRetry={() => void reloadHistory()}
                   canUndo={canManage}
                   onUndo={onUndo}
+                  onOpenFullLog={canManage ? () => setSection('dashboard') : undefined}
                 />
               ) : (
                 <ReorderQueue

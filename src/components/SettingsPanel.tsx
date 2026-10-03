@@ -14,7 +14,7 @@ import {
   type UserAccount,
 } from '@/lib/api'
 import { speak } from '@/lib/tts'
-import { changedSettings, MAX_DEFAULT_MINIMUM, settingsValues, validateSettings } from './settingsForm'
+import { changedSettings, MAX_DEFAULT_MINIMUM, pendingFirst, settingsValues, validateSettings } from './settingsForm'
 
 type LoadState = 'loading' | 'ready' | 'error'
 
@@ -347,7 +347,7 @@ function UsersCard({ me, onToast }: { me: Me | null; onToast: (message: string) 
   return (
     <section className={card} aria-labelledby="settings-users">
       <h2 id="settings-users" className="text-lg font-bold">Użytkownicy</h2>
-      <p className="mt-1 text-sm text-[#646b64]">Kierownik zatwierdza zamówienia, cofa zmiany i zmienia ustawienia; pracownik zgłasza zmiany.</p>
+      <p className="mt-1 text-sm text-[#646b64]">Kierownik zatwierdza zamówienia, cofa zmiany i zmienia ustawienia; pracownik zgłasza zmiany. Nowe konta czekają na nadanie roli.</p>
       {enabled ? (
         <UsersTable currentUserId={me?.user?.id ?? null} onToast={onToast} />
       ) : (
@@ -439,15 +439,19 @@ function UsersTable({ currentUserId, onToast }: { currentUserId: string | null; 
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => {
+          {pendingFirst(users).map((user) => {
             const self = user.id === currentUserId
+            const pending = user.role === 'oczekujacy'
             return (
-              <tr key={user.id} className="border-b border-[#f0efe9] last:border-0">
+              <tr key={user.id} className={'border-b border-[#f0efe9] last:border-0' + (pending ? ' bg-[#fffaf0]' : '')}>
                 <td className="py-3 pr-3 align-top">
                   <div className="truncate font-semibold text-[#292d2b]">
                     {user.display_name || user.email}
                     {self && <span className="ml-1 font-normal text-[#70756f]">(Ty)</span>}
                   </div>
+                  {pending && (
+                    <span className="mt-1 inline-block bg-[#fbf3db] px-2 py-0.5 text-xs font-bold text-[#805c12]">czeka na zatwierdzenie</span>
+                  )}
                   <div className="break-all text-xs text-[#70756f]">{user.email}</div>
                 </td>
                 <td className="py-3 pr-3 align-top">
@@ -461,6 +465,7 @@ function UsersTable({ currentUserId, onToast }: { currentUserId: string | null; 
                   >
                     <option value="pracownik">{ROLE_LABELS.pracownik}</option>
                     <option value="kierownik">{ROLE_LABELS.kierownik}</option>
+                    <option value="oczekujacy">Oczekuje (bez dostępu)</option>
                   </select>
                 </td>
                 <td className="hidden py-3 align-top text-xs text-[#646b64] sm:table-cell">{formatDate(user.created_at)}</td>
