@@ -12,8 +12,8 @@
 
 **Demo check:** po imporcie i 2 zmianach głosowych klik Eksportuj → plik otwiera się w Excelu z aktualnymi wartościami; zaimportowanie eksportu z powrotem nie zmienia danych.
 
-**Status:** ready
+**Status:** done — CSV/XLSX downloads are available in Stany; both formats pass the import round-trip without data loss or duplicates. UI links were verified in the browser; backend suite: 112 passed; frontend typecheck and production build pass.
 
-- [ ] XLSX i CSV do pobrania z poprawnymi polskimi nagłówkami
-- [ ] round-trip import→eksport→import nie gubi ani nie duplikuje danych
-- [ ] eksport zawiera stany, progi i lokalizacje
+- [x] XLSX i CSV do pobrania z poprawnymi polskimi nagłówkami
+- [x] round-trip import→eksport→import nie gubi ani nie duplikuje danych
+- [x] eksport zawiera stany, progi i lokalizacje
