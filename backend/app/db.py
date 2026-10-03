@@ -376,11 +376,15 @@ def decide_reorder_draft(db_path: str, draft_id: int, decision: str) -> dict | N
         ).fetchone()
         if draft is None:
             return None
-        conn.execute(
+        updated = conn.execute(
             "UPDATE reorder_drafts SET status = ?, updated_at = datetime('now', 'localtime') "
             "WHERE id = ? AND status = 'pending'",
             (decision, draft_id),
         )
+        # Another decision can finish after our pending read. Only the writer
+        # that changed the status may record a decision or report success.
+        if updated.rowcount != 1:
+            return None
         item = conn.execute(
             "SELECT quantity FROM items WHERE id = ?", (draft["item_id"],)
         ).fetchone()

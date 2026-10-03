@@ -25,3 +25,8 @@ Kolejka domyślnie pokazuje szkice oczekujące na decyzję. Filtry Oczekujące,
 Rozpatrzone i Wszystkie mają liczniki; zatwierdzone i odrzucone szkice pozostają
 dostępne w Rozpatrzonych. Filtrowanie działa po stronie UI na dotychczasowym
 kontrakcie API; decyzje nadal zapisują się w audycie i nie wysyłają zamówień.
+
+Równoczesne decyzje dla jednego szkica: wygrywa wyłącznie pierwsza zmiana statusu
+`pending`. Druga nie dopisuje audytu i otrzymuje dotychczasowy HTTP 404 „szkic
+nie istnieje albo został już rozpatrzony”. Testy wymuszają równoczesny odczyt
+tego samego pending przed aktualizacją, także dla dwóch identycznych decyzji.
