@@ -54,13 +54,21 @@ export default function StockTable({
   state = 'ready',
   error = '',
   onRetry,
+  canManage = false,
+  onSave,
 }: {
   items: Item[]
   state?: StockState
   error?: string
   onRetry?: () => void
+  canManage?: boolean
+  onSave?: (id: number, changes: Partial<Omit<Item, 'id'>>) => Promise<void>
 }) {
   const [query, setQuery] = useState('')
+  const [editing, setEditing] = useState<number | null>(null)
+  const [draft, setDraft] = useState({ name: '', quantity: '', minimum: '', unit: '', location: '' })
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const normalizedQuery = query.trim().toLocaleLowerCase('pl-PL')
   const filteredItems = useMemo(
     () => items.filter((item) => item.name.toLocaleLowerCase('pl-PL').includes(normalizedQuery)),
@@ -126,12 +134,59 @@ export default function StockTable({
                 <th scope="col" className="px-5 py-4 text-right">Minimum</th>
                 <th scope="col" className="px-5 py-4">Poziom zapasu</th>
                 <th scope="col" className="px-5 py-4">Lokalizacja</th>
-                <th scope="col" className="px-5 py-4">Status</th>
+              <th scope="col" className="px-5 py-4">Status</th>
+              {canManage && <th scope="col" className="px-5 py-4">Edycja</th>}
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((item) => {
                 const level = getStockLevel(item)
+                if (editing === item.id) {
+                  return (
+                    <tr key={item.id} className="border-b border-[#f0efe9] bg-[#fbfaf7]">
+                      <td colSpan={canManage ? 7 : 6} className="p-4">
+                        <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={async (event) => {
+                          event.preventDefault()
+                          if (!onSave) return
+                          setSaving(true)
+                          setSaveError('')
+                          try {
+                            await onSave(item.id, {
+                              name: draft.name, quantity: Number(draft.quantity), minimum: Number(draft.minimum),
+                              unit: draft.unit, location: draft.location,
+                            })
+                            setEditing(null)
+                          } catch (reason) {
+                            setSaveError(reason instanceof Error ? reason.message : 'Nie udało się zapisać produktu.')
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}>
+                          {([
+                            ['name', 'Nazwa', 'text'], ['quantity', 'Ilość', 'number'], ['minimum', 'Minimum', 'number'],
+                            ['unit', 'Jednostka', 'text'], ['location', 'Lokalizacja', 'text'],
+                          ] as const).map(([field, label, type]) => (
+                            <label key={field} className="text-xs font-semibold text-[#646b64]">
+                              {label}
+                              <input
+                                aria-label={`${label} produktu ${item.name}`}
+                                required={field === 'name'} type={type} min={type === 'number' ? 0 : undefined}
+                                max={type === 'number' ? 2147483647 : undefined} step={type === 'number' ? 1 : undefined}
+                                value={draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
+                                className="mt-1 block w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm text-[#292d2b] focus-visible:outline-2 focus-visible:outline-[#536b56]"
+                              />
+                            </label>
+                          ))}
+                          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-5">
+                            <button type="submit" disabled={saving} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Zapisuję…' : 'Zapisz produkt'}</button>
+                            <button type="button" disabled={saving} onClick={() => { setEditing(null); setSaveError('') }} className="border border-[#d8d6cf] bg-white px-4 py-2 text-sm font-semibold text-[#454b46]">Anuluj</button>
+                            {saveError && <p className="text-sm text-[#8f3936]" role="alert">{saveError}</p>}
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  )
+                }
                 return (
                   <tr key={item.id} className="border-b border-[#f0efe9] last:border-0 hover:bg-[#fbfaf7]">
                     <th scope="row" className="px-5 py-4 text-left font-semibold text-[#292d2b]">{item.name}</th>
@@ -146,6 +201,13 @@ export default function StockTable({
                         {STOCK_LEVELS[level].label}
                       </span>
                     </td>
+                    {canManage && <td className="px-5 py-4">
+                      <button type="button" onClick={() => {
+                        setDraft({ name: item.name, quantity: String(item.quantity), minimum: String(item.minimum), unit: item.unit, location: item.location })
+                        setEditing(item.id)
+                        setSaveError('')
+                      }} className="border border-[#d8d6cf] bg-white px-3 py-1.5 text-sm font-semibold text-[#454b46] hover:bg-[#f8f7f3]">Edytuj</button>
+                    </td>}
                   </tr>
                 )
               })}
