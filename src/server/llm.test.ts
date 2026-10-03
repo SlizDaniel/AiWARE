@@ -556,10 +556,10 @@ describe('providerFromEnv / llmConfigured', () => {
     expect(JSON.stringify(created)).not.toContain(KEY)
   })
 
-  it('defaults to gemini-3.8-flash', () => {
+  it('defaults to gemini-3.5-flash-lite', () => {
     clearKeys()
     vi.stubEnv('GEMINI_API_KEY', KEY)
     vi.stubEnv('GEMINI_MODEL', '')
-    expect(providerFromEnv().model).toBe('gemini-3.8-flash')
+    expect(providerFromEnv().model).toBe('gemini-3.5-flash-lite')
   })
 })

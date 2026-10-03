@@ -28,7 +28,8 @@ export function geminiApiKey(): string {
 }
 
 export function geminiModel(): string {
-  return env('GEMINI_MODEL') || 'gemini-3.8-flash'
+  // flash-lite answers a command in under a second; 3.8-flash took 4–11 s in our measurements.
+  return env('GEMINI_MODEL') || 'gemini-3.5-flash-lite'
 }
 
 /** Model used for speech-to-text (audio understanding); defaults to the main model. */

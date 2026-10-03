@@ -161,7 +161,7 @@ odpytuje `/api/version` — licznik zwiększany po każdym zapisie — i odświe
 
 ## Ujawnienie użycia AI
 
-Google Gemini (`gemini-3.8-flash` lub model z `GEMINI_MODEL`): interpretacja komend i function calling,
+Google Gemini (`gemini-3.5-flash-lite` lub model z `GEMINI_MODEL`): interpretacja komend i function calling,
 transkrypcja mowy, propozycja mapowania kolumn przy imporcie. Użytkownik widzi transkrypcję
 i kartę zmiany przed zapisem; każda zmiana trafia do audytu z autorem i możliwością cofnięcia.
 Gotowy tekst do zgłoszenia: **Ustawienia → Użycie AI**.

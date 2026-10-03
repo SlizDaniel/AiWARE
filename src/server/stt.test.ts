@@ -63,7 +63,7 @@ describe('transcribe — Gemini audio understanding (default)', () => {
     await expect(transcribe(AUDIO, 'audio/webm;codecs=opus')).resolves.toBe('wzięliśmy paletę kartonów')
 
     const [url, init] = fetchMock.mock.calls[0] as FetchArgs
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent')
     expect(url).not.toContain(GEMINI_KEY)
     expect(new Headers(init.headers).get('x-goog-api-key')).toBe(GEMINI_KEY)
     const body = JSON.parse(String(init.body))
