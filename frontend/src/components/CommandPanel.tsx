@@ -2,27 +2,31 @@ import { useEffect, useRef, useState } from 'react'
 import {
   confirmProposal,
   fetchAgentMode,
+  fetchZones,
   sendCommand,
   transcribeAudio,
   updateAgentMode,
   type AgentMode,
   type Proposal,
   type ReorderDraft,
+  type Zone,
 } from '../api'
+import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
+  onShowLocation: (target: MapTarget) => void
 }
 
 type State =
   | { kind: 'proposal'; proposal: Proposal }
-  | { kind: 'answer'; tool: string; text: string }
-  | { kind: 'clarify'; message: string }
+  | { kind: 'answer'; tool: string; text: string; target: MapTarget | null }
+  | { kind: 'clarify'; message: string; target?: MapTarget }
   | { kind: 'unknown'; text: string; hints?: string[] }
   | { kind: 'error'; message: string }
   | null
 
-export default function CommandPanel({ onApplied }: Props) {
+export default function CommandPanel({ onApplied, onShowLocation }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
@@ -76,8 +80,29 @@ export default function CommandPanel({ onApplied }: Props) {
     try {
       const res = await sendCommand(t)
       setResponseWarning(res.warning ?? null)
-      if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
-      else if (res.type === 'answer') setState({ kind: 'answer', tool: res.tool, text: res.text })
+      if (res.type === 'proposal') {
+        const name = res.proposal.args?.name
+        let existing: Zone | null = null
+        if (res.proposal.tool === 'add_zone' && typeof name === 'string') {
+          try {
+            existing = findZoneByName(name, await fetchZones())
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : 'Brak połączenia.'
+            setResponseWarning([res.warning, `Nie udało się sprawdzić listy stref: ${detail} Przy potwierdzeniu baza sprawdzi, czy ta nazwa już istnieje.`].filter(Boolean).join(' '))
+          }
+        }
+        if (existing) {
+          setState({
+            kind: 'clarify',
+            message: `Strefa „${existing.name}” już istnieje. Chcesz ją otworzyć? Aby dodać inną, wpisz „strefa: inna nazwa”.`,
+            target: { name: existing.name, location: existing.name },
+          })
+        } else setState({ kind: 'proposal', proposal: res.proposal })
+      } else if (res.type === 'answer') {
+        const target = mapTargetFromAnswer(res.tool, res.data)
+        setState({ kind: 'answer', tool: res.tool, text: res.text, target })
+        if (res.tool === 'get_location' && target) onShowLocation(target)
+      }
       else if (res.type === 'clarify') setState({ kind: 'clarify', message: res.message })
       else setState({ kind: 'unknown', text: res.text, hints: res.hints })
     } catch (error) {
@@ -96,6 +121,15 @@ export default function CommandPanel({ onApplied }: Props) {
     setActionError('')
     try {
       const result = await confirmProposal(state.proposal.id)
+      if (state.proposal.tool === 'add_zone' && result.created === false) {
+        const name = result.name ?? String(state.proposal.args?.name ?? '')
+        setState({
+          kind: 'clarify',
+          message: `Strefa „${name}” już istnieje. Nie dodano duplikatu. Chcesz ją otworzyć czy podać inną nazwę?`,
+          target: { name, location: name },
+        })
+        return
+      }
       onApplied(state.proposal.summary, result.reorder_draft ?? null)
       setState(null)
       setText('')
@@ -266,12 +300,14 @@ export default function CommandPanel({ onApplied }: Props) {
             <span className="border border-[#e8e5de] bg-white px-3 py-1 font-mono text-xs text-[#777b74]">{state.tool}</span>
           </div>
           <p className="mt-2 text-base text-[#454b46]">{state.text}</p>
+          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#cbd8c9] bg-white px-4 py-2 text-sm font-semibold text-[#315b37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">Pokaż na mapie</button>}
         </div>
       )}
       {state?.kind === 'clarify' && (
         <div className="mt-5 border border-[#ead9a9] bg-[#fffaf0] p-5">
           <div className="font-semibold text-[#805c12]">Doprecyzujmy</div>
           <p className="mt-1 text-sm text-[#805c12]">{state.message}</p>
+          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12]">Otwórz istniejącą strefę</button>}
         </div>
       )}
       {state?.kind === 'unknown' && (
