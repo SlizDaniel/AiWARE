@@ -53,6 +53,13 @@ export default function CommandPanel({ onApplied, settings, settingsError, onSet
   const demoMode = settings?.mode_status.demo_mode ?? false
   const modeWarning = modeError || settingsError || settings?.mode_status.warning
   const voiceEnabled = Boolean(settings && settings.voice_mode === 'push_to_talk' && !demoMode)
+  const voiceHelp = demoMode
+    ? 'Demo offline — użyj pola tekstowego. Mikrofon z API jest wyłączony.'
+    : !settings
+      ? 'Czekam na konfigurację. Pole tekstowe pozostaje dostępne.'
+      : voiceEnabled
+        ? 'Nagraj komendę albo wpisz ją poniżej.'
+        : 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
 
   useEffect(() => {
     if (!voiceEnabled && recorderRef.current?.state === 'recording') recorderRef.current.stop()
@@ -199,7 +206,7 @@ export default function CommandPanel({ onApplied, settings, settingsError, onSet
       </div>
 
       {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
-      <p className="mt-1 text-xs text-slate-400">{voiceEnabled ? 'Nagraj komendę albo wpisz ją poniżej.' : 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'}</p>
+      <p className="mt-1 text-xs text-slate-400">{voiceHelp}</p>
 
       <form
         className="mt-4 flex gap-3"

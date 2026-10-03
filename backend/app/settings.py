@@ -70,9 +70,9 @@ def ai_usage(config: dict, mode_status: dict) -> dict:
     llm_enabled = mode_status["effective_mode"] == "llm"
     stt_enabled = not mode_status["demo_mode"] and config["voice_mode"] == "push_to_talk" and bool(os.environ.get("STT_API_KEY", "").strip())
     llm_provider = urlsplit(os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")).hostname or "API zgodne z OpenAI"
-    stt_provider = urlsplit(os.environ.get("STT_BASE_URL", stt.DEFAULT_BASE_URL)).hostname or "API zgodne z Whisper"
+    stt_provider = urlsplit(os.environ.get("STT_BASE_URL", "").strip() or stt.DEFAULT_BASE_URL).hostname or "API zgodne z Whisper"
     llm_model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    stt_model = os.environ.get("STT_MODEL", stt.DEFAULT_MODEL)
+    stt_model = os.environ.get("STT_MODEL", "").strip() or stt.DEFAULT_MODEL
     disclosure = (
         "MAGAZYNIER korzysta z AI do interpretacji poleceń i transkrypcji mowy. "
         f"Skonfigurowane integracje: LLM {llm_model} ({llm_provider}), STT {stt_model} ({stt_provider}). "

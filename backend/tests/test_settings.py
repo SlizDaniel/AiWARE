@@ -1,6 +1,7 @@
 """Card 12: settings observed through HTTP and commands, including restart."""
 from fastapi.testclient import TestClient
 from io import BytesIO
+import json
 import pytest
 
 from app.main import create_app
@@ -42,6 +43,8 @@ def test_mode_change_affects_next_command_and_both_controls_persist(tmp_path, mo
 def test_defaults_apply_only_to_new_items_and_text_mode_disables_audio(tmp_path, monkeypatch):
     monkeypatch.setenv("STT_API_KEY", "secret-stt")
     monkeypatch.setenv("LLM_API_KEY", "secret-llm")
+    monkeypatch.setenv("STT_MODEL", "")
+    monkeypatch.setenv("STT_BASE_URL", " ")
     path = tmp_path / "defaults.db"
     with TestClient(create_app(path)) as client:
         response = client.patch("/api/settings", json={"adapter": "file_import", "default_minimum": 7, "voice_mode": "text", "mode": "offline"})
@@ -49,6 +52,8 @@ def test_defaults_apply_only_to_new_items_and_text_mode_disables_audio(tmp_path,
         settings = response.json()
         assert settings["ai_usage"]["llm_enabled"] is False
         assert settings["ai_usage"]["stt_enabled"] is False
+        assert settings["ai_usage"]["stt_model"] == "whisper-large-v3"
+        assert settings["ai_usage"]["stt_provider"] == "api.groq.com"
         assert "secret-stt" not in response.text and "secret-llm" not in response.text
         assert settings["ai_usage"]["disclosure"]
         assert client.post("/api/stt", content=b"audio").status_code == 503
@@ -64,6 +69,19 @@ def test_defaults_apply_only_to_new_items_and_text_mode_disables_audio(tmp_path,
     with TestClient(create_app(path)) as restarted:
         settings = restarted.get("/api/settings").json()
         assert (settings["adapter"], settings["default_minimum"], settings["voice_mode"]) == ("file_import", 7, "text")
+
+
+def test_default_minimum_is_visible_before_confirming_llm_item(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODE", "llm")
+    response = {"choices": [{"message": {"tool_calls": [{"function": {"name": "add_item", "arguments": json.dumps({"name": "Śruby", "quantity": 5, "unit": "szt"})}}]}}]}
+    monkeypatch.setattr("app.llm.urlopen", lambda *_args, **_kwargs: BytesIO(json.dumps(response).encode()))
+    with TestClient(create_app(tmp_path / "llm-item.db")) as client:
+        assert client.patch("/api/settings", json={"default_minimum": 7}).status_code == 200
+        proposal = client.post("/api/command", json={"text": "Magu, dodaj pięć śrub"}).json()["proposal"]
+        assert proposal["summary"] == "Nowa pozycja: Śruby (5 szt, minimum 7)"
+        assert client.post(f"/api/proposals/{proposal['id']}/confirm").status_code == 200
+        assert next(item for item in client.get("/api/stock").json()["items"] if item["name"] == "Śruby")["minimum"] == 7
 
 
 @pytest.mark.parametrize("changes", [{"prefix": ""}, {"prefix": "Gosiu, ile"}, {"prefix": None}, {"mode": "broken"}, {"default_minimum": -1}, {"default_minimum": 2.5}, {"voice_mode": "always"}, {"adapter": "erp"}])

@@ -17,16 +17,15 @@ export default function SettingsPanel({ onSaved, onOpenImport }: Props) {
   const [busy, setBusy] = useState(false)
   const disclosureRef = useRef<HTMLTextAreaElement>(null)
 
-  const load = async () => {
-    try {
-      const result = await fetchSettings()
+  const load = () => fetchSettings()
+    .then((result) => {
       setError('')
       setSaved(result)
       setForm(values(result))
-    } catch (cause) {
+    })
+    .catch((cause) => {
       setError(cause instanceof Error ? cause.message : 'Nie udało się pobrać ustawień.')
-    }
-  }
+    })
 
   useEffect(() => { void load() }, [])
 

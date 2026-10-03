@@ -111,7 +111,10 @@ export default function App() {
 
   useEffect(() => {
     refresh()
-    return connectWs(refresh, setConnected)
+    return connectWs(refresh, (online) => {
+      setConnected(online)
+      if (online) refresh()
+    })
   }, [refresh])
 
   const showToast = (message: string) => {

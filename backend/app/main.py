@@ -355,7 +355,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             args = parsed.args
             if parsed.tool == "add_item":
                 args = {"minimum": default_minimum, **parsed.args}
-                summary = f"Nowa pozycja: {parsed.args['name']} ({parsed.args.get('quantity', 0)} {parsed.args.get('unit', 'szt')})"
+                summary = f"Nowa pozycja: {args['name']} ({args.get('quantity', 0)} {args.get('unit', 'szt')}, minimum {args['minimum']})"
             else:
                 summary = f"Szkic zamówienia: {parsed.item_name} — {parsed.args['quantity']}"
             proposal = _proposal(tool=parsed.tool, text=body.text, args=args, summary=summary)
