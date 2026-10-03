@@ -42,6 +42,7 @@ export type HistoryEntry = {
 }
 
 export type ReorderDraft = {
+  created?: boolean
   id: number
   item_id: number
   item_name: string

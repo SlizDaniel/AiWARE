@@ -34,3 +34,7 @@ tego samego pending przed aktualizacją, także dla dwóch identycznych decyzji.
 Równoczesne `draft_order` dla tego samego towaru zwracają jeden istniejący
 szkic zamiast błędu unikalności SQLite. Tylko pierwszy zapis tworzy szkic i audyt;
 drugi ma `created=false`, ten sam ID i ilość zwycięskiego szkica, bez nadpisania.
+
+Potwierdzenie istniejącego szkica pokazuje ilość zwróconą przez bazę i informację,
+że nie dodano nowego szkica ani nie zmieniono ilości. Nie ogłasza zapisania ilości
+z kolejnej propozycji. Nowe szkice i proaktywny reorder zachowują komunikat zapisu.

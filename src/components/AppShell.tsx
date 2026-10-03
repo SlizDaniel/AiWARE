@@ -7,6 +7,7 @@ import InventoryExport from './InventoryExport'
 import InventoryImport from './InventoryImport'
 import ProcedureList from './ProcedureList'
 import ReorderQueue from './ReorderQueue'
+import { confirmationMessage } from './reorderMessages'
 import SettingsPanel from './SettingsPanel'
 import Sidebar from './Sidebar'
 import StatusBanner from './StatusBanner'
@@ -170,9 +171,7 @@ export default function AppShell() {
   )
 
   const onApplied = (summary: string, reorderDraft: ReorderDraft | null) => {
-    const message = reorderDraft
-      ? `Zapisano: ${summary} · szkic zamówienia ${reorderDraft.quantity} ${reorderDraft.unit} w kolejce`
-      : `Zapisano w bazie: ${summary} · wpis w historii`
+    const message = confirmationMessage(summary, reorderDraft)
     showToast(message)
     say(message)
     refresh()
