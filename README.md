@@ -104,6 +104,23 @@ na kontrolowanych odpowiedziach API; próba z rzeczywistym modelem wymaga klucza
 
 ## Demo offline (karta 13)
 
+### Automatyczne sprawdzenie przed próbą
+
+Z katalogu repo, po przygotowaniu zależności backendu i frontendu:
+
+```powershell
+.\backend\.venv\Scripts\python.exe .\scripts\check-demo.py
+# Dodatkowo sprawdź konfigurację Compose i działający daemon:
+.\backend\.venv\Scripts\python.exe .\scripts\check-demo.py --docker
+```
+
+Skrypt uruchamia istniejące testy backendu (w tym demo i import/eksport), build
+i typecheck frontendu oraz testy przypisania pozycji do mapy. Kończy się kodem 1,
+jeśli któryś krok się nie powiedzie. Nie instaluje zależności, nie resetuje bazy
+działającej aplikacji i usuwa klucze API z otoczenia procesów sprawdzających.
+Wynik nie zastępuje ręcznej próby GUI, próby prawdziwego LLM/STT ani uruchomienia
+przygotowanych obrazów Dockera bez internetu. Samo `--docker` nie uruchamia kontenerów.
+
 ### Jedna komenda na laptopie prezentacyjnym
 
 PowerShell, z katalogu repo (Docker Desktop musi działać):
