@@ -4,7 +4,8 @@
 
 export type AgentMode = 'llm' | 'offline' | 'mock'
 
-export type Role = 'pracownik' | 'kierownik'
+/** oczekujacy = self-registered account waiting for a manager's approval (no access). */
+export type Role = 'pracownik' | 'kierownik' | 'oczekujacy'
 
 /** Authenticated user as seen by route handlers (profile row + auth identity). */
 export type AppUser = {

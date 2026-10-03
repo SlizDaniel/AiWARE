@@ -4,11 +4,13 @@ import {
   MSG_FORBIDDEN,
   MSG_LAST_MANAGER,
   MSG_MISCONFIGURED,
+  MSG_PENDING,
   MSG_UNAUTHENTICATED,
   actorOf,
   getCurrentUser,
   listUsers,
   requireUser,
+  resetLocalUserCache,
   setSessionReader,
   setUserRole,
   type SessionIdentity,
@@ -81,6 +83,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   await db.exec('DELETE FROM profiles')
+  resetLocalUserCache()
   current = null
   useSupabaseMode()
 })
@@ -90,17 +93,17 @@ afterEach(() => {
 })
 
 describe('profile bootstrap', () => {
-  it('makes the first account kierownik and later ones pracownik', async () => {
+  it('makes the first account kierownik and later ones wait for approval', async () => {
     const alice = await login(ALICE)
     expect(alice).toEqual({ id: ALICE.id, email: ALICE.email, display_name: 'Alicja Nowak', role: 'kierownik' })
 
     const bob = await login(BOB)
-    expect(bob).toEqual({ id: BOB.id, email: BOB.email, display_name: 'bob', role: 'pracownik' })
+    expect(bob).toEqual({ id: BOB.id, email: BOB.email, display_name: 'bob', role: 'oczekujacy' })
 
     expect((await login(CARL)).display_name).toBe('Karol')
     // A second request keeps the stored role.
     expect((await login(ALICE)).role).toBe('kierownik')
-    expect((await login(BOB)).role).toBe('pracownik')
+    expect((await login(BOB)).role).toBe('oczekujacy')
   })
 
   it('agrees on a single kierownik when two first logins race', async () => {
@@ -109,7 +112,7 @@ describe('profile bootstrap', () => {
     setSessionReader(async () => readers.shift() ?? null)
     try {
       const users = await Promise.all([getCurrentUser(db), getCurrentUser(db)])
-      expect(users.map((user) => user?.role).sort()).toEqual(['kierownik', 'pracownik'])
+      expect(users.map((user) => user?.role).sort()).toEqual(['kierownik', 'oczekujacy'])
     } finally {
       setSessionReader(async () => current)
     }
@@ -182,8 +185,22 @@ describe('requireUser', () => {
     await expectHttpError(requireUser(db, 'kierownik'), 401, MSG_UNAUTHENTICATED)
   })
 
+  it('blocks a pending account until a kierownik approves it', async () => {
+    await login(ALICE)
+    current = BOB
+    await expectHttpError(requireUser(db), 403, MSG_PENDING)
+    expect((await requireUser(db, undefined, { allowPending: true })).role).toBe('oczekujacy')
+    await setUserRole(db, BOB.id, 'pracownik')
+    expect((await requireUser(db)).role).toBe('pracownik')
+    await setUserRole(db, BOB.id, 'oczekujacy')
+    await expectHttpError(requireUser(db), 403, MSG_PENDING)
+  })
+
   it('answers 403 when a pracownik needs kierownik', async () => {
     await login(ALICE)
+    current = BOB
+    await login(BOB)
+    await setUserRole(db, BOB.id, 'pracownik')
     current = BOB
     expect((await requireUser(db)).role).toBe('pracownik')
     expect((await requireUser(db, 'pracownik')).id).toBe(BOB.id)
@@ -200,7 +217,7 @@ describe('user management', () => {
     const users = await listUsers(db)
     expect(users.map(({ id, role }) => ({ id, role }))).toEqual([
       { id: ALICE.id, role: 'kierownik' },
-      { id: BOB.id, role: 'pracownik' },
+      { id: BOB.id, role: 'oczekujacy' },
     ])
     expect(users[0]).toMatchObject({ email: ALICE.email, display_name: 'Alicja Nowak' })
     for (const user of users) expect(user.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)

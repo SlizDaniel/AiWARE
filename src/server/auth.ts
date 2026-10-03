@@ -14,6 +14,7 @@ export const MSG_FORBIDDEN = 'Brak uprawnień — ta akcja wymaga roli kierownik
 export const MSG_MISCONFIGURED =
   'Logowanie nie jest skonfigurowane — ustaw NEXT_PUBLIC_SUPABASE_URL i NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (albo AUTH_DISABLED=1).'
 export const MSG_LAST_MANAGER = 'Musi zostać co najmniej jeden kierownik.'
+export const MSG_PENDING = 'Konto czeka na zatwierdzenie przez kierownika.'
 
 // ---------------------------------------------------------------- local user
 
@@ -25,7 +26,7 @@ export const LOCAL_USER: Readonly<AppUser> = Object.freeze({
   role: 'kierownik',
 })
 
-const ROLES: readonly Role[] = ['pracownik', 'kierownik']
+const ROLES: readonly Role[] = ['pracownik', 'kierownik', 'oczekujacy']
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Serialises first-login bootstrap and role changes (ensureSchema uses 724242).
 const PROFILES_LOCK = 724243
@@ -88,7 +89,7 @@ type ProfileRow = { id: string; email: string; display_name: string; role: strin
 const PROFILE_COLUMNS = 'user_id::text AS id, email, display_name, role'
 
 function toAppUser(row: ProfileRow): AppUser {
-  return { id: row.id, email: row.email, display_name: row.display_name, role: isRole(row.role) ? row.role : 'pracownik' }
+  return { id: row.id, email: row.email, display_name: row.display_name, role: isRole(row.role) ? row.role : 'oczekujacy' }
 }
 
 function displayNameFor(identity: SessionIdentity): string {
@@ -100,18 +101,37 @@ function displayNameFor(identity: SessionIdentity): string {
   return local || 'Użytkownik'
 }
 
+// The local profile is created once per database handle, not on every request.
+let localUserReady = new WeakMap<Db, Promise<unknown>>()
+
+/** Test seam: forget that the local profile exists (after tests delete profiles). */
+export function resetLocalUserCache(): void {
+  localUserReady = new WeakMap()
+}
+
 async function ensureLocalUser(db: Db): Promise<AppUser> {
-  await db.query(
-    `INSERT INTO profiles (user_id, email, display_name, role) VALUES ($1, $2, $3, 'kierownik')
-     ON CONFLICT (user_id) DO NOTHING`,
-    [LOCAL_USER.id, LOCAL_USER.email, LOCAL_USER.display_name],
-  )
+  let ready = localUserReady.get(db)
+  if (!ready) {
+    ready = db
+      .query(
+        `INSERT INTO profiles (user_id, email, display_name, role) VALUES ($1, $2, $3, 'kierownik')
+         ON CONFLICT (user_id) DO NOTHING`,
+        [LOCAL_USER.id, LOCAL_USER.email, LOCAL_USER.display_name],
+      )
+      .catch((error) => {
+        localUserReady.delete(db)
+        throw error
+      })
+    localUserReady.set(db, ready)
+  }
+  await ready
   return { ...LOCAL_USER }
 }
 
 /**
  * Returns the profile of an authenticated identity, creating it on first login:
- * the very first real account becomes kierownik, everyone after that pracownik.
+ * the very first real account becomes kierownik; every later self-registered
+ * account waits (oczekujacy) until a kierownik grants it a role.
  * The advisory lock makes two simultaneous first logins agree on who was first.
  */
 async function ensureProfile(db: Db, identity: SessionIdentity): Promise<AppUser> {
@@ -132,7 +152,7 @@ async function ensureProfile(db: Db, identity: SessionIdentity): Promise<AppUser
       'SELECT EXISTS (SELECT 1 FROM profiles WHERE user_id <> $1) AS taken',
       [LOCAL_USER.id],
     )
-    const role: Role = taken ? 'pracownik' : 'kierownik'
+    const role: Role = taken ? 'oczekujacy' : 'kierownik'
     const [created] = await tx.query<ProfileRow>(
       `INSERT INTO profiles (user_id, email, display_name, role) VALUES ($1, $2, $3, $4)
        ON CONFLICT (user_id) DO UPDATE
@@ -157,11 +177,15 @@ export async function getCurrentUser(db: Db): Promise<AppUser | null> {
   return ensureProfile(db, identity)
 }
 
-/** Current user or HttpError 503 / 401 / 403 (role 'kierownik' required). */
-export async function requireUser(db: Db, role?: Role): Promise<AppUser> {
+/**
+ * Current user or HttpError 503 / 401 / 403 (role 'kierownik' required, or an
+ * account still waiting for approval). Only /api/me lets pending users through.
+ */
+export async function requireUser(db: Db, role?: Role, options: { allowPending?: boolean } = {}): Promise<AppUser> {
   if (authMode() === 'misconfigured') throw new HttpError(503, MSG_MISCONFIGURED)
   const user = await getCurrentUser(db)
   if (!user) throw new HttpError(401, MSG_UNAUTHENTICATED)
+  if (user.role === 'oczekujacy' && !options.allowPending) throw new HttpError(403, MSG_PENDING)
   if (role === 'kierownik' && user.role !== 'kierownik') throw new HttpError(403, MSG_FORBIDDEN)
   return user
 }
@@ -190,7 +214,7 @@ export async function listUsers(db: Db): Promise<UserListEntry[]> {
 
 /** Changes a user's role (kierownik-only route). 404 / 409 / 422 as HttpError. */
 export async function setUserRole(db: Db, userId: string, role: unknown): Promise<UserListEntry> {
-  if (!isRole(role)) throw new HttpError(422, 'Nieprawidłowa rola — dozwolone: pracownik, kierownik.')
+  if (!isRole(role)) throw new HttpError(422, 'Nieprawidłowa rola — dozwolone: pracownik, kierownik, oczekujacy.')
   if (!UUID_RE.test(userId)) throw new HttpError(404, 'Nie ma takiego użytkownika.')
   if (userId.toLowerCase() === LOCAL_USER.id) {
     throw new HttpError(409, 'Nie można zmienić roli użytkownika lokalnego (tryb bez logowania).')
