@@ -106,13 +106,16 @@ opcjonalnie `LLM_BASE_URL`/`LLM_MODEL`. Wyłącz `DEMO_MODE` i uruchom z repo:
 ```
 
 Skrypt wysyła **trzy rzeczywiste zapytania API**, używając wyłącznie syntetycznych
-stanów magazynowych. Sprawdza schematy wszystkich narzędzi i poprawność ID,
+stanów magazynowych. Sprawdza schematy wszystkich narzędzi, poprawność ID
+i oczekiwane narzędzie, towar oraz ilość dla każdego z trzech zdań,
 ale nie wykonuje narzędzi ani nie otwiera SQLite. Używa tego samego providera,
 walidatora i limitów co aplikacja. Klucz i treść odpowiedzi nie są wypisywane.
 Zmienne środowiskowe mają pierwszeństwo przed `.env`; inny plik wskaż przez
 `--env-file`. Brak klucza albo włączone demo zwracają kod 2, błąd providera — 1.
-Kod 0 oznacza poprawny kontrakt dla trzech zdań; dopasowanie intencji i cały
-przepływ karty/confirm nadal trzeba sprawdzić w GUI.
+Kod 1 oznacza także poprawny składniowo JSON z błędnym narzędziem, towarem
+lub ilością. Kod 0 oznacza dopasowane wywołania lub pytania zwrotne zgodnie z
+kartą 03; podsumowanie rozróżnia te wyniki. Pytania i cały przepływ karty/confirm
+nadal trzeba sprawdzić w GUI. Próba nie ocenia innych zdań poza trzema fixturami.
 Przy lokalnym uruchomieniu backendu załaduj ten sam plik jawnie
 (z katalogu `backend`): `uv run uvicorn app.main:app --env-file ../.env --reload --port 8000`.
 Docker Compose ładuje zmienne z głównego `.env` przy uruchomieniu kontenerów.

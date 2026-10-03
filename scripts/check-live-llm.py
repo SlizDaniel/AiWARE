@@ -15,9 +15,9 @@ from app.llm import LLMProviderError, provider_from_env
 from app.models import ItemRef
 
 SAMPLES = (
-    "Z półki zabraliśmy cztery sztuki folii stretch.",
-    "Podaj mi aktualną liczbę kartonów w magazynie.",
-    "W którym miejscu znajdę szkło?",
+    ("Z półki zabraliśmy cztery sztuki folii stretch.", "update_stock", {"item_id": 3, "delta": -4}),
+    ("Podaj mi aktualną liczbę kartonów w magazynie.", "get_stock", {"item_id": 1}),
+    ("W którym miejscu znajdę szkło?", "get_location", {"item_id": 2}),
 )
 ITEMS = [ItemRef(id=1, name="Kartony"), ItemRef(id=2, name="Szkło"), ItemRef(id=3, name="Folia stretch")]
 CONTEXT = (
@@ -28,22 +28,28 @@ CONTEXT = (
 
 
 async def check() -> int:
+    matched = 0
+    clarifications = 0
     try:
         provider = provider_from_env()
-        for index, text in enumerate(SAMPLES, start=1):
+        for index, (text, expected_tool, expected_args) in enumerate(SAMPLES, start=1):
             result = await provider.interpret(text, tool_schemas(), CONTEXT)
             if result.tool_call is not None:
                 parsed = normalize_call(result.tool_call, text, ITEMS)
-                print(f"{index}/3: valid tool call — {parsed.tool}")
+                if parsed.tool != expected_tool or parsed.args != expected_args:
+                    raise LLMProviderError(f"Sample {index}: tool or arguments do not match the expected intent")
+                matched += 1
+                print(f"{index}/3: matched intent — {parsed.tool}")
             elif result.clarification:
-                print(f"{index}/3: clarification returned")
+                clarifications += 1
+                print(f"{index}/3: clarification returned; review it in the application GUI")
             else:
                 raise LLMProviderError("Provider returned neither a call nor a clarification")
     except LLMProviderError as exc:
         print(f"Live LLM check FAILED: {exc}", file=sys.stderr)
         return 1
-    print("Live provider returned valid calls or clarifications for all 3 samples. No tools executed; no database opened.")
-    print("Still required: inspect intent correctness and confirm the full command/card flow in the application GUI.")
+    print(f"{matched} matched tool calls; {clarifications} clarifications require manual review.")
+    print("No tools executed; no database opened. Still required: confirm the full command/card flow in the application GUI.")
     return 0
 
 
