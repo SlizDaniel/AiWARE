@@ -101,12 +101,19 @@ class OpenAICompatibleProvider:
             raise LLMProviderError("LLM request failed") from exc
 
         try:
-            message = response["choices"][0]["message"]
+            choice = response["choices"][0]
+            message = choice["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMProviderError("LLM response has an invalid shape") from exc
 
         if not isinstance(message, dict):
             raise LLMProviderError("LLM message must be an object")
+        # Some compatible endpoints omit this field. When present it must mark
+        # a completed response, even if truncated arguments happen to parse.
+        if "finish_reason" in choice and choice["finish_reason"] not in ("stop", "tool_calls"):
+            raise LLMProviderError("LLM response is incomplete or blocked")
+        if message.get("refusal") not in (None, ""):
+            raise LLMProviderError("LLM refused the request")
         calls = message.get("tool_calls")
         if calls is None:
             calls = []

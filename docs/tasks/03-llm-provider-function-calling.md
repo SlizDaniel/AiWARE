@@ -22,3 +22,9 @@
 - [x] przełączanie trybów konfiguracją, bez restartu dema
 
 The remaining unchecked natural-language criterion needs the live-cloud demo check.
+
+Walidacja sprawdza też zakończenie generacji: obecne `finish_reason` musi być
+`stop` lub `tool_calls`; ucięcie, filtr, brak zakończenia i odmowa modelu powodują
+fallback offline, nawet gdy argumenty wyglądają jak poprawny JSON. Dla endpointów
+zgodnych z OpenAI pomijających to pole zachowano walidację schematu. Żadna z tych
+odpowiedzi nie wykonuje narzędzia przed potwierdzeniem.
