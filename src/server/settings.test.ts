@@ -59,6 +59,7 @@ describe('defaults and persistence', () => {
       default_minimum: 0,
       voice_mode: 'wake_word',
       tts_enabled: false,
+      stt_refine: false,
       reorder_default_quantity: 50,
     })
   })
@@ -105,6 +106,7 @@ describe('validation (invalid patches change nothing)', () => {
     ['bad voice mode', { voice_mode: 'always' }],
     ['bad adapter', { adapter: 'erp' }],
     ['tts as text', { tts_enabled: 'yes' }],
+    ['stt_refine as text', { stt_refine: 'on' }],
     ['order size 0', { reorder_default_quantity: 0 }],
     ['unknown key', { colour: 'green' }],
     ['valid + invalid together', { prefix: 'Gosiu', default_minimum: -1 }],

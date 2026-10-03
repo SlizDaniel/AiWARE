@@ -28,6 +28,8 @@ export type AppSettings = {
   default_minimum: number
   voice_mode: VoiceMode
   tts_enabled: boolean
+  /** Replace the browser's live transcript with server STT (off: the browser text is final). */
+  stt_refine: boolean
   reorder_default_quantity: number
 }
 
@@ -63,6 +65,7 @@ const KEYS = {
   defaultMinimum: 'default_minimum',
   voiceMode: 'voice_mode',
   tts: 'tts_enabled',
+  sttRefine: 'stt_refine',
   reorderQuantity: 'reorder_default_quantity',
 } as const
 
@@ -107,6 +110,7 @@ async function readStored(db: Db): Promise<StoredSettings> {
     default_minimum: pick(KEYS.defaultMinimum, isIntIn(0, MAX_DEFAULT_MINIMUM), 0),
     voice_mode: pick(KEYS.voiceMode, isVoiceMode, 'wake_word'),
     tts_enabled: pick(KEYS.tts, (value): value is boolean => typeof value === 'boolean', false),
+    stt_refine: pick(KEYS.sttRefine, (value): value is boolean => typeof value === 'boolean', false),
     reorder_default_quantity: pick(KEYS.reorderQuantity, isIntIn(1, MAX_REORDER_QUANTITY), DEFAULT_REORDER_QUANTITY),
     retired_prefixes: Array.isArray(retired) ? retired.filter(isPrefix) : [],
   }
@@ -147,6 +151,10 @@ const VALIDATORS: Record<keyof AppSettings, { valid: (value: unknown) => boolean
     valid: (value) => typeof value === 'boolean',
     message: 'Pole tts_enabled musi mieć wartość true albo false.',
   },
+  stt_refine: {
+    valid: (value) => typeof value === 'boolean',
+    message: 'Pole stt_refine musi mieć wartość true albo false.',
+  },
   reorder_default_quantity: {
     valid: isIntIn(1, MAX_REORDER_QUANTITY),
     message: 'Domyślna ilość zamówienia musi być liczbą całkowitą od 1 do 100000.',
@@ -160,6 +168,7 @@ const STORAGE_KEY: Record<keyof AppSettings, string> = {
   default_minimum: KEYS.defaultMinimum,
   voice_mode: KEYS.voiceMode,
   tts_enabled: KEYS.tts,
+  stt_refine: KEYS.sttRefine,
   reorder_default_quantity: KEYS.reorderQuantity,
 }
 
@@ -260,7 +269,8 @@ export function aiUsage(settings: AppSettings, status: AgentModeStatus): AiUsage
     `Skonfigurowane integracje: LLM ${llmModel} (Google Gemini, ${GEMINI_HOST}), STT ${sttModel} (${sttProvider}). ` +
     `W bieżącym trybie LLM ${llmEnabled ? 'jest aktywne' : 'jest zastąpione parserem offline'}, ` +
     `a STT ${sttEnabled ? 'jest dostępne po naciśnięciu mikrofonu' : 'jest wyłączone lub nieskonfigurowane'}. ` +
-    'Dyktowanie na żywo i nasłuch na prefix korzystają z rozpoznawania mowy wbudowanego w przeglądarkę (Web Speech API; w Chrome przetwarzane przez usługę Google), a gdy przeglądarka go nie ma — z nagrania wysyłanego do STT. ' +
+    'Dyktowanie na żywo i nasłuch na prefix korzystają z rozpoznawania mowy wbudowanego w przeglądarkę (Web Speech API; w Chrome przetwarzane przez usługę Google). ' +
+    `Nagranie trafia do STT ${settings.stt_refine ? 'po każdej komendzie (poprawa tekstu przeglądarki)' : 'tylko wtedy, gdy przeglądarka nie rozpoznaje mowy'}. ` +
     'Polecenia, nagrania oraz nagłówki i kilka przykładowych wierszy importowanych plików są wysyłane do skonfigurowanych API tylko przy aktywnej integracji. ' +
     'Zmiany stanów wymagają zatwierdzenia przez człowieka i są zapisywane w audycie z autorem zmiany. ' +
     'Przy tworzeniu projektu korzystaliśmy także z Codex/ChatGPT oraz Claude Code.'
