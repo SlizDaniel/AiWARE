@@ -58,6 +58,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def history() -> dict:
         return {"entries": db.list_audit(path)}
 
+    @app.get("/api/reorder-drafts")
+    def reorder_drafts() -> dict:
+        return {"drafts": db.list_reorder_drafts(path)}
+
+    @app.post("/api/reorder-drafts/{draft_id}/approve")
+    async def approve_reorder_draft(draft_id: int) -> dict:
+        result = db.decide_reorder_draft(path, draft_id, "approved")
+        if result is None:
+            raise HTTPException(status_code=404, detail="Szkic nie istnieje albo został już rozpatrzony")
+        await broadcast({"event": "updated"})
+        return {"approved": True, "sent_to_erp": False, "draft": result}
+
+    @app.post("/api/reorder-drafts/{draft_id}/reject")
+    async def reject_reorder_draft(draft_id: int) -> dict:
+        result = db.decide_reorder_draft(path, draft_id, "rejected")
+        if result is None:
+            raise HTTPException(status_code=404, detail="Szkic nie istnieje albo został już rozpatrzony")
+        await broadcast({"event": "updated"})
+        return {"rejected": True, "draft": result}
+
     @app.post("/api/command")
     async def command(body: CommandIn) -> dict:
         items = [ItemRef(id=r["id"], name=r["name"]) for r in db.list_items(path)]

@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import CommandPanel from './components/CommandPanel'
 import HistoryList from './components/HistoryList'
 import Placeholder from './components/Placeholder'
+import ReorderQueue from './components/ReorderQueue'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
-import { connectWs, fetchHistory, fetchStock, type HistoryEntry, type Item } from './api'
+import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, type HistoryEntry, type Item, type ReorderDraft } from './api'
 import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
   mapa: 'Schematyczna mapa 2D magazynu ze strefami — karta 03.',
-  kolejka: 'Proaktywne szkice zamówień (progi/reorder) — karta 07.',
+  kolejka: 'Proaktywne szkice zamówień (progi/reorder) — karta 08.',
   procedury: '„Jak pakujemy szkło?” — pamięć proceduralna — karta 08.',
   ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
 }
@@ -27,6 +28,7 @@ export default function App() {
   const [section, setSection] = useState<SectionId>('stany')
   const [items, setItems] = useState<Item[]>([])
   const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [drafts, setDrafts] = useState<ReorderDraft[]>([])
   const [connected, setConnected] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -34,6 +36,7 @@ export default function App() {
   const refresh = useCallback(() => {
     void fetchStock().then(setItems).catch(() => undefined)
     void fetchHistory().then(setEntries).catch(() => undefined)
+    void fetchReorderDrafts().then(setDrafts).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -47,8 +50,17 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 4000)
   }
 
-  const onApplied = (summary: string) => {
-    showToast(`Zapisano w bazie: ${summary} · wpis w historii`)
+  const onApplied = (summary: string, reorderDraft: ReorderDraft | null) => {
+    showToast(
+      reorderDraft
+        ? `Zapisano: ${summary} · szkic zamówienia ${reorderDraft.quantity} ${reorderDraft.unit} w kolejce`
+        : `Zapisano w bazie: ${summary} · wpis w historii`,
+    )
+    refresh()
+  }
+
+  const onQueueChanged = (message: string) => {
+    showToast(message)
     refresh()
   }
 
@@ -67,16 +79,20 @@ export default function App() {
         <div className="space-y-6 p-8">
           <CommandPanel onApplied={onApplied} />
 
-          {(section === 'stany' || section === 'historia') && (
+          {(section === 'stany' || section === 'historia' || section === 'kolejka') && (
             <section>
               <h2 className="mb-3 text-lg font-bold">
-                {section === 'stany' ? 'Pozycje' : 'Wpisy w audycie'}
+                {section === 'stany' ? 'Pozycje' : section === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
               </h2>
-              {section === 'stany' ? <StockTable items={items} /> : <HistoryList entries={entries} />}
+              {section === 'stany' ? <StockTable items={items} /> : section === 'historia' ? (
+                <HistoryList entries={entries} />
+              ) : (
+                <ReorderQueue drafts={drafts} onChanged={onQueueChanged} />
+              )}
             </section>
           )}
 
-          {section !== 'stany' && section !== 'historia' && (
+          {section !== 'stany' && section !== 'historia' && section !== 'kolejka' && (
             <Placeholder label={SECTIONS.find((s) => s.id === section)?.label ?? section} note={PLACEHOLDER_NOTES[section]} />
           )}
         </div>
