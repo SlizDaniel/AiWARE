@@ -5,7 +5,7 @@
 // proposals live in the `proposals` table and never touch domain data.
 // Questions (read tools) write nothing. data_version is bumped by the routes.
 import { normalizeCall, toolSchemas } from './agentContract'
-import { DEFAULT_ACTOR, getItem, listItems, logEvent, saveProposal, takeProposal, type Actor, type Item } from './db'
+import { DEFAULT_ACTOR, StaleStockProposalError, getItem, listItems, logEvent, saveProposal, takeProposal, type Actor, type Item, type StockSnapshot } from './db'
 import { HttpError } from './http'
 import { delta, parseCommand, type ParsedCommand } from './parser'
 import { commandText, getAgentModeStatus, getAppSettings } from './settings'
@@ -284,6 +284,16 @@ export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT
       return { error: new HttpError(404, 'Nie ma takiej propozycji (lub została już rozpatrzona)') }
     }
     const tool = proposal.tool
+    let expectedStock: StockSnapshot | undefined
+    if (tool === 'update_stock') {
+      // Snapshot pochodzi z zapisanej karty, nigdy z argumentów modelu ani POST.
+      if (typeof proposal.before !== 'number' || !Number.isFinite(proposal.before) ||
+          typeof proposal.unit !== 'string' || !proposal.unit ||
+          typeof proposal.item_name !== 'string' || !proposal.item_name) {
+        return { error: new StaleStockProposalError() }
+      }
+      expectedStock = { quantity: proposal.before, unit: proposal.unit, name: proposal.item_name }
+    }
     // writes ONLY through the tool registry (confirm-before-write) — confirm
     // knows no database logic, it just runs the tool from the card
     const args = tool === 'update_stock' ? { ...proposal.args, text: proposal.text } : (proposal.args ?? {})
@@ -291,11 +301,12 @@ export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT
     let result: Record<string, unknown>
     try {
       if (tool !== 'update_stock' && eventType === null) throw new UnknownToolError(tool)
-      result = await callTool(tx, tool, args, { actor })
+      result = await callTool(tx, tool, args, { actor, expectedStock })
     } catch (error) {
       // Like Python: the card is consumed (committed delete), the tool wrote nothing.
       if (error instanceof UnknownToolError) return { error: new HttpError(400, `Nieznane narzędzie: ${tool}`) }
       if (error instanceof ToolError) return { error: new HttpError(400, error.message) }
+      if (error instanceof StaleStockProposalError) return { error }
       throw error
     }
 
