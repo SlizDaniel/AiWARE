@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { transcribeAudio } from '@/lib/api'
+import { createOrderedQueue } from '@/lib/orderedQueue'
 import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import {
   commandFromServerText,
@@ -106,6 +107,8 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
   const blockedUntilRef = useRef(0)
   const networkErrorsRef = useRef(0)
   const optionsRef = useRef({ prefix, cardStatus, onEvent })
+  const refineQueueRef = useRef(createOrderedQueue<string>())
+  const pendingRefinesRef = useRef(0)
 
   useEffect(() => {
     optionsRef.current = { prefix, cardStatus, onEvent }
@@ -140,6 +143,8 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
   /** Koniec nasłuchu: rozpoznawanie, nagrywanie i mikrofon zwolnione, trwające STT porzucone. */
   const stopAll = useCallback(() => {
     sessionRef.current++
+    refineQueueRef.current.cancel()
+    pendingRefinesRef.current = 0
     armedUntilRef.current = 0
     stopRecognition()
     recorderRef.current?.stop()
@@ -154,37 +159,39 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
   )
 
   // Fraza z prefiksem: najpierw tekst przeglądarki w polu, potem STT serwera z nagrania.
-  const refine = useCallback(async (startMs: number, browserText: string) => {
+  // Transkrypcje biegną równolegle, ale komendy wychodzą w kolejności wypowiedzenia (kolejka);
+  // zmiana sesji (wyłączenie nasłuchu, zmiana trybu) porzuca oczekujące.
+  const refine = useCallback((startMs: number, browserText: string) => {
     const session = sessionRef.current
     const pcm = recorderRef.current
-    const emit = (event: WakeEvent) => {
-      if (session === sessionRef.current) optionsRef.current.onEvent(event)
-    }
-    let serverText = ''
-    // nagranie wstrzymane (brak gestu) albo niedostępne → komendą zostaje tekst przeglądarki
-    if (pcm?.isRunning && !pcm.suspended) {
-      setPhase('refining')
+    const transcribe = async (): Promise<string> => {
+      // nagranie wstrzymane (brak gestu) albo niedostępne → komendą zostaje tekst przeglądarki
+      if (!pcm?.isRunning || pcm.suspended) return ''
       await delay(TAIL_MS)
-      if (session !== sessionRef.current) return
+      if (session !== sessionRef.current) return ''
       const samples = pcm.slice(Math.max(0, startMs - LEAD_MS), pcm.now())
-      if (samples.length >= (pcm.sampleRate * MIN_AUDIO_MS) / 1000) {
-        try {
-          serverText = await transcribeAudio(wavBlob(samples, pcm.sampleRate))
-        } catch {
-          serverText = '' // 503 / sieć → zostaje tekst przeglądarki
-        }
+      if (samples.length < (pcm.sampleRate * MIN_AUDIO_MS) / 1000) return ''
+      try {
+        return await transcribeAudio(wavBlob(samples, pcm.sampleRate))
+      } catch {
+        return '' // 429 / 503 / sieć → zostaje tekst przeglądarki
       }
+    }
+    pendingRefinesRef.current++
+    setPhase('refining')
+    void refineQueueRef.current.push(transcribe(), (serverText) => {
+      pendingRefinesRef.current = Math.max(0, pendingRefinesRef.current - 1)
       if (session !== sessionRef.current) return
-    }
-    const result = commandFromServerText(serverText, optionsRef.current.prefix, browserText)
-    if (result.type === 'armed') {
-      armedUntilRef.current = Date.now() + ARMED_MS
-      setPhase('hearing')
-      emit({ type: 'armed' })
-    } else {
-      setPhase('listening')
-      emit(result)
-    }
+      const result = commandFromServerText(serverText, optionsRef.current.prefix, browserText)
+      if (result.type === 'armed') {
+        armedUntilRef.current = Date.now() + ARMED_MS
+        setPhase('hearing')
+        optionsRef.current.onEvent({ type: 'armed' })
+      } else {
+        setPhase(pendingRefinesRef.current > 0 ? 'refining' : 'listening')
+        optionsRef.current.onEvent(result)
+      }
+    })
   }, [])
 
   const handle = useCallback(
@@ -231,7 +238,7 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
       if (action.type === 'submit') {
         emit({ type: 'interim', text: action.text })
         const now = recorderRef.current?.now() ?? 0
-        void refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), action.text)
+        refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), action.text)
         return
       }
       setPhase(action.type === 'interim' || action.type === 'armed' ? 'hearing' : 'listening')
