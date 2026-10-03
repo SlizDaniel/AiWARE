@@ -39,7 +39,15 @@ Web-aplikacja + mikrofon: agent rozumie polskie zdania o pracy na hali, mapuje j
 - **Stretch:** 12 (zgodnie z konceptem: pełny AR-scan tylko „jeśli rdzeń stoi nocą").
 - **Deliberately NOT building:** per-item kody kreskowe, pełny AR-scan, planowanie kubatury, webhook do ERP (tylko kontrakt+atrapa), multi-user/uprawnienia, dokumenty PZ/WZ, auto-wysyłka zamówień, parsowanie formuł Excela (czytamy tylko kolumny i reguły z wartości).
 
-## Stack & constraints
+## Klient mobilny — decyzja 2026-10-03
+
+Aplikacja mobilna jest osobnym klientem w `mobile/`: Expo + React Native + TypeScript + NativeWind
+(Tailwind CSS). Korzysta z istniejącego API Next.js i Supabase (Auth + Postgres).
+Tokeny Bearer identyfikują użytkownika telefonu; role, potwierdzenia i audyt pozostają po stronie serwera.
+Obsługuje komendy, nagrania z edytowalną transkrypcją, stany, schemat stref, historię, kolejkę,
+procedury, import/eksport i ustawienia. Konfiguracja i granice walidacji: `docs/mobile.md`.
+
+## Stack & constraints (pierwotny, migracja webowa opisana w AGENTS.md)
 - **Backend:** Python + FastAPI, SQLite, WebSocket do UI. Pętla agenta = LLM + registry narzędzi (`get_stock`, `update_stock`, `check_reorder`, `draft_order`, `get_location`, `add_zone`, `remember_procedure`, `recall_procedure`), audyt w bazie.
 - **Frontend:** React + Vite + Tailwind; mapa = SVG (schematyczny rzut, strefy, ściany). 6 sekcji: Mapa, Stany, Kolejka zatwierdzeń, Historia, Procedury, Ustawienia.
 - **LLM:** interfejs `LLMProvider` z trzema implementacjami: (1) chmurowe API z function calling (domyślne), (2) Ollama on-prem (opcja wdrożeniowa — opisana, nie testowana nocą), (3) **MockAgent/offline-parser** — zawsze w repo, to on gra w trybie awaryjnym dema.

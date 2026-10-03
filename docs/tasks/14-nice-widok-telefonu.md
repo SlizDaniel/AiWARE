@@ -1,19 +1,23 @@
-# 14: [NICE] Widok telefonu — panel push-to-talk/transkrypcja/zatwierdź
+# 14: Aplikacja mobilna — Expo / React Native / Supabase
 
-**What to build:** Responsywny widok mobilny UI: prosty panel z jednym dużym przyciskiem push-to-talk, transkrypcją, kartą zmiany i jednym przyciskiem zatwierdzenia. Zero niepotrzebnych sekcji — to widok „spacer po hali". Demo może się odbyć z telefonu (efektowne) lub z laptopa (gwarantowane) — ta karta daje opcję telefonu.
+**What to build:** Zgodnie z decyzją użytkownika z 2026-10-03: osobny klient Expo + React Native + TypeScript + NativeWind w `mobile/`. Supabase Auth, istniejące API Next.js i Supabase Postgres. Panel komend z nagrywaniem/transkrypcją i zatwierdzeniem, stany, schemat stref, historia z undo, kolejka, procedury, import/eksport i ustawienia. Serwer weryfikuje tokeny Bearer, role i autora zmian.
 
 **Blocked by:** 04 (STT działa), 07 (mapa — telefon pokazuje też mini-mapę)
 
 **Estimate:** 1 / 2
 
-**Owner:** D (dopiero po zamknięciu wszystkich Must)
+**Branch:** `feature/expo-mobile`
 
-**TDD:** brak osobnego seamu — weryfikacja przez GUI-tester w rozdzielczości telefonu.
+**Testing seams:** transport mobilny (token, błędy, surowe audio/eksport, confirm-before-write), serwerowa weryfikacja JWT i zachowanie ról, GUI na izolowanej bazie.
 
-**Demo check:** otwórz aplikację na telefonie (ta sama sieć) → push-to-talk działa → karta zmiany zatwierdza jednym tapem → mini-mapa czytelna.
+**Demo check:** zaloguj się → nagraj lub wpisz komendę → sprawdź transkrypcję → wyślij → zatwierdź kartę → stany/historia → undo → pytanie o lokalizację → mapa. Import XLSX wymaga sprawdzenia mapowania przed zapisem.
 
-**Status:** ready
+**Status:** zaimplementowane; weryfikacja na fizycznym telefonie pozostaje otwarta. Uruchomienie: `docs/mobile.md`.
 
-- [ ] działa na Androidzie/iPhonie przez przeglądarkę (ta sama sieć co backend)
-- [ ] push-to-talk i zatwierdzenie jednym kciukiem
-- [ ] nie psuje widoku desktop
+- [x] osobny klient Expo, konfiguracja TypeScript/NativeWind, lockfile
+- [x] logowanie Supabase i API z Bearer; role pozostają po stronie serwera
+- [x] komendy, confirm, stany, mapa, audyt/undo, kolejka, procedury, import/eksport, ustawienia
+- [x] testy, typy/lint, zgodność Expo, eksport Android/iOS/web, build backendu
+- [x] GUI: atrapa logowania + prawdziwe izolowane API, karta/confirm/audyt/undo/import
+- [ ] prawdziwe konto Supabase oraz mikrofon/STT/TTS, picker i udostępnianie na Android/iOS
+- [ ] kwalifikacja alertów bezpieczeństwa zależności przed publikacją

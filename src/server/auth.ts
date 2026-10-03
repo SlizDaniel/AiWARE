@@ -1,7 +1,8 @@
 // Authentication + roles. Supabase Auth proves who the user is; the `profiles`
 // table (owned by the server, RLS without policies) says what they may do.
 // Route handlers call requireUser(db, role?) — authorization lives here, not in RLS.
-import { authMode } from './env'
+import { authMode, supabaseConfig } from './env'
+import { requestIdentity } from './requestIdentity'
 import { HttpError } from './http'
 import { tsText, type Db } from './sql'
 import type { AppUser, Role } from './types'
@@ -44,8 +45,22 @@ export type SessionIdentity = {
 
 export type SessionReader = () => Promise<SessionIdentity | null>
 
-/** Reads the Supabase session from the request cookies (verified via getClaims()). */
+/** Verifies explicit mobile bearer credentials, or the browser cookie session. */
 async function readSupabaseSession(): Promise<SessionIdentity | null> {
+  const { headers } = await import('next/headers')
+  const authorization = (await headers()).get('authorization')
+  return requestIdentity(authorization, async (token) => {
+    const config = supabaseConfig()
+    if (!config) return { data: null, error: new Error('Supabase nie jest skonfigurowany.') }
+    const { createClient } = await import('@supabase/supabase-js')
+    const client = createClient(config.url, config.publishableKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    })
+    return client.auth.getClaims(token)
+  }, readCookieSession)
+}
+
+async function readCookieSession(): Promise<SessionIdentity | null> {
   // Imported lazily so tests (and non-request code) never load next/headers.
   const { createClient } = await import('@/lib/supabase/server')
   const supabase = await createClient()
