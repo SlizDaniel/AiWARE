@@ -8,6 +8,25 @@ HackYeah 2026, Open Task ARTIFICIAL INTELLIGENCE.
 (function calling, transkrypcja mowy, mapowanie kolumn importu) · Tailwind v4 · wdrożenie na **Vercel**.
 Poprzednia wersja (FastAPI + SQLite + Vite + Docker) leży w [`legacy/`](legacy/) jako punkt odniesienia.
 
+## Aplikacja mobilna (Android / iOS)
+
+[`mobile/`](mobile/) zawiera osobną aplikację **Expo SDK 57 + React Native + TypeScript + NativeWind
+(Tailwind CSS)**. Logowanie korzysta z Supabase Auth, a dane i operacje magazynowe z istniejącego
+API Next.js oraz tej samej bazy Supabase Postgres. API obsługuje zarówno tokeny Bearer z telefonu,
+jak i cookies klienta webowego; role i audyt nadal ustala serwer.
+
+```bash
+cd mobile
+npm ci
+cp .env.example .env
+# Uzupełnij adres API oraz publiczny adres i klucz Supabase.
+npm start
+```
+
+Zeskanuj kod QR w Expo Go zgodnym z SDK 57. Dostępne są komendy głosowe i tekstowe,
+zatwierdzanie zmian, stany, mapa stref, historia z undo, kolejka, procedury, import/eksport i ustawienia.
+Konfiguracja, uruchomienie na telefonie i granice weryfikacji: [docs/mobile.md](docs/mobile.md).
+
 ## Szybki start lokalnie (bez kont i bez Dockera)
 
 ```bash

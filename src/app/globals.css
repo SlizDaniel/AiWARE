@@ -2,6 +2,7 @@
 
 /* Stary frontend (Vite) nie jest częścią aplikacji — nie skanujemy go po klasy. */
 @source not '../../legacy';
+@source not '../../mobile';
 
 :root {
   font-family:

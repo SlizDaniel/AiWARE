@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Magazynier",
+    "slug": "magazynier-mobile",
+    "scheme": "magazynier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "pl.magazynier.mobile"
+    },
+    "android": {
+      "package": "pl.magazynier.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Magazynier używa mikrofonu do komend głosowych.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-status-bar",
+      "expo-sharing"
+    ]
+  }
+}

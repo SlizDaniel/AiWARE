@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "check:gemini": "tsx scripts/check-gemini.ts",
-    "db:setup": "tsx scripts/db-setup.ts"
+    "db:setup": "tsx scripts/db-setup.ts",
+    "mobile:start": "npm --prefix mobile start",
+    "mobile:typecheck": "npm --prefix mobile run typecheck"
   },
   "engines": {
     "node": ">=20.9"
