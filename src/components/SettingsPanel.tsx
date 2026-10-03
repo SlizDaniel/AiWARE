@@ -257,7 +257,7 @@ function SettingsForm({
           </select>
           <span className={hint}>
             {form.voice_mode === 'wake_word'
-              ? 'Każdy użytkownik sam włącza nasłuch przyciskiem w panelu komend. Komenda po prefiksie wysyła się po pauzie; kartę zmiany zatwierdza „tak”, odrzuca „nie”. '
+              ? 'Nasłuch włącza się sam po otwarciu aplikacji (przeglądarka raz zapyta o mikrofon); można go wyłączyć w panelu komend. Komenda po prefiksie wysyła się po pauzie; kartę zmiany zatwierdza „zatwierdź”/„tak”, odrzuca „odrzuć”/„nie”. '
               : form.voice_mode === 'push_to_talk'
                 ? 'Mikrofon włącza się tylko po kliknięciu „Mów”; tekst trzeba wysłać samemu. '
                 : 'Mikrofon nigdy się nie włącza. '}

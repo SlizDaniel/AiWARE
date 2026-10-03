@@ -209,27 +209,64 @@ export function commandFromServerText(
   return { type: 'submit', text: heard }
 }
 
-const CONFIRM_WORDS = new Set(['tak', 'zatwierdz', 'zatwierdzam', 'potwierdz', 'potwierdzam', 'ok', 'okej', 'dobrze'])
-const REJECT_WORDS = new Set(['nie', 'anuluj', 'odrzuc', 'odrzucam'])
+// Słownik decyzji o karcie zmiany (formy po normalizeSpeech: bez ogonków).
+const CONFIRM_WORDS = [
+  'tak',
+  'zatwierdz',
+  'zatwierdzam',
+  'zatwierdzic',
+  'zatwierdza',
+  'potwierdz',
+  'potwierdzam',
+  'akceptuj',
+  'akceptuje',
+  'ok',
+  'okej',
+  'okay',
+  'dobrze',
+]
+const REJECT_WORDS = ['nie', 'odrzuc', 'odrzucam', 'odrzucic', 'anuluj', 'anuluje', 'anulowac']
+/** Słowa dozwolone tylko po „nie” („nie zapisuj”). */
+const REJECT_AFTER_NIE = ['zapisuj', 'zapisywac']
+const MAX_DECISION_WORDS = 4
 
-function onlyWordsFrom(text: string, allowed: Set<string>): boolean {
+/** Dokładnie albo (dla słów ≥ 5 liter) z jedną literą różnicy — Chrome bywa niedokładny w pisowni. */
+function wordInVocabulary(word: string, vocabulary: readonly string[]): boolean {
+  return vocabulary.some((known) => word === known || (known.length >= 5 && word.length >= 4 && levenshtein(word, known) <= 1))
+}
+
+function decisionWords(text: string): string[] | null {
   const words = normalizeSpeech(text).split(' ').filter(Boolean)
-  return words.length > 0 && words.length <= 3 && words.every((word) => allowed.has(word))
+  return words.length > 0 && words.length <= MAX_DECISION_WORDS ? words : null
 }
 
-/** „tak”, „zatwierdź”, „zatwierdzam”, „potwierdzam”, „ok”, „dobrze” (także powtórzone, np. „tak, zatwierdzam”). */
+/** „tak”, „zatwierdź”, „zatwierdzam”, „potwierdzam”, „akceptuję”, „ok”, „dobrze”, „tak, zatwierdź”… (do 4 słów). */
 export function isConfirmPhrase(text: string): boolean {
-  return onlyWordsFrom(text, CONFIRM_WORDS)
+  const words = decisionWords(text)
+  return Boolean(words?.every((word) => wordInVocabulary(word, CONFIRM_WORDS)))
 }
 
-/** „nie”, „anuluj”, „odrzuć”, „odrzucam”. */
+/** „nie”, „odrzuć”, „odrzucam”, „anuluj”, „anuluję”, „nie zapisuj”… (do 4 słów). */
 export function isRejectPhrase(text: string): boolean {
-  return onlyWordsFrom(text, REJECT_WORDS)
+  const words = decisionWords(text)
+  if (!words) return false
+  return words.every(
+    (word, index) =>
+      wordInVocabulary(word, REJECT_WORDS) || (words.slice(0, index).includes('nie') && wordInVocabulary(word, REJECT_AFTER_NIE)),
+  )
 }
 
-/** Decyzja o karcie zmiany, z prefiksem lub bez („Magu, tak” / „tak”). */
-export function voiceDecision(transcript: string, prefix: string): 'confirm' | 'reject' | null {
+/**
+ * Decyzja o karcie zmiany. Z prefiksem („Magu, zatwierdź”) — zawsze, gdy karta czeka;
+ * bez prefiksu („tak”) — tylko gdy `withoutWakeWord` (świeża karta).
+ */
+export function voiceDecision(
+  transcript: string,
+  prefix: string,
+  { withoutWakeWord = true }: { withoutWakeWord?: boolean } = {},
+): 'confirm' | 'reject' | null {
   const wake = matchWakeWord(transcript, prefix)
+  if (!wake.matched && !withoutWakeWord) return null
   const phrase = wake.matched ? wake.rest : transcript
   if (isConfirmPhrase(phrase)) return 'confirm'
   if (isRejectPhrase(phrase)) return 'reject'
@@ -245,26 +282,34 @@ export type WakeAction =
   | { type: 'submit'; text: string }
   | { type: 'confirm' }
   | { type: 'reject' }
+  /** decyzja w wyniku pośrednim — wykonać, jeśli tekst nie zmieni się przez chwilę */
+  | { type: 'tentative'; decision: 'confirm' | 'reject' }
 
-/** Co zrobić z frazą usłyszaną w trybie nasłuchu. Bez prefiksu reagujemy tylko po „uzbrojeniu” lub na tak/nie przy karcie. */
+/**
+ * Co zrobić z frazą usłyszaną w trybie nasłuchu. Bez prefiksu reagujemy tylko po „uzbrojeniu”
+ * albo na decyzję o świeżej karcie zmiany (`proposalFresh`); z prefiksem — na decyzję o każdej
+ * oczekującej karcie (`proposalPending`) albo na komendę.
+ */
 export function decideWakeAction({
   transcript,
   isFinal,
   prefix,
   armed,
   proposalPending,
+  proposalFresh = proposalPending,
 }: {
   transcript: string
   isFinal: boolean
   prefix: string
   armed: boolean
   proposalPending: boolean
+  proposalFresh?: boolean
 }): WakeAction {
   const heard = transcript.replace(/\s+/g, ' ').trim()
   if (!heard) return { type: 'ignore' }
-  if (isFinal && proposalPending) {
-    const decision = voiceDecision(heard, prefix)
-    if (decision) return { type: decision }
+  if (proposalPending) {
+    const decision = voiceDecision(heard, prefix, { withoutWakeWord: proposalFresh })
+    if (decision) return isFinal ? { type: decision } : { type: 'tentative', decision }
   }
   const wake = matchWakeWord(heard, prefix)
   if (wake.matched) {

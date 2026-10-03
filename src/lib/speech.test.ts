@@ -80,22 +80,54 @@ describe('matchWakeWord', () => {
 })
 
 describe('confirm / reject phrases', () => {
-  test('confirm words, alone or repeated', () => {
-    for (const phrase of ['tak', 'Tak.', 'zatwierdź', 'Zatwierdzam!', 'potwierdzam', 'OK', 'okej', 'dobrze', 'tak, zatwierdzam']) {
-      expect(isConfirmPhrase(phrase)).toBe(true)
+  test('confirm phrases, alone or combined (up to 4 words)', () => {
+    for (const phrase of [
+      'tak',
+      'Tak.',
+      'zatwierdź',
+      'zatwierdz',
+      'Zatwierdzam!',
+      'zatwierdzić',
+      'zatwierdza',
+      'potwierdź',
+      'potwierdzam',
+      'akceptuj',
+      'akceptuję',
+      'OK',
+      'okej',
+      'dobrze',
+      'tak, zatwierdź',
+      'tak tak zatwierdzam ok',
+    ]) {
+      expect(isConfirmPhrase(phrase), phrase).toBe(true)
     }
-    for (const phrase of ['nie', 'tak ale nie teraz', 'wzięliśmy paletę', '', 'nie zatwierdzaj']) {
-      expect(isConfirmPhrase(phrase)).toBe(false)
+    for (const phrase of ['nie', 'tak ale nie teraz', 'wzięliśmy paletę', '', 'nie zatwierdzaj', 'tak tak tak tak tak']) {
+      expect(isConfirmPhrase(phrase), phrase).toBe(false)
     }
   })
 
-  test('reject words', () => {
-    for (const phrase of ['nie', 'Nie!', 'anuluj', 'odrzuć', 'Odrzucam', 'nie, anuluj']) {
-      expect(isRejectPhrase(phrase)).toBe(true)
+  test('reject phrases, including „nie zapisuj”', () => {
+    for (const phrase of ['nie', 'Nie!', 'odrzuć', 'Odrzucam', 'odrzucić', 'anuluj', 'anuluję', 'anulować', 'nie, anuluj', 'nie zapisuj']) {
+      expect(isRejectPhrase(phrase), phrase).toBe(true)
     }
-    for (const phrase of ['tak', 'nie wiem ile', 'odrzuć szkic zamówienia kartonów']) {
-      expect(isRejectPhrase(phrase)).toBe(false)
+    for (const phrase of ['tak', 'nie wiem ile', 'odrzuć szkic zamówienia kartonów', 'zapisuj', 'zapisuj nie']) {
+      expect(isRejectPhrase(phrase), phrase).toBe(false)
     }
+  })
+
+  test('one wrong letter is tolerated in words of 5+ letters (browser spelling)', () => {
+    expect(isConfirmPhrase('zatwierdzm')).toBe(true)
+    expect(isConfirmPhrase('zatwiedz')).toBe(true)
+    expect(isConfirmPhrase('akceptue')).toBe(true)
+    expect(isConfirmPhrase('dobże')).toBe(true)
+    expect(isRejectPhrase('odrzucan')).toBe(true)
+    expect(isRejectPhrase('anuluje się')).toBe(false)
+    // krótkie słowa tylko dokładnie
+    expect(isConfirmPhrase('tag')).toBe(false)
+    expect(isRejectPhrase('nia')).toBe(false)
+    // dwie litery różnicy to już inne słowo
+    expect(isConfirmPhrase('zatrzymaj')).toBe(false)
+    expect(isRejectPhrase('odrzucone')).toBe(false)
   })
 
   test('decision works with or without the wake word', () => {
@@ -103,6 +135,12 @@ describe('confirm / reject phrases', () => {
     expect(voiceDecision('Magu, zatwierdź', 'Magu')).toBe('confirm')
     expect(voiceDecision('Magu nie', 'Magu')).toBe('reject')
     expect(voiceDecision('Magu, ile mamy kartonów', 'Magu')).toBeNull()
+  })
+
+  test('without the wake word only when allowed (fresh card)', () => {
+    expect(voiceDecision('zatwierdź', 'Magu', { withoutWakeWord: false })).toBeNull()
+    expect(voiceDecision('Magu zatwierdź', 'Magu', { withoutWakeWord: false })).toBe('confirm')
+    expect(voiceDecision('Magu, nie zapisuj', 'Magu', { withoutWakeWord: false })).toBe('reject')
   })
 })
 
@@ -142,13 +180,22 @@ describe('decideWakeAction', () => {
     expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: true })).toEqual({ type: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'Magu, zatwierdzam', isFinal: true })).toEqual({ type: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'odrzuć', isFinal: true })).toEqual({ type: 'reject' })
-    // pośredni wynik nigdy nie zatwierdza
-    expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: false })).toEqual({ type: 'ignore' })
+    // wynik pośredni to tylko decyzja wstępna (wykonana, jeśli tekst się nie zmieni)
+    expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: false })).toEqual({ type: 'tentative', decision: 'confirm' })
+    expect(decideWakeAction({ ...pending, transcript: 'Magu odrzuć', isFinal: false })).toEqual({ type: 'tentative', decision: 'reject' })
     // nowa komenda z prefiksem nadal działa przy otwartej karcie
     expect(decideWakeAction({ ...pending, transcript: 'Magu ile mamy taśmy', isFinal: true })).toEqual({
       type: 'submit',
       text: 'ile mamy taśmy',
     })
+  })
+
+  test('an older card (past the fresh window) needs the wake word', () => {
+    const stale = { ...base, proposalPending: true, proposalFresh: false }
+    expect(decideWakeAction({ ...stale, transcript: 'zatwierdź', isFinal: true })).toEqual({ type: 'ignore' })
+    expect(decideWakeAction({ ...stale, transcript: 'tak', isFinal: false })).toEqual({ type: 'ignore' })
+    expect(decideWakeAction({ ...stale, transcript: 'Magu, zatwierdź', isFinal: true })).toEqual({ type: 'confirm' })
+    expect(decideWakeAction({ ...stale, transcript: 'Magu nie zapisuj', isFinal: true })).toEqual({ type: 'reject' })
   })
 
   test('confirm words are not decisions without a pending card', () => {

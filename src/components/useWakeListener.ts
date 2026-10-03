@@ -12,12 +12,15 @@ import {
   type WakeAction,
 } from '@/lib/speech'
 
-const STORAGE_KEY = 'magazynier.wake-listening'
+/** Jawne wyłączenie nasłuchu w tej przeglądarce (domyślnie nasłuch startuje sam). */
+const OFF_STORAGE_KEY = 'magazynier.wake-off'
 /** Po samym prefiksie czekamy tyle na komendę. */
 const ARMED_MS = 8000
 /** Co tyle sprawdzamy, czy wznowić nasłuch (koniec sesji, koniec mowy TTS). */
 const SUPERVISOR_MS = 300
 const MAX_NETWORK_ERRORS = 3
+/** Decyzja („zatwierdź”) w wyniku pośrednim wykonuje się, gdy tekst nie zmieni się przez tyle. */
+const INTERIM_DECISION_MS = 700
 /** Wycinek do STT: zapas przed pierwszym wynikiem przeglądarki i „ogon” po wyniku końcowym. */
 const LEAD_MS = 800
 const TAIL_MS = 250
@@ -27,7 +30,8 @@ const MIN_AUDIO_MS = 300
 const UNKNOWN_START_MS = 4000
 
 export type WakePhase = 'off' | 'starting' | 'listening' | 'hearing' | 'refining' | 'paused'
-export type WakeEvent = Exclude<WakeAction, { type: 'ignore' }>
+export type WakeEvent = Exclude<WakeAction, { type: 'ignore' } | { type: 'tentative' }>
+export type CardStatus = { pending: boolean; fresh: boolean }
 
 const noopSubscribe = () => () => {}
 
@@ -36,28 +40,34 @@ export function useSpeechRecognitionSupported(): boolean {
   return useSyncExternalStore(noopSubscribe, speechRecognitionSupported, () => false)
 }
 
-function readStored(): boolean {
+// Zapamiętane „wyłącz” — localStorage, a gdy niedostępny (tryb prywatny) — pamięć karty.
+let sessionOff: boolean | null = null
+const offListeners = new Set<() => void>()
+
+function readOff(): boolean {
+  if (sessionOff !== null) return sessionOff
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === '1'
+    return window.localStorage.getItem(OFF_STORAGE_KEY) === '1'
   } catch {
     return false
   }
 }
 
-function writeStored(on: boolean) {
+function writeOff(off: boolean) {
+  sessionOff = off
   try {
-    window.localStorage.setItem(STORAGE_KEY, on ? '1' : '0')
+    if (off) window.localStorage.setItem(OFF_STORAGE_KEY, '1')
+    else window.localStorage.removeItem(OFF_STORAGE_KEY)
   } catch {
-    /* tryb prywatny / zablokowane dane strony — nasłuch działa, tylko bez zapamiętania */
+    /* zablokowane dane strony — wybór działa do zamknięcia karty */
   }
+  offListeners.forEach((listener) => listener())
 }
 
-async function microphoneGranted(): Promise<boolean> {
-  try {
-    const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-    return status.state === 'granted'
-  } catch {
-    return false
+function subscribeOff(listener: () => void) {
+  offListeners.add(listener)
+  return () => {
+    offListeners.delete(listener)
   }
 }
 
@@ -65,34 +75,40 @@ type Options = {
   /** tryb wake_word, nie demo, ustawienia wczytane */
   enabled: boolean
   prefix: string
-  proposalPending: () => boolean
+  /** karta zmiany czeka (`pending`) i jest świeża (`fresh` — decyzja także bez prefiksu) */
+  cardStatus: () => CardStatus
   onEvent: (event: WakeEvent) => void
 }
 
 /**
- * Nasłuch „ręce wolne”: ciągłe rozpoznawanie przeglądarki (podgląd na żywo + wykrycie prefiksu)
- * z automatycznym wznawianiem. Równolegle bufor PCM z mikrofonu — po frazie z prefiksem jej
- * nagranie idzie do STT na serwerze, a komendą zostaje dokładniejszy tekst serwera.
- * „tak”/„nie” przy karcie zmiany rozpoznaje sama przeglądarka. Wstrzymany, gdy mówi TTS.
+ * Nasłuch „ręce wolne”: startuje sam w trybie wake_word (chyba że użytkownik go wyłączył),
+ * rozpoznawanie przeglądarki daje podgląd na żywo i wykrywa prefiks, a nagranie PCM fraz
+ * z prefiksem idzie do STT na serwerze (dokładniejszy tekst komendy). Decyzje o karcie
+ * zmiany („zatwierdź”/„odrzuć”) rozpoznaje sama przeglądarka. Wstrzymany, gdy mówi TTS.
  */
-export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: Options) {
+export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Options) {
   const supported = useSpeechRecognitionSupported()
-  const [on, setOn] = useState(false)
-  const [phase, setPhase] = useState<WakePhase>('off')
+  // na serwerze i przy hydratacji „wyłączony” — mikrofon rusza dopiero w przeglądarce
+  const userOff = useSyncExternalStore(subscribeOff, readOff, () => true)
   const [error, setError] = useState('')
+  const [phase, setPhase] = useState<WakePhase>('starting')
+  const [audioSuspended, setAudioSuspended] = useState(false)
+  const active = enabled && supported && !userOff && !error
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const recorderRef = useRef<PcmRecorder | null>(null)
   const utteranceStartRef = useRef(new Map<number, number>())
   const speechStartRef = useRef<number | null>(null)
+  const tentativeRef = useRef<{ index: number; text: string; timer: ReturnType<typeof setTimeout> } | null>(null)
+  const decidedIndexRef = useRef(-1)
   const sessionRef = useRef(0)
   const armedUntilRef = useRef(0)
   const blockedUntilRef = useRef(0)
   const networkErrorsRef = useRef(0)
-  const optionsRef = useRef({ prefix, proposalPending, onEvent })
+  const optionsRef = useRef({ prefix, cardStatus, onEvent })
 
   useEffect(() => {
-    optionsRef.current = { prefix, proposalPending, onEvent }
+    optionsRef.current = { prefix, cardStatus, onEvent }
   })
 
   const recorder = useCallback(() => {
@@ -100,7 +116,13 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
     return recorderRef.current
   }, [])
 
+  const clearTentative = useCallback(() => {
+    if (tentativeRef.current) clearTimeout(tentativeRef.current.timer)
+    tentativeRef.current = null
+  }, [])
+
   const stopRecognition = useCallback(() => {
+    clearTentative()
     const recognition = recognitionRef.current
     recognitionRef.current = null
     if (!recognition) return
@@ -113,11 +135,12 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
     } catch {
       /* już zatrzymany */
     }
-  }, [])
+  }, [clearTentative])
 
   /** Koniec nasłuchu: rozpoznawanie, nagrywanie i mikrofon zwolnione, trwające STT porzucone. */
   const stopAll = useCallback(() => {
     sessionRef.current++
+    armedUntilRef.current = 0
     stopRecognition()
     recorderRef.current?.stop()
   }, [stopRecognition])
@@ -125,56 +148,80 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
   const fail = useCallback(
     (message: string) => {
       stopAll()
-      armedUntilRef.current = 0
-      setOn(false)
-      setPhase('off')
       setError(message)
-      writeStored(false)
     },
     [stopAll],
   )
 
   // Fraza z prefiksem: najpierw tekst przeglądarki w polu, potem STT serwera z nagrania.
-  const refine = useCallback(
-    async (startMs: number, browserText: string) => {
-      const session = sessionRef.current
-      const pcm = recorderRef.current
-      const emit = (event: WakeEvent) => {
-        if (session === sessionRef.current) optionsRef.current.onEvent(event)
-      }
-      let serverText = ''
-      if (pcm?.isRunning) {
-        setPhase('refining')
-        await delay(TAIL_MS)
-        if (session !== sessionRef.current) return
-        const samples = pcm.slice(Math.max(0, startMs - LEAD_MS), pcm.now())
-        if (samples.length >= (pcm.sampleRate * MIN_AUDIO_MS) / 1000) {
-          try {
-            serverText = await transcribeAudio(wavBlob(samples, pcm.sampleRate))
-          } catch {
-            serverText = '' // 503 / sieć → zostaje tekst przeglądarki
-          }
+  const refine = useCallback(async (startMs: number, browserText: string) => {
+    const session = sessionRef.current
+    const pcm = recorderRef.current
+    const emit = (event: WakeEvent) => {
+      if (session === sessionRef.current) optionsRef.current.onEvent(event)
+    }
+    let serverText = ''
+    // nagranie wstrzymane (brak gestu) albo niedostępne → komendą zostaje tekst przeglądarki
+    if (pcm?.isRunning && !pcm.suspended) {
+      setPhase('refining')
+      await delay(TAIL_MS)
+      if (session !== sessionRef.current) return
+      const samples = pcm.slice(Math.max(0, startMs - LEAD_MS), pcm.now())
+      if (samples.length >= (pcm.sampleRate * MIN_AUDIO_MS) / 1000) {
+        try {
+          serverText = await transcribeAudio(wavBlob(samples, pcm.sampleRate))
+        } catch {
+          serverText = '' // 503 / sieć → zostaje tekst przeglądarki
         }
-        if (session !== sessionRef.current) return
       }
-      const result = commandFromServerText(serverText, optionsRef.current.prefix, browserText)
-      if (result.type === 'armed') {
-        armedUntilRef.current = Date.now() + ARMED_MS
-        setPhase('hearing')
-        emit({ type: 'armed' })
-      } else {
-        setPhase('listening')
-        emit(result)
-      }
-    },
-    [],
-  )
+      if (session !== sessionRef.current) return
+    }
+    const result = commandFromServerText(serverText, optionsRef.current.prefix, browserText)
+    if (result.type === 'armed') {
+      armedUntilRef.current = Date.now() + ARMED_MS
+      setPhase('hearing')
+      emit({ type: 'armed' })
+    } else {
+      setPhase('listening')
+      emit(result)
+    }
+  }, [])
 
   const handle = useCallback(
-    (transcript: string, isFinal: boolean, startMs: number | null) => {
-      const { prefix: currentPrefix, proposalPending: pending, onEvent: emit } = optionsRef.current
+    (transcript: string, isFinal: boolean, startMs: number | null, index: number) => {
+      const { prefix: currentPrefix, cardStatus: card, onEvent: emit } = optionsRef.current
+      // decyzja wykonana już z wyniku pośredniego — jego wersja końcowa nic nie robi
+      if (isFinal && decidedIndexRef.current === index) {
+        decidedIndexRef.current = -1
+        clearTentative()
+        return
+      }
       const armed = Date.now() < armedUntilRef.current
-      const action = decideWakeAction({ transcript, isFinal, prefix: currentPrefix, armed, proposalPending: pending() })
+      const status = card()
+      const action = decideWakeAction({
+        transcript,
+        isFinal,
+        prefix: currentPrefix,
+        armed,
+        proposalPending: status.pending,
+        proposalFresh: status.fresh,
+      })
+      if (action.type === 'tentative') {
+        const current = tentativeRef.current
+        if (current && current.index === index && current.text === transcript) return
+        clearTentative()
+        const timer = setTimeout(() => {
+          tentativeRef.current = null
+          if (!optionsRef.current.cardStatus().pending) return
+          decidedIndexRef.current = index
+          armedUntilRef.current = 0
+          setPhase('listening')
+          optionsRef.current.onEvent({ type: action.decision })
+        }, INTERIM_DECISION_MS)
+        tentativeRef.current = { index, text: transcript, timer }
+        return
+      }
+      clearTentative()
       if (action.type === 'ignore') {
         if (isFinal && !armed) setPhase('listening')
         return
@@ -190,15 +237,18 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
       setPhase(action.type === 'interim' || action.type === 'armed' ? 'hearing' : 'listening')
       emit(action)
     },
-    [refine],
+    [clearTentative, refine],
   )
 
   const startRecognition = useCallback(() => {
     if (recognitionRef.current) return
     const recognition = createRecognition({ continuous: true })
     if (!recognition) return
+    // nowa sesja przeglądarki numeruje wyniki od zera
     utteranceStartRef.current = new Map()
     speechStartRef.current = null
+    decidedIndexRef.current = -1
+    clearTentative()
     recognition.onspeechstart = () => {
       speechStartRef.current = recorderRef.current?.now() ?? null
     }
@@ -212,23 +262,29 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
         starts.set(entry.index, speechStartRef.current ?? recorderRef.current?.now() ?? 0)
         speechStartRef.current = null
       }
-      for (const entry of entries) if (entry.isFinal) handle(entry.transcript, true, starts.get(entry.index) ?? null)
-      const interim = entries
-        .filter((entry) => !entry.isFinal)
-        .map((entry) => entry.transcript)
-        .join(' ')
-      if (interim) handle(interim, false, null)
+      for (const entry of entries) if (entry.isFinal) handle(entry.transcript, true, starts.get(entry.index) ?? null, entry.index)
+      const interim = entries.filter((entry) => !entry.isFinal)
+      if (interim.length) {
+        handle(
+          interim.map((entry) => entry.transcript).join(' '),
+          false,
+          null,
+          interim[0].index,
+        )
+      }
     }
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        fail('Brak dostępu do mikrofonu — zezwól na mikrofon dla tej strony, aby używać nasłuchu.')
+        fail(
+          'Brak dostępu do mikrofonu. Zezwól na mikrofon dla tej strony (ikona przy pasku adresu), a potem kliknij „Spróbuj ponownie”.',
+        )
       } else if (event.error === 'audio-capture') {
-        fail('Nie wykryto mikrofonu — podłącz go i włącz nasłuch ponownie.')
+        fail('Nie wykryto mikrofonu. Podłącz go i kliknij „Spróbuj ponownie”.')
       } else if (event.error === 'network') {
         networkErrorsRef.current += 1
         blockedUntilRef.current = Date.now() + 2000
         if (networkErrorsRef.current >= MAX_NETWORK_ERRORS) {
-          fail('Rozpoznawanie mowy jest niedostępne (brak połączenia z usługą). Użyj pola tekstowego.')
+          fail('Rozpoznawanie mowy jest niedostępne (brak połączenia z usługą). Użyj pola tekstowego albo kliknij „Spróbuj ponownie”.')
         }
       }
       // no-speech / aborted → nadzorca wznowi nasłuch
@@ -243,12 +299,22 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
     } catch {
       blockedUntilRef.current = Date.now() + 1000
     }
-  }, [fail, handle])
+  }, [clearTentative, fail, handle])
 
-  // Nadzorca: wznawia nasłuch po końcu sesji, wstrzymuje go, gdy mówi syntezator.
-  // Nagrywanie PCM działa przez cały czas nasłuchu (TTS nie przeszkadza — wycinamy tylko frazy).
+  /** Start w obsłudze kliknięcia — część przeglądarek wymaga gestu (mikrofon, AudioContext). */
+  const startNow = useCallback(() => {
+    networkErrorsRef.current = 0
+    blockedUntilRef.current = 0
+    void recorder()
+      .start()
+      .catch(() => {})
+    if (!ttsSpeaking()) startRecognition()
+  }, [recorder, startRecognition])
+
+  // Nadzorca: start po wejściu (przeglądarka zapyta o mikrofon), wznawianie po końcu sesji,
+  // pauza, gdy mówi syntezator. Nagrywanie PCM działa przez cały nasłuch.
   useEffect(() => {
-    if (!on || !enabled || !supported) {
+    if (!active) {
       stopAll()
       return
     }
@@ -258,6 +324,7 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
         /* bez nagrania komendą zostaje tekst przeglądarki */
       })
     const tick = () => {
+      setAudioSuspended(recorderRef.current?.suspended ?? false)
       if (ttsSpeaking()) {
         if (recognitionRef.current) stopRecognition()
         setPhase('paused')
@@ -276,45 +343,37 @@ export function useWakeListener({ enabled, prefix, proposalPending, onEvent }: O
       clearTimeout(first)
       stopAll()
     }
-  }, [on, enabled, supported, recorder, startRecognition, stopAll, stopRecognition])
+  }, [active, recorder, startRecognition, stopAll, stopRecognition])
 
-  // Wznowienie po odświeżeniu strony — tylko gdy użytkownik wcześniej włączył nasłuch
-  // i przeglądarka ma już zgodę na mikrofon (bez zgody czekamy na kliknięcie).
-  useEffect(() => {
-    if (!enabled || !supported || !readStored()) return
-    let alive = true
-    void microphoneGranted().then((granted) => {
-      if (alive && granted) setOn(true)
-    })
-    return () => {
-      alive = false
-    }
-  }, [enabled, supported])
-
-  const toggle = useCallback(() => {
-    setError('')
-    armedUntilRef.current = 0
-    networkErrorsRef.current = 0
-    blockedUntilRef.current = 0
-    if (on) {
-      stopAll()
-      setOn(false)
-      setPhase('off')
-      writeStored(false)
-      return
-    }
-    setOn(true)
+  const turnOff = useCallback(() => {
+    stopAll()
     setPhase('starting')
-    writeStored(true)
-    // start w obsłudze kliknięcia — część przeglądarek wymaga gestu (mikrofon, AudioContext)
-    if (enabled && supported) {
-      void recorder()
-        .start()
-        .catch(() => {})
-      if (!ttsSpeaking()) startRecognition()
-    }
-  }, [enabled, on, recorder, startRecognition, stopAll, supported])
+    writeOff(true)
+  }, [stopAll])
 
-  const active = on && enabled && supported
-  return { supported, on: active, phase: active ? phase : 'off', error, toggle }
+  const turnOn = useCallback(() => {
+    setError('')
+    setPhase('starting')
+    writeOff(false)
+    if (enabled && supported) startNow()
+  }, [enabled, startNow, supported])
+
+  /** Po błędzie (np. brak zgody na mikrofon) — ponowna próba z kliknięcia. */
+  const retry = useCallback(() => {
+    setError('')
+    setPhase('starting')
+    if (enabled && supported) startNow()
+  }, [enabled, startNow, supported])
+
+  return {
+    supported,
+    on: active,
+    userOff,
+    phase: active ? phase : 'off',
+    error,
+    audioSuspended: active && audioSuspended,
+    turnOff,
+    turnOn,
+    retry,
+  }
 }

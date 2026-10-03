@@ -142,6 +142,8 @@ class PcmCapture extends AudioWorkletProcessor {
 registerProcessor('${WORKLET_NAME}', PcmCapture)
 `
 
+const UNLOCK_EVENTS = ['pointerdown', 'keydown', 'touchstart'] as const
+
 type AudioContextConstructor = new () => AudioContext
 
 function audioContextConstructor(): AudioContextConstructor | null {
@@ -175,6 +177,11 @@ export class PcmRecorder {
 
   get isRunning(): boolean {
     return this.context !== null
+  }
+
+  /** Nagrywanie czeka na gest użytkownika (AudioContext wstrzymany) — bufor się nie zapełnia. */
+  get suspended(): boolean {
+    return this.context?.state === 'suspended'
   }
 
   /** Startuje nagrywanie (własny strumień z mikrofonu, gdy nie podano). Ponowne wywołanie nic nie robi. */
@@ -234,7 +241,7 @@ export class PcmRecorder {
       release(context)
       throw error
     }
-    await this.resume()
+    this.resume()
   }
 
   private async captureNode(context: AudioContext): Promise<AudioNode> {
@@ -267,25 +274,27 @@ export class PcmRecorder {
     return processor
   }
 
-  /** AudioContext bywa wstrzymany do pierwszego gestu użytkownika — wtedy wznawiamy przy kliknięciu. */
-  private async resume() {
+  /**
+   * Chrome trzyma AudioContext wstrzymany do pierwszego gestu użytkownika (autoplay). Próbujemy
+   * wznowić od razu, a jeśli się nie da — przy pierwszym kliknięciu/klawiszu/dotyku na stronie.
+   * Nie czekamy na `resume()`: bez gestu jego obietnica potrafi wisieć.
+   */
+  private resume() {
     const context = this.context
-    if (!context || context.state !== 'suspended') return
-    await context.resume().catch(() => {})
-    if (context.state !== 'suspended' || typeof window === 'undefined' || this.context !== context) return
+    if (!context || context.state !== 'suspended' || typeof window === 'undefined') return
+    void context.resume().catch(() => {})
+    if (this.unlock) return
     const unlock = () => {
-      void context.resume().catch(() => {})
+      if (this.context === context) void context.resume().catch(() => {})
       this.removeUnlock()
     }
     this.unlock = unlock
-    window.addEventListener('pointerdown', unlock)
-    window.addEventListener('keydown', unlock)
+    for (const type of UNLOCK_EVENTS) window.addEventListener(type, unlock, { capture: true })
   }
 
   private removeUnlock() {
     if (!this.unlock || typeof window === 'undefined') return
-    window.removeEventListener('pointerdown', this.unlock)
-    window.removeEventListener('keydown', this.unlock)
+    for (const type of UNLOCK_EVENTS) window.removeEventListener(type, this.unlock, { capture: true })
     this.unlock = null
   }
 
