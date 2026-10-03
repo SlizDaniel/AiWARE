@@ -3,15 +3,15 @@ import CommandPanel from './components/CommandPanel'
 import HistoryList from './components/HistoryList'
 import InventoryImport from './components/InventoryImport'
 import Placeholder from './components/Placeholder'
+import ProcedureList from './components/ProcedureList'
 import ReorderQueue from './components/ReorderQueue'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
 import WarehouseMap from './components/WarehouseMap'
-import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type ReorderDraft, type Zone } from './api'
+import { connectWs, fetchHistory, fetchProcedures, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type Procedure, type ReorderDraft, type Zone } from './api'
 import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
-  procedury: '„Jak pakujemy szkło?” — pamięć proceduralna — karta 08.',
   ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
 }
 
@@ -40,6 +40,10 @@ export default function App() {
   const [drafts, setDrafts] = useState<ReorderDraft[]>([])
   const [queueState, setQueueState] = useState<LoadState>('loading')
   const [queueError, setQueueError] = useState('')
+  const [procedures, setProcedures] = useState<Procedure[]>([])
+  const [proceduresState, setProceduresState] = useState<LoadState>('loading')
+  const [proceduresError, setProceduresError] = useState('')
+  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null)
   const [connected, setConnected] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -88,12 +92,24 @@ export default function App() {
     }
   }, [])
 
+  const refreshProcedures = useCallback(async () => {
+    try {
+      setProcedures(await fetchProcedures())
+      setProceduresState('ready')
+      setProceduresError('')
+    } catch (error) {
+      setProceduresState('error')
+      setProceduresError(error instanceof Error ? error.message : 'Nie udało się pobrać procedur.')
+    }
+  }, [])
+
   const refresh = useCallback(() => {
     void refreshStock()
     void refreshZones()
     void refreshHistory()
     void refreshQueue()
-  }, [refreshHistory, refreshQueue, refreshStock, refreshZones])
+    void refreshProcedures()
+  }, [refreshHistory, refreshProcedures, refreshQueue, refreshStock, refreshZones])
 
   useEffect(() => {
     refresh()
@@ -120,6 +136,11 @@ export default function App() {
     refresh()
   }
 
+  const showZone = (id: number) => {
+    setSelectedZoneId(id)
+    setSection('mapa')
+  }
+
   const heading = SECTION_TITLES[section]
 
   return (
@@ -143,7 +164,7 @@ export default function App() {
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
           {section === 'stany' && <InventoryImport onImported={refresh} />}
-          <CommandPanel onApplied={onApplied} />
+          <CommandPanel onApplied={onApplied} zones={zones} items={items} onShowZone={showZone} />
 
           {section === 'mapa' && (
             <WarehouseMap
@@ -153,6 +174,8 @@ export default function App() {
               error={zonesError}
               onRetry={() => void refreshZones()}
               itemsState={stockState}
+              selectedId={selectedZoneId}
+              onSelectZone={setSelectedZoneId}
               onRetryItems={() => void refreshStock()}
               onZoneAdded={(name, created) => {
                 showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
@@ -182,7 +205,11 @@ export default function App() {
             </section>
           )}
 
-          {section !== 'mapa' && section !== 'stany' && section !== 'historia' && section !== 'kolejka' && (
+          {section === 'procedury' && (
+            <ProcedureList procedures={procedures} state={proceduresState} error={proceduresError} onRetry={() => void refreshProcedures()} zones={zones} items={items} onShowZone={showZone} />
+          )}
+
+          {section === 'ustawienia' && (
             <Placeholder label={SECTIONS.find((s) => s.id === section)?.label ?? section} note={PLACEHOLDER_NOTES[section]} />
           )}
         </div>

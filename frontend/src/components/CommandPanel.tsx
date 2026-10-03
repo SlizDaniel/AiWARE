@@ -6,23 +6,30 @@ import {
   transcribeAudio,
   updateAgentMode,
   type AgentMode,
+  type Item,
+  type Procedure,
   type Proposal,
   type ReorderDraft,
+  type Zone,
 } from '../api'
+import ProcedureLocation from './ProcedureLocation'
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
+  zones: Zone[]
+  items: Item[]
+  onShowZone: (id: number) => void
 }
 
 type State =
   | { kind: 'proposal'; proposal: Proposal }
-  | { kind: 'answer'; tool: string; text: string }
+  | { kind: 'answer'; tool: string; text: string; procedure: Pick<Procedure, 'topic' | 'text'> | null }
   | { kind: 'clarify'; message: string }
   | { kind: 'unknown'; text: string; hints?: string[] }
   | { kind: 'error'; message: string }
   | null
 
-export default function CommandPanel({ onApplied }: Props) {
+export default function CommandPanel({ onApplied, zones, items, onShowZone }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
@@ -77,7 +84,12 @@ export default function CommandPanel({ onApplied }: Props) {
       const res = await sendCommand(t)
       setResponseWarning(res.warning ?? null)
       if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
-      else if (res.type === 'answer') setState({ kind: 'answer', tool: res.tool, text: res.text })
+      else if (res.type === 'answer') {
+        const first = res.tool === 'recall_procedure' && Array.isArray(res.data.procedures) ? res.data.procedures[0] : null
+        const procedure = first && typeof first.topic === 'string' && typeof first.text === 'string'
+          ? { topic: first.topic, text: first.text } : null
+        setState({ kind: 'answer', tool: res.tool, text: res.text, procedure })
+      }
       else if (res.type === 'clarify') setState({ kind: 'clarify', message: res.message })
       else setState({ kind: 'unknown', text: res.text, hints: res.hints })
     } catch (error) {
@@ -265,7 +277,8 @@ export default function CommandPanel({ onApplied }: Props) {
             <div className="font-semibold text-[#315b37]">Odpowiedź</div>
             <span className="border border-[#e8e5de] bg-white px-3 py-1 font-mono text-xs text-[#777b74]">{state.tool}</span>
           </div>
-          <p className="mt-2 text-base text-[#454b46]">{state.text}</p>
+          <p className="mt-2 whitespace-pre-wrap text-base text-[#454b46]">{state.text}</p>
+          {state.procedure && <ProcedureLocation procedure={state.procedure} zones={zones} items={items} onShowZone={onShowZone} />}
         </div>
       )}
       {state?.kind === 'clarify' && (
@@ -371,5 +384,12 @@ function StockChange({ proposal }: { proposal: Proposal }) {
 }
 
 function GenericChange({ proposal }: { proposal: Proposal }) {
-  return <p className="mt-3 text-2xl font-bold text-[#315b37]">{proposal.summary}</p>
+  return (
+    <>
+      <p className="mt-3 text-2xl font-bold text-[#315b37]">{proposal.summary}</p>
+      {proposal.tool === 'remember_procedure' && typeof proposal.args?.text === 'string' && (
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#454b46]">{proposal.args.text}</p>
+      )}
+    </>
+  )
 }

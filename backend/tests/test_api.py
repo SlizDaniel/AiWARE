@@ -187,6 +187,7 @@ def test_suggested_remember_command_round_trip(client):
     ).json()
     assert p["type"] == "proposal"
     assert p["proposal"]["tool"] == "remember_procedure"
+    assert client.get("/api/procedures").json()["procedures"] == []
 
     # niezatwierdzona procedura nie istnieje w bazie
     still = client.post("/api/command", json={"text": "jak pakujemy szkło?"}).json()
@@ -198,8 +199,36 @@ def test_suggested_remember_command_round_trip(client):
     answer = client.post("/api/command", json={"text": "jak pakujemy szkło?"}).json()
     assert answer["type"] == "answer"
     assert "kartony Y" in answer["text"]
+    procedures = client.get("/api/procedures").json()["procedures"]
+    assert len(procedures) == 1
+    assert procedures[0]["topic"] == "szkło"
+    assert procedures[0]["text"] == "szkło pakujemy w kartony Y, strefa C2"
+    assert procedures[0]["created"]
     entries = client.get("/api/history").json()["entries"]
     assert entries[0]["event_type"] == "procedure_saved"
+
+
+def test_procedure_update_requires_confirmation_and_recall_searches_content(client):
+    def propose(text):
+        response = client.post("/api/command", json={"text": f"zapamiętaj: {text}"})
+        assert response.status_code == 200
+        return response.json()["proposal"]
+
+    original = propose("szkło pakujemy w kartony Y, strefa C2")
+    assert client.post(f"/api/proposals/{original['id']}/confirm").status_code == 200
+    before = client.get("/api/procedures").json()["procedures"]
+
+    replacement = propose("szkło pakujemy z przekładkami, strefa B-2")
+    assert client.get("/api/procedures").json()["procedures"] == before
+    assert client.post(f"/api/proposals/{replacement['id']}/confirm").status_code == 200
+    after = client.get("/api/procedures").json()["procedures"]
+    assert len(after) == 1
+    assert after[0]["id"] == before[0]["id"]
+    assert after[0]["text"] == "szkło pakujemy z przekładkami, strefa B-2"
+
+    answer = client.post("/api/command", json={"text": "jak pakujemy przekładkami?"}).json()
+    assert answer["type"] == "answer"
+    assert answer["data"]["procedures"][0]["text"] == after[0]["text"]
 
 
 def test_draft_order_proposal_confirms_into_queue(client):

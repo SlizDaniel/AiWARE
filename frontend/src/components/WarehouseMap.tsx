@@ -13,14 +13,15 @@ type Props = {
   itemsState: LoadState
   onRetryItems: () => void
   onZoneAdded: (name: string, created: boolean) => void
+  selectedId: number | null
+  onSelectZone: (id: number | null) => void
 }
 
 function shortLabel(value: string): string {
   return value.length > 25 ? `${value.slice(0, 24)}…` : value
 }
 
-export default function WarehouseMap({ zones, items, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+export default function WarehouseMap({ zones, items, state, error, onRetry, itemsState, onRetryItems, onZoneAdded, selectedId, onSelectZone: setSelectedId }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)

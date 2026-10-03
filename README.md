@@ -176,10 +176,17 @@ Test `backend/tests/test_demo.py` sprawdza HTTP: import, strefy, stan, audyt,
 reorder, lokalizację, procedurę, restart i bezpieczny reset. Blokuje HTTP do sieci
 i połączenia socket poza loopback (loopback jest potrzebny pętli asyncio na Windows).
 Pełny wizualny scenariusz z mapą, jej podświetleniem i undo wymaga jeszcze
-integracji kart 06/07/10; tryb demo nie zastępuje tych funkcji.
+próby GUI i domknięcia undo z karty 06; tryb demo nie zastępuje tych funkcji.
 
 ## Sekcje UI
 
-Działają: **Stany**, **Historia**, **Kolejka zatwierdzeń**, **Mapa stref** (+ panel komend z kartą zmiany:
-zapis, odpowiedź, doprecyzowanie). Placeholdery: Procedury (karta 10),
-Ustawienia (karta 12). Undo w historii — karta 06. STT (głos) — karta 04.
+Dostępne: **Stany**, **Historia**, **Kolejka zatwierdzeń**, **Mapa stref**, **Procedury** (+ panel komend z kartą zmiany:
+zapis, odpowiedź, doprecyzowanie). Placeholder: Ustawienia (karta 12). Undo w historii — karta 06. STT (głos) — karta 04.
+
+Sekcja **Procedury** pokazuje zapisaną wiedzę i wyszukuje fragmenty tematu lub treści
+bez rozróżniania wielkości liter. Komenda `zapamiętaj: szkło pakujemy w kartony Y, strefa C2`
+pokazuje treść na karcie przed zatwierdzeniem. Następnie `jak pakujemy szkło?` zwraca
+procedurę z przyciskiem **Pokaż na mapie**, jeśli powiązana strefa istnieje i jest jednoznaczna.
+Przycisk otwiera Mapę i zaznacza strefę. Do tego przykładu najpierw dodaj `strefa: C2`
+i zatwierdź kartę. Nieznana lokalizacja nie podświetla innej strefy. Brak procedury
+wywołuje prośbę o jej zapamiętanie. Próba GUI karty 10 pozostaje do wykonania.

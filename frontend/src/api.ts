@@ -15,6 +15,13 @@ export type Zone = {
   created: string
 }
 
+export type Procedure = {
+  id: number
+  topic: string
+  text: string
+  created: string
+}
+
 export type HistoryEntry = {
   id: number
   ts: string
@@ -95,6 +102,10 @@ export function fetchStock(): Promise<Item[]> {
 
 export function fetchZones(): Promise<Zone[]> {
   return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
+}
+
+export function fetchProcedures(): Promise<Procedure[]> {
+  return fetch('/api/procedures').then((r) => json<{ procedures: Procedure[] }>(r)).then((d) => d.procedures)
 }
 
 export function fetchHistory(): Promise<HistoryEntry[]> {
