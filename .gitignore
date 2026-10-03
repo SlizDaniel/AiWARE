@@ -1,19 +1,26 @@
-# Python
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
+# Lokalne bazy (PGlite) i legacy SQLite
+data/
+*.db
+*.sqlite3
+
+# Środowisko (sekrety)
+.env
+.env*.local
+
+# Python (legacy/backend)
 __pycache__/
 *.pyc
 venv/
 .venv/
-
-# Node
-node_modules/
-dist/
-
-# Baza danych
-*.db
-*.sqlite3
-
-# Środowisko
-.env
 
 # System / edytory
 .DS_Store

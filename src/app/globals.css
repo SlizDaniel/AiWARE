@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+/* Stary frontend (Vite) nie jest częścią aplikacji — nie skanujemy go po klasy. */
+@source not '../../legacy';
+
+:root {
+  font-family:
+    'Aptos',
+    'Segoe UI Variable',
+    'Helvetica Neue',
+    sans-serif;
+  color: #292d2b;
+  background: #f5f4f0;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  @apply m-0 min-h-screen antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  color: #292d2b;
+  background: #dce9dc;
+}

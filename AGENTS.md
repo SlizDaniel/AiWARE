@@ -15,3 +15,12 @@ Import Excela → mapowanie kolumn (LLM) → zatwierdzenie → stany na stronie 
 - Brakująca zależność = mock (MockAgent, tekstowy fallback STT, seed SQLite, `demo-magazyn.xlsx`).
 - Milestones: **16:00 tracer bullet** (głos→narzędzie→baza→audyt na ekranie), 19:00 mapa+stany, 22:00 import Excela+reorder, **24:00 feature freeze**, 07:00 próba generalna, 09:00 prezentacja PDF, **10:30 submit** (deadline 11:00).
 - Ujawnienie użycia AI (LLM + STT) w zgłoszeniu — wymóg regulaminu.
+
+## Stack po migracji (2026-10-03) — obowiązuje zamiast PRD „Stack & constraints”
+- **Next.js 16 App Router + TypeScript** w katalogu głównym, wdrożenie na **Vercel** (zamiast docker compose).
+- Backend = route handlery `src/app/api/*` + logika w `src/server/*` (port 1:1 z `legacy/backend`).
+- Baza = **Supabase Postgres** (`DATABASE_URL`, postgres.js) albo lokalnie/w testach **PGlite** — wspólny interfejs `Db` w `src/server/sql.ts`.
+- Auth = **Supabase Auth**, role `pracownik` / `kierownik` sprawdzane w route handlerach (`src/server/auth.ts`, `session()`); RLS włączone bez polityk.
+- LLM + STT = **Google Gemini** (`GEMINI_API_KEY`); parser offline zostaje jako fallback.
+- WebSocket zastąpiony pollingiem `GET /api/version` (licznik `data_version` podbijany po każdym zapisie).
+- Testy: `npm test` (vitest). GUI-check: `npm run dev` → http://localhost:3000.
