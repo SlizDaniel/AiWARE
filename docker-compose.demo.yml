@@ -5,6 +5,7 @@ services:
       DEMO_MODE: "1"
       DEMO_DB: /data/magazyn-demo.db
       LLM_API_KEY: ""
+      STT_API_KEY: ""
     volumes:
       - demo-data:/data
   frontend:
