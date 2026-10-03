@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   geminiAudioMimeType,
   isLikelyHallucination,
+  isVocabularyEcho,
   STT_TIMEOUT_MS,
   sttVocabulary,
   STTUnavailable,
@@ -61,7 +62,39 @@ afterEach(() => {
 describe('transcribe — Gemini audio understanding (default)', () => {
   beforeEach(() => vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY))
 
-  it('sends inline base64 audio with a Polish verbatim prompt and returns the text', async () => {
+  it('uses the dedicated transcribe model with Polish and the custom vocabulary', async () => {
+    const fetchMock = stubFetch(() =>
+      jsonResponse({ candidates: [{ content: { parts: [{ audioTranscription: { text: ' Magu, wzięliśmy paletę kartonów. ' } }] }, finishReason: 'STOP' }] }),
+    )
+    await expect(transcribe(AUDIO, 'audio/wav', { vocabulary: ['Magu', 'Kartony'] })).resolves.toBe('Magu, wzięliśmy paletę kartonów.')
+    const [url, init] = fetchMock.mock.calls[0] as FetchArgs
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent')
+    const body = JSON.parse(String(init.body))
+    expect(body.contents[0].parts).toHaveLength(1)
+    expect(body.generationConfig).toEqual({ audioTranscriptionConfig: { languageCodes: ['pl-PL'], customVocabulary: ['Magu', 'Kartony'] } })
+  })
+
+  it('falls back to the command model when the transcribe model is over quota', async () => {
+    const fetchMock = stubFetch((url) =>
+      url.includes('gemini-3.5-transcribe') ? jsonResponse({ error: { status: 'RESOURCE_EXHAUSTED' } }, 429) : jsonResponse(geminiText('gdzie leży szkło')),
+    )
+    await expect(transcribe(AUDIO, 'audio/wav')).resolves.toBe('gdzie leży szkło')
+    expect(fetchMock.mock.calls.map(([url]) => String(url).split('/models/')[1])).toEqual([
+      'gemini-3.5-transcribe:generateContent',
+      'gemini-3.5-flash-lite:generateContent',
+    ])
+  })
+
+  it('treats a general model echoing the vocabulary as no speech', async () => {
+    vi.stubEnv('GEMINI_STT_MODEL', 'gemini-3.5-flash-lite')
+    stubFetch(() => jsonResponse(geminiText('Magu, Kartony, Szkło hartowane, Folia stretch, C2')))
+    const vocabulary = ['Magu', 'Kartony', 'Szkło hartowane', 'Folia stretch', 'C2']
+    expect((await failure(transcribe(AUDIO, 'audio/wav', { vocabulary }))).message).toContain('nie zwróciło tekstu')
+    expect(isVocabularyEcho('Magu, wzięliśmy paletę kartonów', vocabulary)).toBe(false)
+  })
+
+  it('sends inline base64 audio with a Polish verbatim prompt to a general model', async () => {
+    vi.stubEnv('GEMINI_STT_MODEL', 'gemini-3.5-flash-lite')
     const fetchMock = stubFetch(() => jsonResponse(geminiText('  wzięliśmy paletę kartonów \n')))
     await expect(transcribe(AUDIO, 'audio/webm;codecs=opus')).resolves.toBe('wzięliśmy paletę kartonów')
 
@@ -175,7 +208,7 @@ describe('transcribe — Gemini audio understanding (default)', () => {
     let calls = 0
     stubFetch(() => {
       calls += 1
-      if (calls === 1) throw new TypeError('fetch failed')
+      if (calls <= 2) throw new TypeError('fetch failed') // transcribe model, then the fallback
       return jsonResponse(geminiText('wzięliśmy paletę kartonów'))
     })
     expect((await failure(transcribe(AUDIO, 'audio/webm'))).message).toContain('STT')
@@ -300,10 +333,11 @@ describe('transcribe — warehouse vocabulary and robustness', () => {
   it('adds the vocabulary to the Gemini transcription prompt', async () => {
     vi.stubEnv('STT_API_KEY', '')
     vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY)
+    vi.stubEnv('GEMINI_STT_MODEL', 'gemini-3.5-flash-lite')
     const fetchMock = stubFetch(() => jsonResponse(geminiText('ile mamy kartonów')))
     await transcribe(AUDIO, 'audio/wav', { vocabulary })
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body))
-    expect(body.contents[0].parts[1].text).toContain('Słownictwo')
+    expect(body.contents[0].parts[1].text).toContain('Nigdy nie wypisuj tej listy')
     expect(body.contents[0].parts[1].text).toContain('Folia stretch')
   })
 

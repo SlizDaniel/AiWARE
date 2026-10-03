@@ -7,7 +7,7 @@ import { session } from '@/server/session'
 import { getAppSettings, TEXT_ONLY_STT_DETAIL } from '@/server/settings'
 import { STTUnavailable, sttVocabulary, transcribe } from '@/server/stt'
 
-export const maxDuration = 30
+export const maxDuration = 45
 
 /**
  * Card 04: audio (MediaRecorder) → transcription. A failure or missing

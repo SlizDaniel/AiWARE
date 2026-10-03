@@ -8,7 +8,7 @@
 // Fallback from the first hour (PRD): missing key, no network, timeout/limit
 // → STTUnavailable; the route turns it into an explicit 503 and the UI stays
 // on the text field. No external dependency may be the only way through the demo.
-import { geminiApiKey, geminiSttModel } from './env'
+import { geminiApiKey, geminiModel, geminiSttModel } from './env'
 import {
   candidateParts,
   generateContent,
@@ -23,6 +23,8 @@ import { LLMProviderError } from './types'
 export const WHISPER_DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1'
 export const WHISPER_DEFAULT_MODEL = 'whisper-large-v3'
 export const STT_TIMEOUT_MS = 15_000
+/** Each Gemini model attempt; two attempts still fit the route's time limit. */
+const GEMINI_STT_ATTEMPT_MS = 12_000
 /** Whisper failures faster than this are retried with Gemini. */
 const FALLBACK_WINDOW_MS = 5_000
 const HINT = 'wpisz komendę w polu tekstowym'
@@ -163,48 +165,89 @@ async function transcribeWithGemini(data: Uint8Array, mimeType: string, vocabula
   if (data.byteLength === 0) throw fail('Puste nagranie')
   if (data.byteLength > MAX_INLINE_AUDIO_BYTES) throw fail('Nagranie jest za duże dla API STT Gemini')
 
-  const model = geminiSttModel()
   const audio = { inlineData: { mimeType: audioType, data: Buffer.from(data).toString('base64') } }
-  // Dedicated speech models (gemini-*-transcribe) take a transcription config instead of a prompt.
-  const body = /transcribe/i.test(model)
-    ? {
-        contents: [{ role: 'user', parts: [audio] }],
-        generationConfig: { audioTranscriptionConfig: { languageCodes: ['pl-PL'] } },
-      }
-    : {
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              audio,
-              {
-                text: vocabulary.length
-                  ? `${TRANSCRIPTION_PROMPT} Słownictwo, które może paść (zapisuj je dokładnie tak): ${vocabulary.join(', ')}.`
-                  : TRANSCRIPTION_PROMPT,
-              },
-            ],
-          },
-        ],
-        generationConfig: generationDefaults(model),
-      }
-
-  let response: Record<string, unknown>
-  try {
-    response = await generateContent({ apiKey, model, timeoutMs: STT_TIMEOUT_MS, body })
-  } catch (error) {
-    throw geminiFailure(error)
+  // Dedicated speech model first; the command model takes over when it is busy,
+  // over quota or unavailable for this key (the free tier has a small speech quota).
+  const primary = geminiSttModel()
+  const models = primary === geminiModel() ? [primary] : [primary, geminiModel()]
+  for (const [index, model] of models.entries()) {
+    const last = index === models.length - 1
+    let response: Record<string, unknown>
+    try {
+      response = await generateContent({ apiKey, model, timeoutMs: GEMINI_STT_ATTEMPT_MS, body: transcriptionBody(model, audio, vocabulary) })
+    } catch (error) {
+      if (!last && isCapacityError(error)) continue
+      throw geminiFailure(error, model)
+    }
+    let text: string
+    try {
+      text = transcriptText(candidateParts(response))
+    } catch {
+      throw fail('API STT Gemini zwróciło nieprawidłowy format transkrypcji')
+    }
+    if (!text || isLikelyHallucination(text) || isVocabularyEcho(text, vocabulary)) {
+      throw fail('API STT Gemini nie zwróciło tekstu (brak mowy w nagraniu?)')
+    }
+    return text
   }
-  let text: string
-  try {
-    text = visibleText(candidateParts(response)).trim()
-  } catch {
-    throw fail('API STT Gemini zwróciło nieprawidłowy format transkrypcji')
-  }
-  if (!text || isLikelyHallucination(text)) throw fail('API STT Gemini nie zwróciło tekstu (brak mowy w nagraniu?)')
-  return text
+  throw fail('API STT Gemini nieosiągalne')
 }
 
-function geminiFailure(error: unknown): STTUnavailable {
+function transcriptionBody(model: string, audio: Record<string, unknown>, vocabulary: string[]): Record<string, unknown> {
+  // gemini-*-transcribe: verbatim speech recognition with native custom vocabulary.
+  if (/transcribe/i.test(model)) {
+    return {
+      contents: [{ role: 'user', parts: [audio] }],
+      generationConfig: {
+        audioTranscriptionConfig: {
+          languageCodes: ['pl-PL'],
+          ...(vocabulary.length ? { customVocabulary: vocabulary.slice(0, 1000) } : {}),
+        },
+      },
+    }
+  }
+  const hint = vocabulary.length
+    ? ` Pomocniczo: nazwy, które mogą paść w nagraniu — ${vocabulary.join(', ')}. ` +
+      'Użyj ich pisowni tylko wtedy, gdy rzeczywiście je słychać. Nigdy nie wypisuj tej listy.'
+    : ''
+  return {
+    contents: [{ role: 'user', parts: [audio, { text: TRANSCRIPTION_PROMPT + hint }] }],
+    generationConfig: generationDefaults(model),
+  }
+}
+
+/** Dedicated transcribe models answer with `audioTranscription.text` parts. */
+function transcriptText(parts: Record<string, unknown>[]): string {
+  const transcribed = parts
+    .map((part) => (isPlainObject(part.audioTranscription) && typeof part.audioTranscription.text === 'string' ? part.audioTranscription.text : ''))
+    .join(' ')
+    .trim()
+  return transcribed || visibleText(parts).trim()
+}
+
+function isCapacityError(error: unknown): boolean {
+  if (!(error instanceof GeminiRequestError)) return false
+  if (error.kind === 'network') return true
+  return error.kind === 'http' && [404, 429, 500, 502, 503, 504].includes(error.status ?? 0)
+}
+
+function foldWord(text: string): string {
+  return text.toLocaleLowerCase('pl').normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N} ]+/gu, '').trim()
+}
+
+/**
+ * A general model given a word list may "transcribe" noise as that list
+ * („Magu, Kartony, Szkło hartowane, …”). Mostly-vocabulary output is no speech.
+ */
+export function isVocabularyEcho(text: string, vocabulary: string[]): boolean {
+  if (vocabulary.length < 3) return false
+  const known = new Set(vocabulary.map(foldWord))
+  const chunks = text.split(/[,;.]\s*/).map(foldWord).filter(Boolean)
+  const echoed = chunks.filter((chunk) => known.has(chunk)).length
+  return echoed >= 3 && echoed / chunks.length >= 0.6
+}
+
+function geminiFailure(error: unknown, model: string = geminiSttModel()): STTUnavailable {
   if (error instanceof GeminiRequestError) {
     switch (error.kind) {
       case 'timeout':
@@ -221,7 +264,7 @@ function geminiFailure(error: unknown): STTUnavailable {
         }
         if (status === 429) return fail('Limit API STT Gemini wyczerpany (429)')
         if (status === 404) {
-          return fail(`Model Gemini „${geminiSttModel()}” nie istnieje (404) — sprawdź GEMINI_MODEL / GEMINI_STT_MODEL`)
+          return fail(`Model Gemini „${model}” nie istnieje (404) — sprawdź GEMINI_MODEL / GEMINI_STT_MODEL`)
         }
         return fail(`API STT Gemini zwróciło błąd (${status})`)
       }

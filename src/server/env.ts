@@ -32,9 +32,12 @@ export function geminiModel(): string {
   return env('GEMINI_MODEL') || 'gemini-3.5-flash-lite'
 }
 
-/** Model used for speech-to-text (audio understanding); defaults to the main model. */
+/**
+ * Speech-to-text model. The dedicated transcribe model is far more accurate on
+ * noisy Polish speech than general flash models, which may echo the vocabulary.
+ */
 export function geminiSttModel(): string {
-  return env('GEMINI_STT_MODEL') || geminiModel()
+  return env('GEMINI_STT_MODEL') || 'gemini-3.5-transcribe'
 }
 
 export function requestedModeFromEnv(): AgentMode {
