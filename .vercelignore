@@ -6,3 +6,6 @@ HackYeah 2026 - Rules for Participants/
 data/
 scripts/*.py
 mobile/
+backend/
+*.env
+.env*.local

@@ -1,4 +1,5 @@
 import type { AppSettings, CommandResponse, ConfirmResult, Health, HistoryEntry, ImportField, ImportPreview, Item, Me, Procedure, ReorderDraft, UndoResult, Zone } from './contracts'
+import { withTimeout } from './withTimeout'
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError' }
@@ -13,7 +14,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
   const base = baseUrl.replace(/\/+$/, '')
 
   async function request<T>(path: string, options: RequestInit = {}, decode?: (response: Response) => Promise<T>): Promise<T> {
-    const token = await getToken()
+    const token = await withTimeout(getToken(), 15_000,
+      'Nie udało się odświeżyć sesji w ciągu 15 sekund. Sprawdź połączenie z internetem i spróbuj ponownie.')
     if (!token) throw new ApiError(401, 'Sesja wygasła. Zaloguj się ponownie.')
     const headers = new Headers(options.headers)
     headers.set('Authorization', `Bearer ${token}`)
@@ -31,6 +33,7 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
       return payload as T
     } catch (error) {
       if (controller.signal.aborted) throw new Error('Serwer nie odpowiedział na czas. Sprawdź historię przed ponowieniem zapisu.')
+      if (error instanceof TypeError) throw new Error(`Nie można połączyć się z serwerem ${base}. Sprawdź, czy telefon i serwer są w tej samej sieci i czy backend działa.`)
       throw error
     } finally { clearTimeout(timer) }
   }

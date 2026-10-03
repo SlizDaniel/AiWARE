@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { AppState, Platform, Text, View } from 'react-native'
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio'
-import { File } from 'expo-file-system'
 import * as Speech from 'expo-speech'
 import { Button, Card, Field, Message, Title } from '../components/ui'
 import type { Api } from '../lib/client'
 import type { CommandResponse } from '../lib/contracts'
 import type { Warehouse } from '../hooks/useWarehouse'
+import { useWakeListener, type WakePhase } from '../hooks/useWakeListener'
+import { readRecording } from '../lib/recording'
+
+/** Jak na webie: przez tyle czasu od pokazania karty działa decyzja bez prefixu („tak”). */
+const VOICE_DECISION_MS = 60_000
 
 export function CommandScreen({ active, api, data, reload, onLocation }: {
   active: boolean; api: Api; data: Warehouse; reload: () => Promise<void>; onLocation: (name: string, location: string) => void
@@ -21,10 +25,14 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
   const activeRef = useRef(active)
   activeRef.current = active
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+  // isMeteringEnabled zasila odsiew ciszy w nasłuchu na prefix (recorder.getStatus().metering).
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true })
   const recording = useAudioRecorderState(recorder)
   const proposal = response?.type === 'proposal' ? response.proposal : null
+  const proposalShownAt = useRef(0)
+  const prefix = data.settings.prefix || 'Magu'
   const voiceEnabled = !data.health.demo_mode && data.settings.voice_mode !== 'text'
+  const wakeMode = voiceEnabled && data.settings.voice_mode === 'wake_word'
 
   useEffect(() => {
     mounted.current = true
@@ -65,12 +73,12 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
     finally { lock.current = false; if (mounted.current) setBusy(false) }
   }
 
-  async function send() {
-    if (recorder.isRecording) return
+  async function send(command = text) {
     await run(async () => {
-      const result = await api.command(text.trim())
+      const result = await api.command(command.trim())
       if (!mounted.current) return
       setResponse(result)
+      if (result.type === 'proposal') proposalShownAt.current = Date.now()
       if (result.type === 'answer') {
         say(result.text)
         const item = result.tool === 'get_location' ? result.data : result.data.item
@@ -97,23 +105,47 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
     })
   }
 
+  const wake = useWakeListener({
+    enabled: wakeMode,
+    prefix,
+    api,
+    recorder,
+    active,
+    cardStatus: () => {
+      const pending = response?.type === 'proposal'
+      return { pending, fresh: pending && Date.now() - proposalShownAt.current <= VOICE_DECISION_MS }
+    },
+    onEvent: event => {
+      if (event.type === 'armed') setText('')
+      else if (event.type === 'submit') {
+        setText(event.text)
+        if (!lock.current) void send(event.text)
+      } else if (event.type === 'confirm') {
+        if (!lock.current) void confirm()
+      } else if (response?.type === 'proposal') {
+        setResponse(null)
+        setMessage('Kartę odrzucono głosem.')
+      }
+    },
+    tts: data.settings.tts_enabled && !data.health.demo_mode,
+  })
+
+  const wakePhaseLabel: Record<WakePhase, string> = {
+    off: 'Nasłuch wyłączony',
+    starting: 'Włączam mikrofon…',
+    listening: `Słucham — powiedz „${prefix}, …”`,
+    armed: 'Słucham komendy…',
+    transcribing: 'Rozpoznaję wypowiedź…',
+    paused: 'Chwila przerwy — agent właśnie odpowiada',
+    error: 'Nasłuch zatrzymany',
+  }
+
   async function stopAndTranscribe() {
     if (timer.current) clearTimeout(timer.current)
     await run(async () => {
       await recorder.stop()
       await setAudioModeAsync({ allowsRecording: false })
-      if (!recorder.uri) throw new Error('Nie udało się zapisać nagrania. Wpisz komendę.')
-      let bytes: Uint8Array
-      let mime = 'audio/mp4'
-      let extension = 'm4a'
-      if (Platform.OS === 'web') {
-        const blob = await fetch(recorder.uri).then(r => r.blob())
-        bytes = new Uint8Array(await blob.arrayBuffer())
-        mime = blob.type.split(';')[0] || 'audio/webm'; extension = mime.includes('webm') ? 'webm' : 'm4a'
-      } else {
-        const file = new File(recorder.uri)
-        try { bytes = await file.bytes() } finally { if (file.exists) file.delete() }
-      }
+      const { bytes, mime, extension } = await readRecording(recorder.uri)
       const transcription = await api.transcribe(bytes, mime, extension)
       if (mounted.current) { setText(transcription); setMessage('Sprawdź transkrypcję i wyślij komendę.') }
     })
@@ -145,12 +177,26 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
     <Card><Text className="text-xs font-bold uppercase tracking-widest text-forest">ASYSTENT NA HALI</Text>
       <Title>Co robimy w magazynie?</Title>
       <Text className="leading-6 text-stone-600">Powiedz, co wziąłeś, zapytaj o lokalizację lub zapamiętaj procedurę. Zapis zawsze zatwierdzasz.</Text>
-      <Button title={recording.isRecording ? `Zakończ nagranie · ${Math.floor(recording.durationMillis / 1000)} s` : busy ? 'Przetwarzanie…' : '● Nagraj komendę'}
-        onPress={() => void (recorder.isRecording ? stopAndTranscribe() : startRecording())}
-        disabled={busy || !voiceEnabled || !!proposal} danger={recording.isRecording} />
-      {!voiceEnabled ? <Text className="text-sm text-stone-500">W tym trybie wpisz komendę poniżej.</Text> : null}
+      {wakeMode ? <View className="gap-1">
+        <View className="flex-row items-center gap-2">
+          <View className={`size-3 rounded-full ${wake.phase === 'listening' || wake.phase === 'starting' ? 'bg-forest' : wake.phase === 'armed' ? 'bg-amber-600' : wake.phase === 'error' ? 'bg-red-700' : 'bg-stone-400'}`} />
+          <Text className="flex-1 text-sm font-medium text-ink">{wakePhaseLabel[wake.phase]}</Text>
+        </View>
+        <Button title={wake.on ? 'Zatrzymaj nasłuch' : `Słuchaj na „${prefix}”`}
+          onPress={() => (wake.on ? wake.stop() : void wake.start())} danger={wake.on} disabled={busy && !wake.on} />
+        {wake.phase === 'error' ? <View className="gap-2">
+          <Message error>{wake.error}</Message>
+          <Button title="Wznów nasłuch" secondary onPress={() => void wake.start()} />
+        </View> : null}
+        <Text className="text-sm leading-5 text-stone-500">Mów bez klikania: „{prefix}, …” i komenda — wyśle się po zakończeniu wypowiedzi. Kartę zmiany zatwierdzisz „zatwierdź”/„tak”, odrzucisz „odrzuć”/„nie”.</Text>
+      </View> : <>
+        <Button title={recording.isRecording ? `Zakończ nagranie · ${Math.floor(recording.durationMillis / 1000)} s` : busy ? 'Przetwarzanie…' : '● Nagraj komendę'}
+          onPress={() => void (recorder.isRecording ? stopAndTranscribe() : startRecording())}
+          disabled={busy || !voiceEnabled || !!proposal} danger={recording.isRecording} />
+        {!voiceEnabled ? <Text className="text-sm text-stone-500">W tym trybie wpisz komendę poniżej.</Text> : null}
+      </>}
       <Field label="Komenda / transkrypcja" value={text} onChangeText={setText} multiline />
-      <Button title="Wyślij komendę" onPress={() => void send()} disabled={busy || recording.isRecording || !!proposal || !text.trim()} secondary />
+      <Button title="Wyślij komendę" onPress={() => void send()} disabled={busy || (!wakeMode && recording.isRecording) || !!proposal || !text.trim()} secondary />
     </Card>
     {error ? <Message error>{error}</Message> : null}
     {message ? <Message>{message}</Message> : null}
@@ -163,7 +209,7 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
     </Card> : response && response.type !== 'proposal' ? <Card><Title>Odpowiedź Magu</Title><Text className="text-base leading-6 text-ink">{response.type === 'clarify' ? response.message : response.text}</Text></Card> : null}
     <Card><Title>Spróbuj powiedzieć</Title>
       {['wzięliśmy paletę kartonów', 'gdzie leży szkło?', 'jak pakujemy szkło?'].map(example =>
-        <Button key={example} title={example} secondary disabled={busy || recording.isRecording || !!proposal} onPress={() => setText(example)} />)}
+        <Button key={example} title={example} secondary disabled={busy || (!wakeMode && recording.isRecording) || !!proposal} onPress={() => setText(example)} />)}
     </Card>
   </View>
 }
