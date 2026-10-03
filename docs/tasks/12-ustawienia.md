@@ -18,3 +18,5 @@
 - [x] tryb agenta przełączalny z UI (nie tylko .env)
 - [x] sekcja „użycie AI" gotowa do skopiowania do zgłoszenia
 - [x] ustawienia przetrwają restart (zapis w bazie/pliku)
+
+**Port Next.js/Vercel (2026-10-03):** te same pola i walidacja w `src/server/settings.ts` (`GET`/`PATCH /api/settings`, zapis w tabeli `settings` w Supabase/PGlite), plus `tts_enabled` i `reorder_default_quantity`. Adapter `sqlite` nazywa się teraz `database` (stara wartość jest akceptowana). Zapis ustawień wymaga roli kierownika. Testy: `src/server/settings.test.ts`, `tests/api.test.ts`.
