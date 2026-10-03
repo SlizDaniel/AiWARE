@@ -19,7 +19,7 @@ export type AgentModeStatus = {
 }
 
 export type DataAdapter = 'database' | 'file_import'
-export type VoiceMode = 'push_to_talk' | 'text'
+export type VoiceMode = 'push_to_talk' | 'wake_word' | 'text'
 
 export type AppSettings = {
   prefix: string
@@ -50,7 +50,7 @@ const MAX_DEFAULT_MINIMUM = 100_000
 const MAX_REORDER_QUANTITY = 100_000
 const AGENT_MODES: readonly AgentMode[] = ['llm', 'offline', 'mock']
 const ADAPTERS: readonly DataAdapter[] = ['database', 'file_import']
-const VOICE_MODES: readonly VoiceMode[] = ['push_to_talk', 'text']
+const VOICE_MODES: readonly VoiceMode[] = ['push_to_talk', 'wake_word', 'text']
 const PREFIX_RE = /^\p{L}{2,30}$/u
 
 // Settings table keys. `agent_mode` / `agent_prefix` predate card 12 and stay readable.
@@ -142,7 +142,7 @@ const VALIDATORS: Record<keyof AppSettings, { valid: (value: unknown) => boolean
     valid: isIntIn(0, MAX_DEFAULT_MINIMUM),
     message: 'Domyślne minimum musi być liczbą całkowitą od 0 do 100000.',
   },
-  voice_mode: { valid: isVoiceMode, message: 'Tryb głosu musi mieć wartość push_to_talk albo text.' },
+  voice_mode: { valid: isVoiceMode, message: 'Tryb głosu musi mieć wartość push_to_talk, wake_word albo text.' },
   tts_enabled: {
     valid: (value) => typeof value === 'boolean',
     message: 'Pole tts_enabled musi mieć wartość true albo false.',
@@ -253,13 +253,14 @@ export function aiUsage(settings: AppSettings, status: AgentModeStatus): AiUsage
     : GEMINI_HOST
   const llmEnabled = status.effective_mode === 'llm'
   const sttEnabled =
-    !status.demo_mode && settings.voice_mode === 'push_to_talk' && (whisperKey !== '' || geminiApiKey() !== '')
+    !status.demo_mode && settings.voice_mode !== 'text' && (whisperKey !== '' || geminiApiKey() !== '')
   const llmModel = geminiModel()
   const disclosure =
     'MAGAZYNIER korzysta z AI do interpretacji poleceń, transkrypcji mowy i podpowiedzi mapowania kolumn przy imporcie. ' +
     `Skonfigurowane integracje: LLM ${llmModel} (Google Gemini, ${GEMINI_HOST}), STT ${sttModel} (${sttProvider}). ` +
     `W bieżącym trybie LLM ${llmEnabled ? 'jest aktywne' : 'jest zastąpione parserem offline'}, ` +
     `a STT ${sttEnabled ? 'jest dostępne po naciśnięciu mikrofonu' : 'jest wyłączone lub nieskonfigurowane'}. ` +
+    'Dyktowanie na żywo i nasłuch na prefix korzystają z rozpoznawania mowy wbudowanego w przeglądarkę (Web Speech API; w Chrome przetwarzane przez usługę Google), a gdy przeglądarka go nie ma — z nagrania wysyłanego do STT. ' +
     'Polecenia, nagrania oraz nagłówki i kilka przykładowych wierszy importowanych plików są wysyłane do skonfigurowanych API tylko przy aktywnej integracji. ' +
     'Zmiany stanów wymagają zatwierdzenia przez człowieka i są zapisywane w audycie z autorem zmiany. ' +
     'Przy tworzeniu projektu korzystaliśmy także z Codex/ChatGPT oraz Claude Code.'

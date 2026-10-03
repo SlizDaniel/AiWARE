@@ -232,6 +232,15 @@ describe('AI usage disclosure', () => {
     expect(payload.version).toBe('0.3.0')
   })
 
+  it('wake_word is a valid voice mode and keeps STT available', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'k')
+    const saved = await updateAppSettings(db, { voice_mode: 'wake_word' })
+    expect(saved.voice_mode).toBe('wake_word')
+    const usage = aiUsage(saved, await getAgentModeStatus(db))
+    expect(usage.stt_enabled).toBe(true)
+    expect(usage.disclosure).toContain('Web Speech API')
+  })
+
   it('STT through Gemini is available in push-to-talk mode with a key', async () => {
     vi.stubEnv('GEMINI_API_KEY', 'k')
     const settings = await getAppSettings(db)
