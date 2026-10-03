@@ -39,8 +39,11 @@ Aby włączyć Gemini, skopiuj `.env.example` do `.env.local` i ustaw `GEMINI_AP
 
 3. **Supabase Auth:** Authentication → URL Configuration → *Site URL* = adres z Vercela,
    *Redirect URLs* += `https://<twoja-domena>/auth/callback`. Metoda logowania: e-mail + hasło.
-4. Import repo w Vercelu (framework wykrywa się sam: Next.js) → **Deploy**.
+4. Import repo w Vercelu → **Deploy**. `vercel.json` przypina framework Next.js z katalogu głównego
+   (Root Directory puste / `./`) i region funkcji `fra1` (Frankfurt, obok bazy Supabase eu-central-1).
    Albo z terminala: `npx vercel` i `npx vercel --prod`.
+   Projekt zaimportowany jeszcze przy starym układzie repo (`backend/` + `frontend/`) może mieć
+   zapisaną konfigurację tamtych katalogów — błąd „backend doesn't exist” naprawia nowy import projektu.
 
 Schemat bazy tworzy się sam przy pierwszym żądaniu (idempotentnie). Wszystkie tabele mają
 włączone RLS bez polityk: publiczny klucz Supabase nie odczyta danych przez PostgREST,
