@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import CommandPanel from './CommandPanel'
+import ManagerDashboard from './dashboard/ManagerDashboard'
 import HistoryList from './HistoryList'
 import InventoryExport from './InventoryExport'
 import InventoryImport from './InventoryImport'
@@ -45,6 +46,7 @@ const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
   kolejka: { title: 'Kolejka zatwierdzeń', subtitle: 'Szkice zamówień i propozycje agenta' },
   historia: { title: 'Historia zmian', subtitle: 'Audyt: kto, kiedy i co zmienił' },
   procedury: { title: 'Procedury', subtitle: 'Wiedza „jak u nas na hali”' },
+  dashboard: { title: 'Dashboard kierownika', subtitle: 'Stan teraz, operacje w okresie, dziennik akcji i przekazanie zmiany' },
   ustawienia: { title: 'Ustawienia', subtitle: 'Agent, konta, użycie AI i baza danych' },
 }
 
@@ -98,6 +100,8 @@ export default function AppShell() {
   const [healthError, setHealthError] = useState('')
   const [openImport, setOpenImport] = useState(false)
   const [connected, setConnected] = useState(false)
+  // rośnie przy każdej zmianie danych na serwerze (polling /api/version) — odświeża dashboard
+  const [updateTick, setUpdateTick] = useState(0)
   const [toast, setToast] = useState<Toast | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -121,7 +125,10 @@ export default function AppShell() {
   // Dane magazynu + odświeżanie na żywo (polling /api/version zamiast WebSocketu).
   useEffect(() => {
     refresh()
-    return subscribeUpdates(refresh, setConnected)
+    return subscribeUpdates(() => {
+      refresh()
+      setUpdateTick((value) => value + 1)
+    }, setConnected)
   }, [refresh])
 
   // Sesja i konfiguracja serwera — raz po wejściu.
@@ -161,6 +168,8 @@ export default function AppShell() {
   // Bez logowania (tryb lokalny) serwer traktuje każdego jak kierownika.
   const role: Role | null = me?.user?.role ?? (authMode === 'disabled' ? 'kierownik' : null)
   const canManage = role === 'kierownik'
+  // dashboard tylko dla kierownika: bez roli (lub po jej utracie) pokazujemy Stany, a panel się odmontowuje
+  const visibleSection: SectionId = section === 'dashboard' && !canManage ? 'stany' : section
   const ttsEnabled = settings.data?.tts_enabled === true && !settings.data.mode_status.demo_mode
 
   useEffect(() => {
@@ -204,11 +213,24 @@ export default function AppShell() {
     setSection('mapa')
   }
 
-  const heading = SECTION_TITLES[section]
+  // 403 z dashboardu: uprawnienia odebrane — wracamy do Stanów i odświeżamy rolę
+  const onDashboardForbidden = useCallback(() => {
+    setSection('stany')
+    fetchMe().then(setMe, () => {})
+  }, [])
+
+  const heading = SECTION_TITLES[visibleSection]
 
   return (
     <div className="min-h-screen bg-[#f5f4f0] text-[#292d2b] lg:flex lg:h-screen lg:overflow-hidden">
-      <Sidebar current={section} onNavigate={setSection} connected={connected} user={me?.user ?? null} authMode={authMode} />
+      <Sidebar
+        current={visibleSection}
+        onNavigate={setSection}
+        connected={connected}
+        user={me?.user ?? null}
+        authMode={authMode}
+        canManage={canManage}
+      />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
         <header className="border-b border-[#e8e5de] bg-[#fbfaf7] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
@@ -227,7 +249,7 @@ export default function AppShell() {
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
           <StatusBanner storage={health?.storage ?? null} authMode={authMode} />
-          {section === 'stany' && canManage && (
+          {visibleSection === 'stany' && canManage && (
             <InventoryImport onImported={refresh} initialOpen={openImport || settings.data?.adapter === 'file_import'} />
           )}
           <CommandPanel
@@ -247,12 +269,12 @@ export default function AppShell() {
             settings={settings.data}
             settingsError={settings.state === 'error' ? settings.error : ''}
             onSettingsChanged={reloadSettings}
-            showModeControl={section !== 'ustawienia'}
+            showModeControl={visibleSection !== 'ustawienia'}
             canChangeMode={canManage}
             onSpeak={say}
           />
 
-          {section === 'mapa' && (
+          {visibleSection === 'mapa' && (
             <WarehouseMap
               zones={zones.data}
               items={stock.data}
@@ -271,17 +293,17 @@ export default function AppShell() {
             />
           )}
 
-          {(section === 'stany' || section === 'historia' || section === 'kolejka') && (
+          {(visibleSection === 'stany' || visibleSection === 'historia' || visibleSection === 'kolejka') && (
             <section>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-bold">
-                  {section === 'stany' ? 'Pozycje' : section === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
+                  {visibleSection === 'stany' ? 'Pozycje' : visibleSection === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
                 </h2>
-                {section === 'stany' && <InventoryExport />}
+                {visibleSection === 'stany' && <InventoryExport />}
               </div>
-              {section === 'stany' ? (
+              {visibleSection === 'stany' ? (
                 <StockTable items={stock.data} state={stock.state} error={stock.error} onRetry={() => void reloadStock()} />
-              ) : section === 'historia' ? (
+              ) : visibleSection === 'historia' ? (
                 <HistoryList
                   entries={history.data}
                   state={history.state}
@@ -303,7 +325,7 @@ export default function AppShell() {
             </section>
           )}
 
-          {section === 'procedury' && (
+          {visibleSection === 'procedury' && (
             <ProcedureList
               procedures={procedures.data}
               state={procedures.state}
@@ -315,7 +337,17 @@ export default function AppShell() {
             />
           )}
 
-          {section === 'ustawienia' && (
+          {visibleSection === 'dashboard' && canManage && (
+            <ManagerDashboard
+              updateTick={updateTick}
+              items={stock.data}
+              onNavigate={setSection}
+              onForbidden={onDashboardForbidden}
+              onUndo={onUndo}
+            />
+          )}
+
+          {visibleSection === 'ustawienia' && (
             <SettingsPanel
               canManage={canManage}
               me={me}

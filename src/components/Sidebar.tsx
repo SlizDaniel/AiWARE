@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ROLE_LABELS, type AuthMode, type CurrentUser } from '@/lib/api'
-import { SECTIONS, type SectionId } from '@/lib/sections'
+import { visibleSections, type SectionId } from '@/lib/sections'
 
 type Props = {
   current: SectionId
@@ -8,9 +8,11 @@ type Props = {
   connected: boolean
   user: CurrentUser | null
   authMode: AuthMode | null
+  /** sekcje kierownika (Dashboard) tylko po potwierdzeniu roli */
+  canManage: boolean
 }
 
-export default function Sidebar({ current, onNavigate, connected, user, authMode }: Props) {
+export default function Sidebar({ current, onNavigate, connected, user, authMode, canManage }: Props) {
   // Konto i wylogowanie tylko przy logowaniu Supabase (tryb lokalny działa bez kont).
   const account = authMode === 'supabase' && user ? user : null
 
@@ -18,14 +20,14 @@ export default function Sidebar({ current, onNavigate, connected, user, authMode
     <>
       <aside className="hidden w-[260px] shrink-0 flex-col border-r border-[#e8e5de] bg-[#fbfaf7] lg:flex">
         <Brand />
-        <Navigation current={current} onNavigate={onNavigate} layout="vertical" />
+        <Navigation current={current} onNavigate={onNavigate} layout="vertical" canManage={canManage} />
         {account && <Account user={account} />}
         <ConnectionStatus connected={connected} />
       </aside>
 
       <div className="border-b border-[#e8e5de] bg-[#fbfaf7] lg:hidden">
         <Brand compact />
-        <Navigation current={current} onNavigate={onNavigate} layout="horizontal" />
+        <Navigation current={current} onNavigate={onNavigate} layout="horizontal" canManage={canManage} />
         {account && <Account user={account} compact />}
       </div>
     </>
@@ -52,10 +54,12 @@ function Navigation({
   current,
   onNavigate,
   layout,
+  canManage,
 }: {
   current: SectionId
   onNavigate: (s: SectionId) => void
   layout: 'vertical' | 'horizontal'
+  canManage: boolean
 }) {
   const horizontal = layout === 'horizontal'
 
@@ -64,7 +68,7 @@ function Navigation({
       aria-label="Główna nawigacja"
       className={horizontal ? 'flex gap-1 overflow-x-auto px-3 pb-3' : 'flex-1 space-y-1 px-3 pt-3'}
     >
-      {SECTIONS.map((section) => (
+      {visibleSections(canManage).map((section) => (
         <button
           key={section.id}
           type="button"
