@@ -8,11 +8,11 @@
 // `add_item` is outside the PRD's eight — it is the card-02 recovery path
 // (unknown item in a command → proposal to add it).
 import * as db from './db'
-import type { Actor } from './db'
+import type { Actor, StockSnapshot } from './db'
 import type { Db } from './sql'
 import type { JsonSchema } from './types'
 
-export type ToolContext = { actor: Actor }
+export type ToolContext = { actor: Actor; expectedStock?: StockSnapshot }
 
 export type ToolSpec = {
   name: string
@@ -83,6 +83,7 @@ const SPECS: ToolSpec[] = [
         delta: int(args, 'delta'),
         text: str(args, 'text'),
         actor: ctx.actor,
+        expectedStock: ctx.expectedStock,
       })
       if (result === null) throw new ToolError('Pozycja nie istnieje w bazie')
       return result

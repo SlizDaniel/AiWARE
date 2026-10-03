@@ -288,7 +288,16 @@ export async function addItem(
 
 // ------------------------------------------------------------- stock changes
 
-type StockChangeArgs = { itemId: number; delta: number; text: string; actor?: Actor }
+export type StockSnapshot = Pick<Item, 'quantity' | 'name' | 'unit'>
+
+export class StaleStockProposalError extends HttpError {
+  constructor() {
+    super(409, 'Dane towaru zmieniły się od pokazania karty. Nic nie zapisano. Odrzuć tę kartę i wyślij komendę ponownie, aby zatwierdzić aktualny stan.')
+    this.name = 'StaleStockProposalError'
+  }
+}
+
+type StockChangeArgs = { itemId: number; delta: number; text: string; actor?: Actor; expectedStock?: StockSnapshot }
 
 /**
  * Atomically: stock change + audit entry. Returns the audit entry (or null when
@@ -301,7 +310,7 @@ export async function confirmStockChange(db: Db, args: StockChangeArgs): Promise
 
 async function applyStockChange(
   tx: Db,
-  args: { itemId: number; delta: number; text: string; actor: Actor; undoOf: number | null },
+  args: StockChangeArgs & { actor: Actor; undoOf: number | null },
 ): Promise<StockChangeResult | null> {
   const row = await one<{ id: number; name: string; quantity: number; minimum: number; unit: string }>(
     tx,
@@ -309,6 +318,12 @@ async function applyStockChange(
     [args.itemId],
   )
   if (row === null) return null
+  // Sprawdzenie i zapis są pod tą samą blokadą rekordu. Inny pracownik/import
+  // nie może zmienić danych pomiędzy porównaniem karty a aktualizacją zapasu.
+  if (args.expectedStock && (row.quantity !== args.expectedStock.quantity ||
+      row.unit !== args.expectedStock.unit || row.name !== args.expectedStock.name)) {
+    throw new StaleStockProposalError()
+  }
   const before = row.quantity
   const after = before + args.delta
   await tx.query('UPDATE items SET quantity = $1 WHERE id = $2', [after, args.itemId])
