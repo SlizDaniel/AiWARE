@@ -219,6 +219,9 @@ function geminiFailure(error: unknown): STTUnavailable {
           return fail(`API STT Gemini odrzuciło klucz (${status}) — sprawdź GEMINI_API_KEY`)
         }
         if (status === 429) return fail('Limit API STT Gemini wyczerpany (429)')
+        if (status === 404) {
+          return fail(`Model Gemini „${geminiSttModel()}” nie istnieje (404) — sprawdź GEMINI_MODEL / GEMINI_STT_MODEL`)
+        }
         return fail(`API STT Gemini zwróciło błąd (${status})`)
       }
     }

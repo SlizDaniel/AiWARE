@@ -327,3 +327,15 @@ describe('transcribe — warehouse vocabulary and robustness', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('transcribe — unknown Gemini model', () => {
+  it('names the model and the variable to fix on HTTP 404', async () => {
+    vi.stubEnv('STT_API_KEY', '')
+    vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY)
+    vi.stubEnv('GEMINI_MODEL', 'gemini-3.5-flash-light')
+    stubFetch(() => jsonResponse({ error: { code: 404, status: 'NOT_FOUND' } }, 404))
+    expect((await failure(transcribe(AUDIO, 'audio/wav'))).message).toBe(
+      'Model Gemini „gemini-3.5-flash-light” nie istnieje (404) — sprawdź GEMINI_MODEL / GEMINI_STT_MODEL — wpisz komendę w polu tekstowym.',
+    )
+  })
+})
