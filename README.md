@@ -106,7 +106,9 @@ odpowiedź bez zapisu; nieznane komendy — prośbę o doprecyzowanie. Agent nig
   niejednoznaczny JSON → parser offline + ostrzeżenie. Zapis i tak wymaga zatwierdzenia karty.
 - `offline` / `mock`: deterministyczny parser, bez zewnętrznych API (import też nie wysyła pliku do LLM).
 - Tryb zmienia kierownik w panelu komend albo w Ustawieniach (zapis w bazie, bez restartu).
-- **STT:** nagranie z przycisku **Mów** → Gemini (audio) → transkrypcja w edytowalnym polu przed wysłaniem.
+- **STT:** przeglądarka pokazuje tekst na żywo i wykrywa prefiks; ostateczny tekst daje serwer —
+  dedykowany `gemini-3.5-transcribe` ze słownikiem z bazy (towary, strefy, procedury), przy limicie lub
+  błędzie `GEMINI_MODEL`. Z kluczem `STT_API_KEY` najpierw Groq Whisper large-v3.
   Opcjonalnie `STT_API_KEY` przełącza na API zgodne z Whisper (np. Groq).
 - Sprawdzenie kontraktu z prawdziwym modelem: `npm run check:gemini` (3 zapytania, syntetyczne dane).
 - Rozszerzona próba w Pythonie: `python scripts/check-gemini.py --list`, następnie
