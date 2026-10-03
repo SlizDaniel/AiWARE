@@ -40,6 +40,9 @@ Widok dashboardu i jego GUI-check pozostają do wykonania przez frontend.
   teście API; ponowiony pełny przebieg przeszedł bez zmian kodu testu.
 - [x] Po integracji najnowszego main `6304205` na branchu funkcjonalności:
   607 passed, 1 skipped (26 plików); build/typecheck/lint passed, brak konfliktów.
+- [x] Przed mergem do main zintegrowano `4cfe35e` bez konfliktów:
+  610 passed, 1 skipped; build/typecheck/lint passed. Wszystkie pięć endpointów
+  dashboardu zwraca HTTP 200 lokalnie, istniejący panel GUI ładuje stany.
 
 Poza zakresem tej karty: komponent dashboardu, logowanie odczytów/kliknięć,
 ocena pracowników, AI opisujące statystyki.
