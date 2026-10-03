@@ -38,6 +38,8 @@ Widok dashboardu i jego GUI-check pozostają do wykonania przez frontend.
   endpointów, dotychczasowy panel GUI ładuje stany i łączy się z backendem.
   Pierwszy pełny przebieg trafił na zablokowany losowy port Windows w istniejącym
   teście API; ponowiony pełny przebieg przeszedł bez zmian kodu testu.
+- [x] Po integracji najnowszego main `6304205` na branchu funkcjonalności:
+  607 passed, 1 skipped (26 plików); build/typecheck/lint passed, brak konfliktów.
 
 Poza zakresem tej karty: komponent dashboardu, logowanie odczytów/kliknięć,
 ocena pracowników, AI opisujące statystyki.
