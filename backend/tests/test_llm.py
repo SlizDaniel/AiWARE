@@ -135,3 +135,20 @@ def test_mode_switch_and_missing_key_never_call_external_provider(monkeypatch, t
             assert status.status_code == 200
             assert status.json()["mode"] == mode
             assert client.post("/api/command", json={"text": "doszła paleta kartonów"}).json()["type"] == "proposal"
+
+
+def test_llm_stock_call_uses_registry_only_after_confirmation(monkeypatch, tmp_path):
+    monkeypatch.setenv("LLM_API_KEY", "fake-key")
+    monkeypatch.setenv("LLM_MODE", "llm")
+    with TestClient(create_app(str(tmp_path / "stock.db"))) as client:
+        item = next(item for item in client.get("/api/stock").json()["items"] if item["name"] == "Kartony")
+        message = call_message({"item_id": item["id"], "delta": -4})
+        monkeypatch.setattr(OpenAICompatibleProvider, "_post_json", lambda *_: {"choices": [{"message": message}]})
+        proposal = client.post("/api/command", json={"text": "pobraliśmy cztery kartony"}).json()["proposal"]
+        assert proposal["args"] == {"item_id": item["id"], "delta": -4}
+        assert client.get("/api/history").json()["entries"] == []
+        response = client.post(f"/api/proposals/{proposal['id']}/confirm")
+        assert response.status_code == 200
+        assert response.json()["after"] == 50
+        entry = client.get("/api/history").json()["entries"][0]
+        assert entry["text"] == "pobraliśmy cztery kartony"

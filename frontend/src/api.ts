@@ -37,24 +37,27 @@ export type ReorderDraft = {
 export type Proposal = {
   id: string
   tool: string
-  item_id: number
-  item_name: string
-  unit: string
-  delta: number
-  before: number
-  after: number
+  args?: Record<string, unknown>
+  item_id?: number
+  item_name?: string
+  unit?: string
+  delta?: number
+  before?: number
+  after?: number
   summary: string
   text: string
 }
 
 export type CommandResponse =
   | { type: 'proposal'; proposal: Proposal; warning?: string }
-  | { type: 'unknown'; text: string; message?: string; warning?: string }
+  | { type: 'answer'; tool: string; text: string; data: Record<string, unknown>; warning?: string }
+  | { type: 'clarify'; text: string; message: string; warning?: string }
+  | { type: 'unknown'; text: string; hints?: string[]; warning?: string }
 
 export type AgentMode = 'llm' | 'offline' | 'mock'
 export type AgentModeStatus = {
   mode: AgentMode
-  effective_mode: AgentMode | 'offline'
+  effective_mode: AgentMode
   llm_available: boolean
   warning: string | null
 }
@@ -95,10 +98,10 @@ export function updateAgentMode(mode: AgentMode): Promise<AgentModeStatus> {
 export function confirmProposal(id: string): Promise<{
   applied: boolean
   audit_id: number
-  reorder_draft: ReorderDraft | null
+  reorder_draft?: ReorderDraft | null
 }> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id: number; reorder_draft: ReorderDraft | null }>(r),
+    json<{ applied: boolean; audit_id: number; reorder_draft?: ReorderDraft | null }>(r),
   )
 }
 
