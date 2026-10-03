@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmProposal, sendCommand, transcribeAudio, type Proposal, type ReorderDraft } from '../api'
+import {
+  confirmProposal,
+  fetchAgentMode,
+  sendCommand,
+  transcribeAudio,
+  updateAgentMode,
+  type AgentMode,
+  type Proposal,
+  type ReorderDraft,
+} from '../api'
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
@@ -33,6 +42,32 @@ export default function CommandPanel({ onApplied }: Props) {
     }
   }, [])
 
+  const [responseWarning, setResponseWarning] = useState<string | null>(null)
+  const [mode, setMode] = useState<AgentMode>('llm')
+  const [modeWarning, setModeWarning] = useState<string | null>(null)
+  const [demoMode, setDemoMode] = useState(false)
+
+  useEffect(() => {
+    void fetchAgentMode()
+      .then((status) => {
+        setMode(status.mode)
+        setModeWarning(status.warning)
+        setDemoMode(status.demo_mode)
+      })
+      .catch(() => setModeWarning('Nie udało się pobrać trybu agenta.'))
+  }, [])
+
+  const changeMode = async (nextMode: AgentMode) => {
+    setMode(nextMode)
+    try {
+      const status = await updateAgentMode(nextMode)
+      setMode(status.mode)
+      setModeWarning(status.warning)
+    } catch {
+      setModeWarning('Nie udało się zmienić trybu agenta.')
+    }
+  }
+
   const submit = async () => {
     const t = text.trim()
     if (!t || busy) return
@@ -40,6 +75,7 @@ export default function CommandPanel({ onApplied }: Props) {
     setActionError('')
     try {
       const res = await sendCommand(t)
+      setResponseWarning(res.warning ?? null)
       if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
       else if (res.type === 'answer') setState({ kind: 'answer', tool: res.tool, text: res.text })
       else if (res.type === 'clarify') setState({ kind: 'clarify', message: res.message })
@@ -60,7 +96,7 @@ export default function CommandPanel({ onApplied }: Props) {
     setActionError('')
     try {
       const result = await confirmProposal(state.proposal.id)
-      onApplied(state.proposal.summary, result.reorder_draft)
+      onApplied(state.proposal.summary, result.reorder_draft ?? null)
       setState(null)
       setText('')
     } catch (error) {
@@ -138,10 +174,29 @@ export default function CommandPanel({ onApplied }: Props) {
     <section className="border border-[#e8e5de] bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
-        <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">
-          tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <label className="flex items-center gap-2 text-sm text-[#70756f]">
+            Tryb agenta
+            <select
+              value={mode}
+              onChange={(event) => void changeMode(event.target.value as AgentMode)}
+              className="border border-[#d8d6cf] bg-white px-2 py-1"
+              aria-label="Tryb agenta"
+              disabled={demoMode}
+            >
+              <option value="llm">LLM</option>
+              <option value="offline">Offline</option>
+              <option value="mock">Mock</option>
+            </select>
+          </label>
+          <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">
+            tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia
+          </span>
+        </div>
       </div>
+
+      {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
+      <p className="mt-1 text-xs text-slate-400">Komenda tekstowa · głos (STT) w kolejnej karcie</p>
 
       <form
         className="mt-4 flex gap-3"
@@ -189,6 +244,7 @@ export default function CommandPanel({ onApplied }: Props) {
         </button>
       </form>
 
+      {responseWarning && <p className="mt-3 text-sm text-amber-700">{responseWarning}</p>}
       {recording && (
         <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
           <span aria-hidden className="inline-block size-2 animate-pulse rounded-full bg-[#8f3936]" />
@@ -200,7 +256,6 @@ export default function CommandPanel({ onApplied }: Props) {
           {voiceNote} Pole tekstowe jest podświetlone — komenda głosowa nie jest jedyną drogą.
         </p>
       )}
-
       {state?.kind === 'proposal' && (
         <ChangeCard proposal={state.proposal} busy={busy} error={actionError} onConfirm={confirm} onReject={reject} />
       )}

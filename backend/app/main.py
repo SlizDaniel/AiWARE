@@ -21,21 +21,25 @@ import os
 import uuid
 import anyio
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import db, stt
+from app.demo import demo_db_path, init_demo_db
+from app.agent_contract import normalize_call, tool_schemas
+from app.llm import LLMProviderError, provider_from_env
 from app.inventory import FIELDS, MAX_UPLOAD_BYTES, REQUIRED_FIELDS, ImportFileError, read_inventory_file, suggest_mapping, validate_and_map_rows
+
 from app.models import ItemRef
-from app.parser import parse_command
-from app.tools import call_tool
+from app.parser import ParsedCommand, parse_command
+from app.tools import TOOL_REGISTRY, call_tool
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "magazyn.db")
 
-READ_TOOLS = {"get_stock", "get_location", "recall_procedure"}
+READ_TOOLS = {name for name, spec in TOOL_REGISTRY.items() if spec.kind == "read"}
 
 HINTS = [
     "wzięliśmy paletę X",
@@ -51,17 +55,32 @@ class CommandIn(BaseModel):
     text: str
 
 
+class AgentModeIn(BaseModel):
+    mode: Literal["llm", "offline", "mock"]
+
+
 class ImportConfirm(BaseModel):
     import_id: str
     mapping: dict[str, int | None]
 
 
+
 def create_app(db_path: str | None = None) -> FastAPI:
-    path = str(db_path or os.environ.get("MAGAZYNIER_DB") or DEFAULT_DB_PATH)
+    demo_mode = os.environ.get("DEMO_MODE", "0").strip().lower() in {"1", "true", "yes", "on"}
+    path = str(db_path or (demo_db_path() if demo_mode else os.environ.get("MAGAZYNIER_DB") or DEFAULT_DB_PATH))
+
+    requested_mode = os.environ.get("LLM_MODE", "llm").lower()
+    if requested_mode not in {"llm", "offline", "mock"}:
+        requested_mode = "llm"
+    if demo_mode:
+        requested_mode = "mock"
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        db.init_db(path)
+        if demo_mode:
+            init_demo_db(path)
+        else:
+            db.init_db(path)
         yield
 
     app = FastAPI(title="MAGAZYNIER", version="0.2.0", lifespan=lifespan)
@@ -77,7 +96,34 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"status": "ok", "mode": "offline-parser"}
+        return {"status": "ok", "mode": get_agent_mode()["effective_mode"], "demo_mode": demo_mode}
+
+    @app.get("/api/agent-mode")
+    def get_agent_mode() -> dict:
+        key_present = bool(os.environ.get("LLM_API_KEY", "").strip())
+        effective_mode = requested_mode
+        warning = None
+        if requested_mode == "llm" and not key_present:
+            effective_mode = "offline"
+            warning = "Brak LLM_API_KEY — agent działa w trybie offline."
+        elif requested_mode == "mock":
+            effective_mode = "offline"
+            warning = "Demo offline — osobna baza, komendy tekstowe, bez zewnętrznych API." if demo_mode else "Mock: parser offline. Seed demo włączysz przez DEMO_MODE=1 przy starcie."
+        return {
+            "mode": requested_mode,
+            "effective_mode": effective_mode,
+            "llm_available": key_present,
+            "warning": warning,
+            "demo_mode": demo_mode,
+        }
+
+    @app.put("/api/agent-mode")
+    def set_agent_mode(body: AgentModeIn) -> dict:
+        nonlocal requested_mode
+        if demo_mode and body.mode != "mock":
+            raise HTTPException(status_code=409, detail="Demo offline jest zablokowane na czas tej sesji. Wyłącz DEMO_MODE i uruchom backend ponownie.")
+        requested_mode = body.mode
+        return get_agent_mode()
 
     @app.get("/api/stock")
     def stock() -> dict:
@@ -188,9 +234,45 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/command")
     async def command(body: CommandIn) -> dict:
-        items = [ItemRef(id=r["id"], name=r["name"]) for r in db.list_items(path)]
-        parsed = parse_command(body.text, items)
+        rows = db.list_items(path)
+        items = [ItemRef(id=r["id"], name=r["name"]) for r in rows]
+        requested = requested_mode
+        warning = None
+        parsed = None
 
+        if requested == "llm" and os.environ.get("LLM_API_KEY", "").strip():
+            inventory_context = ", ".join(
+                f"id={row['id']}, nazwa={row['name']}, ilość={row['quantity']} {row['unit']}, "
+                f"minimum={row['minimum']}, lokalizacja={row['location']}"
+                for row in rows
+            )
+            try:
+                interpretation = await provider_from_env().interpret(
+                    body.text, tool_schemas(), "W tym demo jedna paleta = 2 jednostki towaru. " + inventory_context
+                )
+                if interpretation.tool_call is None:
+                    return {
+                        "type": "clarify",
+                        "text": body.text,
+                        "message": interpretation.clarification or "Doprecyzuj polecenie.",
+                    }
+                parsed = normalize_call(interpretation.tool_call, body.text, items)
+            except LLMProviderError:
+                parsed = parse_command(body.text, items)
+                warning = "LLM nie zwrócił poprawnej propozycji — użyto parsera offline."
+        else:
+            parsed = parse_command(body.text, items)
+            if requested == "llm":
+                warning = "Brak LLM_API_KEY — użyto parsera offline."
+            elif requested == "mock":
+                warning = get_agent_mode()["warning"]
+
+        response = await dispatch_command(body, parsed)
+        if warning:
+            response["warning"] = warning
+        return response
+
+    async def dispatch_command(body: CommandIn, parsed: ParsedCommand | None) -> dict:
         if parsed is None:
             # nieznana komenda → prośba o doprecyzowanie, nigdy ciche zgadywanie
             return {"type": "unknown", "text": body.text, "hints": HINTS}
@@ -220,6 +302,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if parsed.tool in READ_TOOLS:
             data = call_tool(path, parsed.tool, **parsed.args)
             return _answer(path, body.text, parsed, data)
+
+        if parsed.tool in {"add_item", "draft_order"}:
+            if parsed.tool == "add_item":
+                summary = f"Nowa pozycja: {parsed.args['name']} ({parsed.args.get('quantity', 0)} {parsed.args.get('unit', 'szt')})"
+            else:
+                summary = f"Szkic zamówienia: {parsed.item_name} — {parsed.args['quantity']}"
+            proposal = _proposal(tool=parsed.tool, text=body.text, args=parsed.args, summary=summary)
+            return {"type": "proposal", "proposal": proposal}
 
         if parsed.tool == "add_zone":
             proposal = _proposal(
@@ -282,6 +372,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
         if tool == "update_stock":
             payload: dict[str, Any] = {"applied": True, **result}
+        elif tool == "draft_order":
+            # create_reorder_draft already records the creation in the same transaction.
+            payload = {"applied": True, "tool": tool, "reorder_draft": result, **result}
         else:
             # audyt zmian innych niż stany — wartości spójne z kartą 08
             # (reorder_draft_created dla szkicu zamówień, zarówno proaktywnych,
@@ -330,6 +423,14 @@ def _proposal(**fields: Any) -> dict:
 
 def _answer(path: str, text: str, parsed: Any, data: dict) -> dict:
     """Odpowiedź na pytanie (read) — samo odczytanie bazy, nic nie zapisuje."""
+    if parsed.tool == "check_reorder":
+        if not data:
+            return {"type": "clarify", "text": text, "message": "Nie znaleziono pozycji."}
+        status = "poniżej minimum" if data["below_minimum"] else "minimum zachowane"
+        return {
+            "type": "answer", "tool": parsed.tool, "data": data,
+            "text": f"{data['item_name']}: {data['quantity']} (minimum {data['minimum']}) — {status}.",
+        }
     if parsed.tool == "get_stock":
         item = data.get("item")
         if item is not None:

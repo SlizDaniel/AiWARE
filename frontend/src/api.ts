@@ -9,6 +9,12 @@ export type Item = {
   location: string
 }
 
+export type Zone = {
+  id: number
+  name: string
+  created: string
+}
+
 export type HistoryEntry = {
   id: number
   ts: string
@@ -49,10 +55,19 @@ export type Proposal = {
 }
 
 export type CommandResponse =
-  | { type: 'proposal'; proposal: Proposal }
-  | { type: 'answer'; tool: string; text: string; data: Record<string, unknown> }
-  | { type: 'clarify'; text: string; message: string }
-  | { type: 'unknown'; text: string; hints?: string[] }
+  | { type: 'proposal'; proposal: Proposal; warning?: string }
+  | { type: 'answer'; tool: string; text: string; data: Record<string, unknown>; warning?: string }
+  | { type: 'clarify'; text: string; message: string; warning?: string }
+  | { type: 'unknown'; text: string; hints?: string[]; warning?: string }
+
+export type AgentMode = 'llm' | 'offline' | 'mock'
+export type AgentModeStatus = {
+  demo_mode: boolean
+  mode: AgentMode
+  effective_mode: AgentMode
+  llm_available: boolean
+  warning: string | null
+}
 
 export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
 export type ImportPreview = {
@@ -78,6 +93,10 @@ export function fetchStock(): Promise<Item[]> {
   return fetch('/api/stock').then((r) => json<{ items: Item[] }>(r)).then((d) => d.items)
 }
 
+export function fetchZones(): Promise<Zone[]> {
+  return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
+}
+
 export function fetchHistory(): Promise<HistoryEntry[]> {
   return fetch('/api/history').then((r) => json<{ entries: HistoryEntry[] }>(r)).then((d) => d.entries)
 }
@@ -90,13 +109,28 @@ export function sendCommand(text: string): Promise<CommandResponse> {
   }).then((r) => json<CommandResponse>(r))
 }
 
+export function fetchAgentMode(): Promise<AgentModeStatus> {
+  return fetch('/api/agent-mode').then((r) => json<AgentModeStatus>(r))
+}
+
+export function updateAgentMode(mode: AgentMode): Promise<AgentModeStatus> {
+  return fetch('/api/agent-mode', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  }).then((r) => json<AgentModeStatus>(r))
+}
+
 export function confirmProposal(id: string): Promise<{
   applied: boolean
-  audit_id: number
-  reorder_draft: ReorderDraft | null
+  audit_id?: number
+  reorder_draft?: ReorderDraft | null
+  created?: boolean
+  id?: number
+  name?: string
 }> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id: number; reorder_draft: ReorderDraft | null }>(r),
+    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null; created?: boolean; id?: number; name?: string }>(r),
   )
 }
 

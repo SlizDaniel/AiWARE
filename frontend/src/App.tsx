@@ -6,11 +6,11 @@ import Placeholder from './components/Placeholder'
 import ReorderQueue from './components/ReorderQueue'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
-import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, type HistoryEntry, type Item, type ReorderDraft } from './api'
+import WarehouseMap from './components/WarehouseMap'
+import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type ReorderDraft, type Zone } from './api'
 import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
-  mapa: 'Schematyczna mapa 2D magazynu ze strefami — karta 03.',
   procedury: '„Jak pakujemy szkło?” — pamięć proceduralna — karta 08.',
   ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
 }
@@ -31,6 +31,9 @@ export default function App() {
   const [items, setItems] = useState<Item[]>([])
   const [stockState, setStockState] = useState<LoadState>('loading')
   const [stockError, setStockError] = useState('')
+  const [zones, setZones] = useState<Zone[]>([])
+  const [zonesState, setZonesState] = useState<LoadState>('loading')
+  const [zonesError, setZonesError] = useState('')
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [historyState, setHistoryState] = useState<LoadState>('loading')
   const [historyError, setHistoryError] = useState('')
@@ -49,6 +52,17 @@ export default function App() {
     } catch (error) {
       setStockState('error')
       setStockError(error instanceof Error ? error.message : 'Nie udało się pobrać stanów magazynowych.')
+    }
+  }, [])
+
+  const refreshZones = useCallback(async () => {
+    try {
+      setZones(await fetchZones())
+      setZonesState('ready')
+      setZonesError('')
+    } catch (error) {
+      setZonesState('error')
+      setZonesError(error instanceof Error ? error.message : 'Nie udało się pobrać stref magazynu.')
     }
   }, [])
 
@@ -76,9 +90,10 @@ export default function App() {
 
   const refresh = useCallback(() => {
     void refreshStock()
+    void refreshZones()
     void refreshHistory()
     void refreshQueue()
-  }, [refreshHistory, refreshQueue, refreshStock])
+  }, [refreshHistory, refreshQueue, refreshStock, refreshZones])
 
   useEffect(() => {
     refresh()
@@ -130,6 +145,22 @@ export default function App() {
           {section === 'stany' && <InventoryImport onImported={refresh} />}
           <CommandPanel onApplied={onApplied} />
 
+          {section === 'mapa' && (
+            <WarehouseMap
+              zones={zones}
+              items={items}
+              state={zonesState}
+              error={zonesError}
+              onRetry={() => void refreshZones()}
+              itemsState={stockState}
+              onRetryItems={() => void refreshStock()}
+              onZoneAdded={(name, created) => {
+                showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
+                refresh()
+              }}
+            />
+          )}
+
           {(section === 'stany' || section === 'historia' || section === 'kolejka') && (
             <section>
               <h2 className="mb-3 text-lg font-bold">
@@ -151,7 +182,7 @@ export default function App() {
             </section>
           )}
 
-          {section !== 'stany' && section !== 'historia' && section !== 'kolejka' && (
+          {section !== 'mapa' && section !== 'stany' && section !== 'historia' && section !== 'kolejka' && (
             <Placeholder label={SECTIONS.find((s) => s.id === section)?.label ?? section} note={PLACEHOLDER_NOTES[section]} />
           )}
         </div>
