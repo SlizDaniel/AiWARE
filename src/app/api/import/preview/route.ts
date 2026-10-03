@@ -10,6 +10,7 @@ import {
   readInventoryFile,
   suggestMapping,
 } from '@/server/inventory'
+import { enforceRateLimit, RATE_LIMITS } from '@/server/rateLimit'
 import { session } from '@/server/session'
 import { getAgentModeStatus, getAppSettings } from '@/server/settings'
 import type { ColumnMapping } from '@/server/types'
@@ -32,7 +33,8 @@ function mergeMappings(llm: ColumnMapping, rules: ColumnMapping): ColumnMapping 
 
 /** Reads an uploaded CSV/XLSX and suggests a column mapping without writing inventory. */
 export const POST = route(async (request: Request) => {
-  const { db } = await session('kierownik')
+  const { db, user } = await session('kierownik')
+  await enforceRateLimit(db, `import:${user.id}`, RATE_LIMITS.importPreview)
   const filename = new URL(request.url).searchParams.get('filename') ?? ''
   const data = await readBody(request, MAX_UPLOAD_BYTES, 'Plik jest za duży (limit 4 MB).')
   let parsed: { headers: string[]; rows: string[][] }
