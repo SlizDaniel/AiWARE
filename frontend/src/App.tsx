@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import CommandPanel from './components/CommandPanel'
 import HistoryList from './components/HistoryList'
+import InventoryImport from './components/InventoryImport'
 import Placeholder from './components/Placeholder'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
@@ -65,6 +66,7 @@ export default function App() {
         </header>
 
         <div className="space-y-6 p-8">
+          {section === 'stany' && <InventoryImport onImported={refresh} />}
           <CommandPanel onApplied={onApplied} />
 
           {(section === 'stany' || section === 'historia') && (

@@ -67,6 +67,49 @@ def list_items(db_path: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def import_items(db_path: str, items: list[dict]) -> dict[str, int]:
+    """Insert new inventory rows and update existing rows by their unique name."""
+    with connect(db_path) as conn:
+        inserted = 0
+        updated = 0
+        existing_by_name = {
+            str(row["name"]).casefold(): row["id"]
+            for row in conn.execute("SELECT id, name FROM items").fetchall()
+        }
+        for item in items:
+            key = item["name"].casefold()
+            existing_id = existing_by_name.get(key)
+            if existing_id is not None:
+                conn.execute(
+                    """UPDATE items SET quantity = ?,
+                           minimum = CASE WHEN ? IS NULL THEN minimum ELSE ? END,
+                           unit = CASE WHEN ? IS NULL OR ? = '' THEN unit ELSE ? END,
+                           location = CASE WHEN ? IS NULL THEN location ELSE ? END
+                       WHERE id = ?""",
+                    (
+                        item["quantity"],
+                        item["minimum"],
+                        item["minimum"],
+                        item["unit"],
+                        item["unit"],
+                        item["unit"],
+                        item["location"],
+                        item["location"],
+                        existing_id,
+                    ),
+                )
+                updated += 1
+            else:
+                cursor = conn.execute(
+                    """INSERT INTO items (name, quantity, minimum, unit, location)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (item["name"], item["quantity"], item["minimum"] or 0, item["unit"] or "szt", item["location"] or ""),
+                )
+                existing_by_name[key] = cursor.lastrowid
+                inserted += 1
+    return {"inserted": inserted, "updated": updated, "total": len(items)}
+
+
 def get_item(db_path: str, item_id: int) -> dict | None:
     with connect(db_path) as conn:
         row = conn.execute(

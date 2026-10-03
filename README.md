@@ -24,6 +24,12 @@ docker compose up --build
 4. Kliknij **Zatwierdź**
 5. Sekcja **Stany**: Kartony = 52 · sekcja **Historia**: nowy wpis audytu (co/kiedy)
 
+## Import stanów z Excela lub CSV
+
+W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, sprawdź podgląd i przypisanie kolumn, popraw je w razie potrzeby i kliknij **Zatwierdź import**. Samo wczytanie pliku niczego nie zapisuje. Powtórny import aktualizuje pozycje o tej samej nazwie zamiast tworzyć duplikaty.
+
+Mapowanie kolumn działa offline na podstawie polskich i angielskich nagłówków; propozycje LLM wymagają podłączenia providera z karty 03.
+
 Parser tracerowy jest deterministyczny (offline): rozpoznaje wyłącznie
 „wzięliśmy paletę X" (−2 szt/paletę) i „doszła paleta X" (+2 szt/paletę) na seedowanych
 pozycjach (Kartony 54/min 12, Szkło 20/min 8, Folia stretch 15/min 6).
