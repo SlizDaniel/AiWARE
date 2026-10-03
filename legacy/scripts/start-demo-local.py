@@ -36,6 +36,7 @@ def wait_ready(url: str, processes: list[subprocess.Popen]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reset', action='store_true', help='Reset only the local demo database before startup')
+    parser.add_argument('--built', action='store_true', help='Serve an existing frontend build instead of the development server')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     backend = repo / 'backend'
@@ -44,6 +45,9 @@ def main() -> int:
     node = shutil.which('node')
     if not python.is_file() or not vite.is_file() or not node:
         print('Prepare backend .venv and frontend node_modules using README first. No dependencies were downloaded.', file=sys.stderr)
+        return 1
+    if args.built and not (repo / 'frontend/dist/index.html').is_file():
+        print('Missing frontend build. Run npm run build in frontend before this rehearsal. Demo data was not reset.', file=sys.stderr)
         return 1
     processes: list[subprocess.Popen] = []
     env = {**os.environ, 'DEMO_MODE': '1', 'LLM_MODE': 'mock',
@@ -63,10 +67,11 @@ def main() -> int:
             cwd=backend, env=env, **process_options))
         wait_ready('http://127.0.0.1:8001/api/health', processes)
         processes.append(subprocess.Popen(
-            [node, str(vite), '--config', 'vite.demo.config.ts'],
+            [node, str(vite), *(['preview'] if args.built else []), '--config', 'vite.demo.config.ts'],
             cwd=repo / 'frontend', env=env, **process_options))
         wait_ready('http://127.0.0.1:5174', processes)
         print('\nOffline demo: http://127.0.0.1:5174', flush=True)
+        print('Frontend: existing build (no hot reload)' if args.built else 'Frontend: development server', flush=True)
         print(f'Import file: {repo / "demo-offline.xlsx"}', flush=True)
         print('Text commands replace voice. Ctrl+C stops both demo servers. Next rehearsal: --reset.', flush=True)
         while all(process.poll() is None for process in processes):

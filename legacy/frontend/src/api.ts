@@ -76,6 +76,40 @@ export type AgentModeStatus = {
   warning: string | null
 }
 
+export type SettingsValues = {
+  prefix: string
+  mode: AgentMode
+  adapter: 'sqlite' | 'file_import'
+  default_minimum: number
+  voice_mode: 'push_to_talk' | 'text'
+}
+
+export type AppSettings = SettingsValues & {
+  version: string
+  mode_status: AgentModeStatus
+  ai_usage: {
+    llm_model: string
+    llm_provider: string
+    llm_enabled: boolean
+    stt_model: string
+    stt_provider: string
+    stt_enabled: boolean
+    disclosure: string
+  }
+}
+
+export function fetchSettings(): Promise<AppSettings> {
+  return fetch('/api/settings').then((response) => json<AppSettings>(response))
+}
+
+export function saveSettings(changes: Partial<SettingsValues>): Promise<AppSettings> {
+  return fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  }).then((response) => json<AppSettings>(response))
+}
+
 export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
 export type ImportPreview = {
   import_id: string

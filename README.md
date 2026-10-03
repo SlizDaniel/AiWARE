@@ -88,6 +88,20 @@ odpowiedź bez zapisu; nieznane komendy — prośbę o doprecyzowanie. Agent nig
   Opcjonalnie `STT_API_KEY` przełącza na API zgodne z Whisper (np. Groq).
 - Sprawdzenie kontraktu z prawdziwym modelem: `npm run check:gemini` (3 zapytania, syntetyczne dane).
 
+## Ustawienia (karta 12)
+
+Sekcja **Ustawienia** (zapis: kierownik, odczyt: wszyscy) — zmiany obowiązują od następnej komendy, bez restartu,
+i są zapisane w bazie (`GET` / `PATCH /api/settings`):
+
+- **Prefix agenta** (domyślnie „Magu”): jedno słowo, 2–30 liter. Komendy bez prefixu też działają;
+  poprzedni prefix zostaje wyłączony — „Magu, …” po zmianie na „Gosiu” dostaje prośbę o doprecyzowanie, a nie wykonanie.
+- **Tryb agenta** `llm` / `offline` / `mock` — ten sam przełącznik co w panelu komend.
+- **Źródło danych:** wbudowana baza albo import z pliku (otwiera panel importu w Stanach).
+- **Domyślne minimum** nowych pozycji (import bez kolumny minimum, karta „Nowa pozycja”); istniejące progi zostają.
+- **Tryb głosu:** mikrofon po naciśnięciu albo tylko tekst (wtedy `/api/stt` zwraca 503, a mikrofon jest wyłączony).
+- **Odczyt głosem** (TTS przeglądarki) i **domyślna ilość** w szkicu zamówienia.
+- **Użycie AI:** gotowy tekst do sekcji „ujawnienie AI” w zgłoszeniu (modele i dostawcy z konfiguracji serwera).
+
 ## Demo offline
 
 `DEMO_MODE=1` wymusza parser offline, wyłącza STT i używa osobnej bazy demo

@@ -28,3 +28,9 @@ Walidacja sprawdza też zakończenie generacji: obecne `finish_reason` musi być
 fallback offline, nawet gdy argumenty wyglądają jak poprawny JSON. Dla endpointów
 zgodnych z OpenAI pomijających to pole zachowano walidację schematu. Żadna z tych
 odpowiedzi nie wykonuje narzędzia przed potwierdzeniem.
+
+`scripts/check-live-llm.py` porównuje trzy syntetyczne zdania z oczekiwanym
+narzędziem i argumentami (towar, ilość, kierunek zmiany). Poprawny JSON z błędną
+intencją zwraca kod 1. Pytania zwrotne są dopuszczalne według tej karty i raportowane
+osobno do ręcznej oceny w GUI; kod 0 nie oznacza rozumienia wszystkich komend.
+Nie wykonuje narzędzi ani nie otwiera bazy. Testy skryptu używają atrap providera.

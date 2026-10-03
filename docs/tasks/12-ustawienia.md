@@ -12,9 +12,11 @@
 
 **Demo check:** zmień prefix na „Gosiu" → „Gosiu, ile mamy kartonów?" działa; sekcja pokazuje listę używanych modeli AI (do wklejenia w zgłoszenie).
 
-**Status:** ready
+**Status:** done — persisted SQLite settings, immediate prefix/mode changes, data-source preference, default minimum and voice mode. Backend: 134 tests passed; frontend typecheck/build passed. Browser demo check: Gosiu query works, Magu rejected, text mode disables microphone, import shortcut opens file panel, AI disclosure copies, reload preserves settings. Code review: no remaining Standards/Spec findings; corrected STT blank-environment disclosure and minimum visibility on LLM item confirmation cards.
 
-- [ ] prefix konfigurowalny i działa natychmiast
-- [ ] tryb agenta przełączalny z UI (nie tylko .env)
-- [ ] sekcja „użycie AI" gotowa do skopiowania do zgłoszenia
-- [ ] ustawienia przetrwają restart (zapis w bazie/pliku)
+- [x] prefix konfigurowalny i działa natychmiast
+- [x] tryb agenta przełączalny z UI (nie tylko .env)
+- [x] sekcja „użycie AI" gotowa do skopiowania do zgłoszenia
+- [x] ustawienia przetrwają restart (zapis w bazie/pliku)
+
+**Port Next.js/Vercel (2026-10-03):** te same pola i walidacja w `src/server/settings.ts` (`GET`/`PATCH /api/settings`, zapis w tabeli `settings` w Supabase/PGlite), plus `tts_enabled` i `reorder_default_quantity`. Adapter `sqlite` nazywa się teraz `database` (stara wartość jest akceptowana). Zapis ustawień wymaga roli kierownika. Testy: `src/server/settings.test.ts`, `tests/api.test.ts`.
