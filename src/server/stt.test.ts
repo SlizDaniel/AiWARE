@@ -4,11 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   geminiAudioMimeType,
+  isLikelyHallucination,
   STT_TIMEOUT_MS,
+  sttVocabulary,
   STTUnavailable,
   transcribe,
   WHISPER_DEFAULT_BASE_URL,
   WHISPER_DEFAULT_MODEL,
+  whisperPrompt,
 } from './stt'
 
 const GEMINI_KEY = 'gemini-test-key'
@@ -271,5 +274,68 @@ describe('transcribe — Whisper-compatible endpoint (STT_API_KEY)', () => {
     const pending = failure(transcribe(AUDIO, 'audio/wav'))
     await vi.advanceTimersByTimeAsync(STT_TIMEOUT_MS)
     expect((await pending).message).toContain('API STT nieosiągalne (timeout)')
+  })
+})
+
+describe('transcribe — warehouse vocabulary and robustness', () => {
+  const vocabulary = sttVocabulary({ prefix: 'Magu', items: ['Kartony', 'Folia stretch', 'kartony'], zones: ['C2'], topics: ['szkło'] })
+
+  it('builds a de-duplicated vocabulary with domain words', () => {
+    expect(vocabulary.slice(0, 5)).toEqual(['Magu', 'Kartony', 'Folia stretch', 'C2', 'szkło'])
+    expect(vocabulary).toContain('paleta')
+    expect(vocabulary.join(', ').length).toBeLessThanOrEqual(600)
+    expect(whisperPrompt([])).toBe('')
+  })
+
+  it('sends the vocabulary as the Whisper prompt with temperature 0', async () => {
+    vi.stubEnv('STT_API_KEY', WHISPER_KEY)
+    const fetchMock = stubFetch(() => jsonResponse({ text: 'Magu, wzięliśmy paletę kartonów' }))
+    await expect(transcribe(AUDIO, 'audio/wav', { vocabulary })).resolves.toBe('Magu, wzięliśmy paletę kartonów')
+    const form = fetchMock.mock.calls[0][1].body as FormData
+    expect(form.get('prompt')).toContain('Magu, Kartony, Folia stretch')
+    expect(form.get('temperature')).toBe('0')
+    expect((form.get('file') as File).name).toBe('audio.wav')
+  })
+
+  it('adds the vocabulary to the Gemini transcription prompt', async () => {
+    vi.stubEnv('STT_API_KEY', '')
+    vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY)
+    const fetchMock = stubFetch(() => jsonResponse(geminiText('ile mamy kartonów')))
+    await transcribe(AUDIO, 'audio/wav', { vocabulary })
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body))
+    expect(body.contents[0].parts[1].text).toContain('Słownictwo')
+    expect(body.contents[0].parts[1].text).toContain('Folia stretch')
+  })
+
+  it('treats Whisper silence hallucinations as no speech', async () => {
+    expect(isLikelyHallucination('Napisy stworzone przez społeczność Amara.org')).toBe(true)
+    expect(isLikelyHallucination('Dziękuję za uwagę.')).toBe(true)
+    expect(isLikelyHallucination('wzięliśmy paletę kartonów')).toBe(false)
+    vi.stubEnv('STT_API_KEY', WHISPER_KEY)
+    vi.stubEnv('GEMINI_API_KEY', '')
+    stubFetch(() => jsonResponse({ text: 'Napisy stworzone przez społeczność Amara.org' }))
+    expect((await failure(transcribe(AUDIO, 'audio/wav'))).message).toContain('nie zwróciło tekstu')
+  })
+
+  it('falls back to Gemini when Whisper fails', async () => {
+    vi.stubEnv('STT_API_KEY', WHISPER_KEY)
+    vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY)
+    const fetchMock = stubFetch((url) =>
+      url.includes('/audio/transcriptions') ? jsonResponse({ error: 'busy' }, 503) : jsonResponse(geminiText('gdzie leży szkło')),
+    )
+    await expect(transcribe(AUDIO, 'audio/wav')).resolves.toBe('gdzie leży szkło')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('transcribe — unknown Gemini model', () => {
+  it('names the model and the variable to fix on HTTP 404', async () => {
+    vi.stubEnv('STT_API_KEY', '')
+    vi.stubEnv('GEMINI_API_KEY', GEMINI_KEY)
+    vi.stubEnv('GEMINI_MODEL', 'gemini-3.5-flash-light')
+    stubFetch(() => jsonResponse({ error: { code: 404, status: 'NOT_FOUND' } }, 404))
+    expect((await failure(transcribe(AUDIO, 'audio/wav'))).message).toBe(
+      'Model Gemini „gemini-3.5-flash-light” nie istnieje (404) — sprawdź GEMINI_MODEL / GEMINI_STT_MODEL — wpisz komendę w polu tekstowym.',
+    )
   })
 })

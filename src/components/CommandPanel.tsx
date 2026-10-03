@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
   confirmProposal,
   fetchZones,
@@ -14,6 +14,7 @@ import {
   type ReorderDraft,
   type Zone,
 } from '@/lib/api'
+import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import { createRecognition, fullTranscript, type SpeechRecognitionLike } from '@/lib/speech'
 import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
@@ -21,6 +22,23 @@ import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems
 
 /** Karta zmiany przyjmuje głosowe „tak”/„nie” tylko przez tyle od pokazania. */
 const VOICE_DECISION_MS = 30_000
+/** „Mów”: nagranie trwa najwyżej tyle (bufor PCM ma 30 s), po stopie dobieramy „ogon”. */
+const MAX_PUSH_TO_TALK_MS = 29_000
+const PUSH_TO_TALK_TAIL_MS = 300
+const MIN_AUDIO_SECONDS = 0.3
+
+/** Jedno naciśnięcie „Mów”: tekst sprzed nagrania, początek na zegarze nagrania, podgląd przeglądarki. */
+type PushToTalkSession = {
+  base: string
+  startMs: number
+  browserText: string
+  recognition: SpeechRecognitionLike | null
+  timer: ReturnType<typeof setTimeout> | undefined
+}
+
+function joinText(base: string, heard: string): string {
+  return base && heard ? `${base} ${heard}` : base || heard
+}
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
@@ -71,25 +89,26 @@ export default function CommandPanel({
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
-  const [recording, setRecording] = useState(false)
+  const [listening, setListening] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const [refiningLive, setRefiningLive] = useState(false)
   const [voiceNote, setVoiceNote] = useState('')
   const [voiceFallback, setVoiceFallback] = useState(false)
-  const [dictating, setDictating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const dictationRef = useRef<SpeechRecognitionLike | null>(null)
+  const pcmRef = useRef<PcmRecorder | null>(null)
+  const pushToTalkRef = useRef<PushToTalkSession | null>(null)
+  // czy wolno jeszcze wysłać nagranie (tryb głosu mógł się zmienić w trakcie)
+  const uploadAllowedRef = useRef(false)
   const proposalShownAtRef = useRef(0)
   const stateRef = useRef<State>(null)
   // Najnowsze akcje panelu dla callbacków rozpoznawania mowy (żyją dłużej niż jeden render).
   const latestRef = useRef<VoiceActions>({ runCommand: async () => {}, confirm: async () => {}, reject: () => {}, busy: false })
 
-  // nagranie / dyktowanie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu
+  // nagranie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu, bez wysyłania
   useEffect(() => {
     return () => {
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
-      dictationRef.current?.abort()
+      uploadAllowedRef.current = false
+      cancelPushToTalk(pushToTalkRef, pcmRef)
     }
   }, [])
 
@@ -125,6 +144,13 @@ export default function CommandPanel({
   // wake_word bez Web Speech (Firefox) → zwykły przycisk Mów z nagraniem
   const wakeActive = wakeMode && liveSpeech
   const pushToTalk = voiceEnabled && !wakeActive
+  // nagranie przerwane zmianą trybu (efekt niżej) nie może zostawić przycisku w stanie „Słucham…”
+  const [pushToTalkBefore, setPushToTalkBefore] = useState(pushToTalk)
+  if (pushToTalk !== pushToTalkBefore) {
+    setPushToTalkBefore(pushToTalk)
+    if (!pushToTalk) setListening(false)
+  }
+  const micLive = listening && pushToTalk
   const voiceHelp = demoMode
     ? 'Demo offline — użyj pola tekstowego. Mikrofon z API jest wyłączony.'
     : !settings
@@ -134,14 +160,14 @@ export default function CommandPanel({
         : wakeActive
           ? `Włącz nasłuch i powiedz „${prefix}, …” — komenda wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „tak”, odrzucisz „nie”.`
           : liveSpeech
-            ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco. Sprawdź go i kliknij Wyślij.'
+            ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco, a po nagraniu serwer go poprawi. Sprawdź i kliknij Wyślij.'
             : 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
 
-  // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie i dyktowanie
+  // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie, zwolnij mikrofon,
+  // a trwające nagranie nie trafi już na serwer
   useEffect(() => {
-    if (pushToTalk) return
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
-    dictationRef.current?.abort()
+    uploadAllowedRef.current = pushToTalk
+    if (!pushToTalk) cancelPushToTalk(pushToTalkRef, pcmRef)
   }, [pushToTalk])
 
   const changeMode = async (nextMode: AgentMode) => {
@@ -249,105 +275,105 @@ export default function CommandPanel({
     setVoiceFallback(true)
   }
 
-  const transcribeRecording = async () => {
-    setTranscribing(true)
-    try {
-      const type = recorderRef.current?.mimeType || 'audio/webm'
-      const blob = new Blob(chunksRef.current, { type })
-      const heard = await transcribeAudio(blob)
-      setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${heard}` : heard))
-      setVoiceFallback(false)
-      setVoiceNote('')
-      // kontrola użytkownika: transkrypcja widoczna w polu PRZED wysłaniem —
-      // użytkownik czyta/poprawia i sam klika „Wyślij”
-      inputRef.current?.focus()
-    } catch (error) {
-      showVoiceFallback(
-        error instanceof Error ? error.message : 'Transkrypcja nieudana — wpisz komendę ręcznie.',
-      )
-    } finally {
-      setTranscribing(false)
-      recorderRef.current = null
-    }
-  }
-
-  const startRecording = async () => {
-    if (busy || transcribing || recording || !pushToTalk) return
+  // „Mów”: nagranie PCM (zawsze) + podgląd przeglądarki na żywo (Chrome/Edge). Po stopie albo
+  // ciszy fragment idzie jako WAV do STT na serwerze i jego tekst zastępuje podgląd.
+  // Użytkownik sprawdza tekst i sam klika „Wyślij”.
+  const startPushToTalk = async () => {
+    if (busy || transcribing || pushToTalkRef.current || !pushToTalk) return
     setVoiceNote('')
+    setVoiceFallback(false)
+    const recorder = (pcmRef.current ??= new PcmRecorder())
+    const session: PushToTalkSession = { base: text.trim(), startMs: 0, browserText: '', recognition: null, timer: undefined }
+    pushToTalkRef.current = session
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      chunksRef.current = []
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop())
-        setRecording(false)
-        void transcribeRecording()
-      }
-      recorder.start()
-      recorderRef.current = recorder
-      setRecording(true)
+      await recorder.start()
     } catch {
-      showVoiceFallback('Nie udało się włączyć mikrofonu — wpisz komendę ręcznie.')
-    }
-  }
-
-  // Dyktowanie na żywo (Chrome/Edge): tekst pośredni od razu w polu, wynik końcowy go zastępuje.
-  // Koniec po kliknięciu albo po ciszy; użytkownik sprawdza tekst i sam klika „Wyślij”.
-  const startDictation = () => {
-    if (busy || dictating || !pushToTalk) return
-    const recognition = createRecognition({ continuous: false })
-    if (!recognition) {
-      void startRecording()
+      if (pushToTalkRef.current === session) pushToTalkRef.current = null
+      showVoiceFallback('Nie udało się włączyć mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
       return
     }
-    const base = text.trim()
+    if (pushToTalkRef.current !== session) return
+    session.startMs = recorder.now()
+    session.timer = setTimeout(() => void finishPushToTalk(), MAX_PUSH_TO_TALK_MS)
+    setListening(true)
+    if (!liveSpeech) return
+    const recognition = createRecognition({ continuous: false })
+    if (!recognition) return
     recognition.onresult = (event) => {
-      const heard = fullTranscript(event.results)
-      setText(base && heard ? `${base} ${heard}` : base || heard)
+      if (pushToTalkRef.current !== session) return
+      session.browserText = fullTranscript(event.results)
+      setText(joinText(session.base, session.browserText))
     }
     recognition.onerror = (event) => {
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        showVoiceFallback('Brak dostępu do mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
-      } else if (event.error === 'audio-capture') {
-        showVoiceFallback('Nie wykryto mikrofonu — wpisz komendę ręcznie.')
-      } else if (event.error === 'network') {
-        showVoiceFallback('Rozpoznawanie mowy wymaga połączenia z internetem — wpisz komendę ręcznie.')
-      } else if (event.error === 'no-speech') {
-        setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
-      }
+      if (event.error === 'network') setVoiceNote('Podgląd na żywo niedostępny (brak sieci) — tekst pojawi się po nagraniu.')
     }
+    // koniec podglądu (cisza) kończy też nagranie
     recognition.onend = () => {
-      if (dictationRef.current === recognition) dictationRef.current = null
-      setDictating(false)
-      inputRef.current?.focus()
+      if (pushToTalkRef.current === session) void finishPushToTalk()
     }
     try {
       recognition.start()
-      dictationRef.current = recognition
-      setDictating(true)
-      setVoiceNote('')
-      setVoiceFallback(false)
+      session.recognition = recognition
     } catch {
-      showVoiceFallback('Nie udało się włączyć rozpoznawania mowy — wpisz komendę ręcznie.')
+      /* bez podglądu — samo nagranie */
     }
   }
 
-  const micBusy = recording || dictating
+  const finishPushToTalk = async () => {
+    const session = pushToTalkRef.current
+    if (!session) return
+    pushToTalkRef.current = null
+    clearTimeout(session.timer)
+    detachRecognition(session)
+    setListening(false)
+    setTranscribing(true)
+    setRefiningLive(Boolean(session.browserText))
+    const recorder = pcmRef.current
+    try {
+      await delay(PUSH_TO_TALK_TAIL_MS)
+      const samples = recorder ? recorder.slice(session.startMs, recorder.now()) : new Float32Array(0)
+      const sampleRate = recorder?.sampleRate ?? 16_000
+      recorder?.stop()
+      if (!uploadAllowedRef.current) return
+      if (samples.length < sampleRate * MIN_AUDIO_SECONDS) {
+        if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+        return
+      }
+      const heard = (await transcribeAudio(wavBlob(samples, sampleRate))).trim()
+      if (heard) {
+        setText(joinText(session.base, heard))
+        setVoiceNote('')
+        setVoiceFallback(false)
+      } else if (!session.browserText) {
+        setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Transkrypcja nieudana — wpisz komendę ręcznie.'
+      showVoiceFallback(
+        session.browserText ? `Nie udało się poprawić transkrypcji (${detail}) — zostawiam tekst rozpoznany w przeglądarce.` : detail,
+      )
+    } finally {
+      setTranscribing(false)
+      inputRef.current?.focus()
+    }
+  }
 
-  const toggleRecording = () => {
-    if (dictating) {
-      dictationRef.current?.stop()
+  const toggleMic = () => {
+    const session = pushToTalkRef.current
+    if (!session) {
+      void startPushToTalk()
       return
     }
-    if (recording) {
-      recorderRef.current?.stop()
-      return
+    // stop podglądu dostarczy ostatni wynik, a jego koniec zamknie nagranie
+    if (session.recognition) {
+      try {
+        session.recognition.stop()
+        return
+      } catch {
+        /* już zatrzymany */
+      }
     }
-    if (liveSpeech) startDictation()
-    else void startRecording()
+    void finishPushToTalk()
   }
 
   return (
@@ -402,14 +428,14 @@ export default function CommandPanel({
         ) : (
           <button
             type="button"
-            onClick={toggleRecording}
-            disabled={busy || transcribing || (!pushToTalk && !micBusy)}
-            aria-pressed={micBusy}
-            title={micBusy ? 'Zakończ' : pushToTalk ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
-            className={micButtonClass(micBusy)}
+            onClick={toggleMic}
+            disabled={busy || transcribing || !pushToTalk}
+            aria-pressed={micLive}
+            title={micLive ? 'Zakończ' : pushToTalk ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
+            className={micButtonClass(micLive)}
           >
-            <span aria-hidden className={'inline-block size-3 rounded-full ' + (micBusy ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
-            {dictating ? 'Słucham…' : recording ? 'Nagrywam…' : transcribing ? 'Słyszę…' : 'Mów'}
+            <span aria-hidden className={'inline-block size-3 rounded-full ' + (micLive ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
+            {micLive ? (liveSpeech ? 'Słucham…' : 'Nagrywam…') : transcribing ? 'Słyszę…' : 'Mów'}
           </button>
         )}
         <label htmlFor="inventory-command" className="sr-only">Komenda magazynowa</label>
@@ -436,16 +462,18 @@ export default function CommandPanel({
       </form>
 
       {responseWarning && <p className="mt-3 text-sm text-amber-700">{responseWarning}</p>}
-      {recording && (
-        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
-          <span aria-hidden className="inline-block size-2 animate-pulse rounded-full bg-[#8f3936]" />
-          Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.
-        </p>
-      )}
-      {dictating && (
+      {micLive && (
         <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
           <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#8f3936]" />
-          Słucham — tekst pojawia się w polu. Kończę po chwili ciszy albo po kliknięciu „Słucham…”.
+          {liveSpeech
+            ? 'Słucham — tekst pojawia się w polu. Kończę po chwili ciszy albo po kliknięciu „Słucham…”.'
+            : 'Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.'}
+        </p>
+      )}
+      {transcribing && (
+        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#646b64]" role="status">
+          <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#9a9e97]" />
+          {refiningLive ? 'Poprawiam transkrypcję…' : 'Rozpoznaję nagranie…'}
         </p>
       )}
       {wake.on && (
@@ -459,7 +487,9 @@ export default function CommandPanel({
           />
           {wake.phase === 'hearing'
             ? 'Słucham…'
-            : wake.phase === 'paused'
+            : wake.phase === 'refining'
+              ? 'Poprawiam transkrypcję…'
+              : wake.phase === 'paused'
               ? 'Nasłuch wstrzymany, gdy Magazynier mówi.'
               : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
         </p>
@@ -471,7 +501,9 @@ export default function CommandPanel({
       )}
       {voiceEnabled && !liveSpeech && (
         <p className="mt-3 text-xs text-[#805c12]">
-          Dyktowanie na żywo i nasłuch na prefix działają w Chrome i Edge — tutaj nagranie trafia do transkrypcji na serwerze.
+          {wakeMode
+            ? 'Nasłuch „ręce wolne” wymaga Chrome lub Edge — tutaj użyj przycisku Mów (nagranie trafia do transkrypcji na serwerze).'
+            : 'Podgląd tekstu na żywo działa w Chrome i Edge — tutaj nagranie trafia do transkrypcji na serwerze.'}
         </p>
       )}
       {voiceNote && (
@@ -526,6 +558,31 @@ export default function CommandPanel({
       )}
     </section>
   )
+}
+
+/** Przerywa „Mów” bez wysyłania nagrania i zwalnia mikrofon. */
+function cancelPushToTalk(sessionRef: RefObject<PushToTalkSession | null>, pcmRef: RefObject<PcmRecorder | null>) {
+  const session = sessionRef.current
+  sessionRef.current = null
+  if (session) {
+    clearTimeout(session.timer)
+    detachRecognition(session)
+  }
+  pcmRef.current?.stop()
+}
+
+function detachRecognition(session: PushToTalkSession) {
+  const recognition = session.recognition
+  session.recognition = null
+  if (!recognition) return
+  recognition.onresult = null
+  recognition.onerror = null
+  recognition.onend = null
+  try {
+    recognition.abort()
+  } catch {
+    /* już zatrzymany */
+  }
 }
 
 function micButtonClass(active: boolean): string {
