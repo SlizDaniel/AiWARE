@@ -56,17 +56,35 @@ Na telefonie otwórz nowy adres `exp://…exp.direct` w Expo Go.
 
 - **Magu:** komenda tekstowa lub nagranie, edytowalna transkrypcja, odpowiedź albo karta zmiany.
   Zapis wymaga osobnego zatwierdzenia; przełączanie sekcji zachowuje oczekującą kartę.
+  Tryb głosu „Nasłuch na prefix” dodaje przycisk włączający pętlę nasłuchu: kolejne 6-sekundowe
+  nagrania trafiają do `/api/stt`, komenda wypowiedziana po prefiksie (np. „Magu, gdzie leży szkło?”)
+  wysyła się sama, sam prefix uzbraja kolejną wypowiedź (8 s), a oczekującą kartę zmiany
+  zatwierdzasz i odrzucasz głosem („tak”/„zatwierdź”, „nie”/„odrzuć”; bez prefixu przez minutę od
+  pokazania karty). Ciszę odsiewa próg miernika głośności (recorder.getStatus().metering,
+  `SILENCE_METERING_DB` w `mobile/src/lib/wake.ts`), bo transkrypcja bez mowy potrafi
+  „usłyszeć” passującą komendę ze słownika magazynu. Trzy kolejne nieudane transkrypcje
+  zatrzymują nasłuch z komunikatem i przyciskiem wznowienia; opuszczenie panelu komend,
+  przejście aplikacji w tło albo mówiący TTS przerywają lub wstrzymują pętlę. Dopasowanie
+  prefiksu i decyzje dzielą logikę z klientem webowym (`src/lib/speech.ts`), a decyzje
+  o chunkach opisuje `mobile/src/lib/wake.ts`. Na webie MediaRecorder też dostarcza metering;
+  szum otoczenia może przekraczać próg — celem produkcyjnym jest telefon.
 - **Stany:** wyszukiwanie i minima; kierownik importuje XLSX/CSV po sprawdzeniu mapowania.
   Wszyscy mogą eksportować XLSX/CSV do arkusza udostępniania telefonu.
 - **Mapa:** schemat stref i ich zawartość. Odpowiedź o lokalizacji przełącza do mapy i podświetla
   odpowiadającą strefę. Reguły przypisania pozycji są współdzielone z klientem webowym.
 - **Historia:** audyt, a dla kierownika cofnięcie z osobnym potwierdzeniem.
 - **Więcej:** szkice zamówień, procedury, konto i ustawienia agenta. Role egzekwuje API;
-  zarządzanie rolami użytkowników pozostaje w panelu webowym.
+  zarządzanie rolami użytkowników pozostaje w panelu webowym. Ustawienia agenta odpowiadają
+  panelowi webowemu: prefix, tryb interpretacji, tryb głosu (nasłuch na prefix / mikrofon po
+  naciśnięciu / tylko tekst), źródło danych (baza lub import XLSX/CSV), minima i TTS. Zapis
+  wysyła wyłącznie zmienione pola i korzysta ze wspólnej walidacji webowej
+  (`src/components/settingsForm.ts`); przycisk jest nieaktywny, dopóki nic się nie zmieni.
 
-Nagranie przez `expo-audio` trwa maksymalnie 45 sekund. Serwer `/api/stt` transkrybuje je przez
+Nagranie przez `expo-audio` trwa maksymalnie 45 sekund (przycisk mikrofonu) albo 6 sekund
+w pętli nasłuchu. Serwer `/api/stt` transkrybuje je przez
 Gemini lub skonfigurowany adapter Whisper. Nagranie lokalne usuwamy po odczycie do wysłania.
-Transkrypcja trafia do pola tekstowego, bez automatycznego wykonania komendy. Przerwanie pracy
+W trybie push-to-talk transkrypcja trafia do pola tekstowego, bez automatycznego wykonania
+komendy; w nasłuchu na prefix komenda wysyła się sama. Przerwanie pracy
 na panelu lub przejście aplikacji w tło zatrzymuje nagrywanie. Brak uprawnień do mikrofonu,
 STT lub sieci pozostawia możliwość wpisania komendy. Limit pliku/nagrania to 4 MB.
 Opcjonalny odczyt odpowiedzi korzysta z `expo-speech` i głosu polskiego dostępnego na urządzeniu.
@@ -79,8 +97,12 @@ Nieprawidłowe jawne credentials nie przełączają się na sesję z cookies.
 Aktualizacje: polling `/api/version` co 3 sekundy w aktywnej aplikacji, odświeżenie po zapisie,
 po powrocie z tła oraz gestem przeciągnięcia. Nie ma lokalnej kolejki zapisów offline.
 Timeout zapisu wymaga sprawdzenia historii przed ponowieniem komendy.
-Nasłuch prefixu z Web Speech API pozostaje funkcją klienta webowego; mobilny używa nagrywania
-po naciśnięciu. Serwerowy parser offline nadal działa jako fallback interpretacji.
+Odczyt/odświeżenie sesji ma limit 15 sekund, także przed pierwszym żądaniem API.
+Gdy Supabase nie odpowiada, aplikacja pokazuje błąd zamiast bez końca wyświetlać ładowanie;
+na ekranie startowym można ponowić odczyt sesji. Błąd sieci API wskazuje adres backendu.
+Nasłuch prefixu na webie korzysta z Web Speech API na żywo; mobilny nie ma tego API — nagrywa
+chunki i transkrybuje je na serwerze (`/api/stt`), więc każdy fragment kosztuje jedno żądanie
+STT. Serwerowy parser offline nadal działa jako fallback interpretacji.
 
 ## Weryfikacja i przed wydaniem
 
@@ -97,12 +119,14 @@ npm run export -- --platform all --max-workers 2
 ```
 
 Bundlowanie generuje kod dla Androida/iOS i wersję webową; nie tworzy podpisanego APK/IPA.
-Na branchu `feature/expo-mobile` sprawdzono: 547 testów zaliczonych / 1 pominięty warunkowo,
-typy i lint obu klientów, zgodność zależności Expo, eksport Android/iOS/web oraz produkcyjny
-build Next.js. Test GUI z atrapą Supabase i izolowaną bazą PGlite potwierdził logowanie,
-komendę bez zapisu przed zatwierdzeniem, zachowanie oczekującej karty przy nawigacji,
-zatwierdzenie, stany, audyt, undo, utworzenie i podświetlenie strefy, widoki procedur/konta,
-import XLSX po mapowaniu i wylogowanie. Sprawdzono także viewport 390 px.
+Na branchu `feature/expo-mobile` sprawdzono: 703 testy zaliczone / 2 pominięte warunkowo
+(w tym `tests/mobile-wake.test.ts` dla decyzji nasłuchu), typy i lint obu klientów, zgodność
+zależności Expo, eksport Android/iOS/web oraz produkcyjny build Next.js. Test GUI z atrapą
+Supabase (`AUTH_DISABLED=1`, izolowana baza PGlite, API przez proxy Metro `MAGAZYNIER_TUNNEL_API=1`)
+potwierdził logowanie, kartę nasłuchu na prefix z fazami i wznowieniem po błędzie, ustawienia
+agenta (prefix, tryb głosu, źródło danych, zapis z miernikiem zmian), komendę bez zapisu przed
+zatwierdzeniem, zatwierdzenie, stany, audyt, undo, utworzenie i podświetlenie strefy, widoki
+procedur/konta, import XLSX po mapowaniu i wylogowanie. Sprawdzono także viewport 390 px.
 Testy uwierzytelniania używają mocków weryfikatora Supabase. Nie zastępują próby z rzeczywistym
 kontem i fizycznym telefonem. Przed wydaniem sprawdź Android/iOS: logowanie, odświeżenie sesji,
 zgody mikrofonu, nagranie/transkrypcję, powrót z tła, polski TTS, picker plików i udostępnianie.
