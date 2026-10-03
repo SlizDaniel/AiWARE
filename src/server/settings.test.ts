@@ -57,7 +57,7 @@ describe('defaults and persistence', () => {
       mode: 'llm',
       adapter: 'database',
       default_minimum: 0,
-      voice_mode: 'push_to_talk',
+      voice_mode: 'wake_word',
       tts_enabled: false,
       reorder_default_quantity: 50,
     })
@@ -88,7 +88,7 @@ describe('defaults and persistence', () => {
     await setSetting(db, 'default_minimum', -3)
     await setSetting(db, 'voice_mode', 'always')
     await setSetting(db, 'tts_enabled', 'yes')
-    expect(await getAppSettings(db)).toMatchObject({ prefix: 'Magu', default_minimum: 0, voice_mode: 'push_to_talk', tts_enabled: false })
+    expect(await getAppSettings(db)).toMatchObject({ prefix: 'Magu', default_minimum: 0, voice_mode: 'wake_word', tts_enabled: false })
   })
 })
 

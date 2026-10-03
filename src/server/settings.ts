@@ -105,7 +105,7 @@ async function readStored(db: Db): Promise<StoredSettings> {
     mode: isDemoMode() ? 'mock' : pick(KEYS.mode, isAgentMode, requestedModeFromEnv()),
     adapter,
     default_minimum: pick(KEYS.defaultMinimum, isIntIn(0, MAX_DEFAULT_MINIMUM), 0),
-    voice_mode: pick(KEYS.voiceMode, isVoiceMode, 'push_to_talk'),
+    voice_mode: pick(KEYS.voiceMode, isVoiceMode, 'wake_word'),
     tts_enabled: pick(KEYS.tts, (value): value is boolean => typeof value === 'boolean', false),
     reorder_default_quantity: pick(KEYS.reorderQuantity, isIntIn(1, MAX_REORDER_QUANTITY), DEFAULT_REORDER_QUANTITY),
     retired_prefixes: Array.isArray(retired) ? retired.filter(isPrefix) : [],
