@@ -12,7 +12,7 @@
 
 **Demo check:** zatwierdź zmianę „wzięliśmy paletę kartonów" (54→52 nie przekracza progu) → potem komenda obniżającą poniżej minimum → Kolejka pokazuje szkic zamówienia → Zatwierdź → status zmieniony, Historia pokazuje decyzję.
 
-**Status:** implemented; SQLite smoke check passed. `pytest` and GUI demo check remain unverified because project test/frontend dependencies and Docker are unavailable in this environment.
+**Status:** done — 23 backend tests passed, frontend production build passed, and the browser demo check confirmed the below-minimum flow, queue card, approval, and no-ERP-send state. Verified with local dev servers (Docker unavailable).
 
 **Demo rule implemented:** order quantity is at least 50 units, or the full shortfall to the minimum if that exceeds 50; delivery is proposed for the next Tuesday. The 50-unit fixture in this card remains unchanged.
 
