@@ -17,6 +17,10 @@ import {
 
 export const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 export const MAX_RESPONSE_BYTES = 1024 * 1024
+/** Transient 500/503 from Google: retry once if at least this much of the budget is left. */
+const MAX_ATTEMPTS = 2
+const RETRY_DELAY_MS = 600
+const RETRY_MIN_REMAINING_MS = 4_000
 /** Generous for Gemini envelopes (~8 levels) plus tool arguments. */
 export const MAX_JSON_DEPTH = 64
 const MAX_IN_FLIGHT = 2
@@ -134,24 +138,36 @@ export async function generateContent(options: GenerateContentOptions): Promise<
   }
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
   const controller = new AbortController()
+  const deadline = Date.now() + options.timeoutMs
   const timer = setTimeout(() => controller.abort(), options.timeoutMs)
   try {
     let response: Response
-    try {
-      response = await fetch(`${baseUrl}/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': options.apiKey },
-        body: JSON.stringify(options.body),
-        signal: controller.signal,
-        // A redirect would forward the custom key header to another origin.
-        redirect: 'error',
-        cache: 'no-store',
-      })
-    } catch (error) {
-      if (controller.signal.aborted || isAbort(error)) {
-        throw new GeminiRequestError('Gemini request timed out', 'timeout')
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        response = await fetch(`${baseUrl}/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': options.apiKey },
+          body: JSON.stringify(options.body),
+          signal: controller.signal,
+          // A redirect would forward the custom key header to another origin.
+          redirect: 'error',
+          cache: 'no-store',
+        })
+      } catch (error) {
+        if (controller.signal.aborted || isAbort(error)) {
+          throw new GeminiRequestError('Gemini request timed out', 'timeout')
+        }
+        throw new GeminiRequestError('Could not reach the Gemini endpoint', 'network')
       }
-      throw new GeminiRequestError('Could not reach the Gemini endpoint', 'network')
+      // Google answers 500/503 when a model is briefly overloaded; one quick
+      // retry inside the same deadline usually succeeds.
+      const transient = response.status === 500 || response.status === 503
+      if (transient && attempt < MAX_ATTEMPTS && deadline - Date.now() > RETRY_MIN_REMAINING_MS) {
+        await response.body?.cancel().catch(() => {})
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+        continue
+      }
+      break
     }
     if (!response.ok) {
       const reason = await errorReason(response)
