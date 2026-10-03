@@ -7,6 +7,7 @@ import ReorderQueue from './components/ReorderQueue'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
 import WarehouseMap from './components/WarehouseMap'
+import { zoneForItem, type MapTarget } from './components/zoneItems'
 import { connectWs, fetchHistory, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type ReorderDraft, type Zone } from './api'
 import { SECTIONS, type SectionId } from './sections'
 
@@ -34,6 +35,8 @@ export default function App() {
   const [zones, setZones] = useState<Zone[]>([])
   const [zonesState, setZonesState] = useState<LoadState>('loading')
   const [zonesError, setZonesError] = useState('')
+  const [mapTarget, setMapTarget] = useState<MapTarget | null>(null)
+  const [mapSelectionId, setMapSelectionId] = useState<number | null>(null)
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [historyState, setHistoryState] = useState<LoadState>('loading')
   const [historyError, setHistoryError] = useState('')
@@ -143,12 +146,23 @@ export default function App() {
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
           {section === 'stany' && <InventoryImport onImported={refresh} />}
-          <CommandPanel onApplied={onApplied} />
+          <CommandPanel onApplied={onApplied} onShowLocation={(target) => {
+            setMapTarget({ ...target })
+            setMapSelectionId(null)
+            setZonesState('loading')
+            setStockState('loading')
+            void refreshZones()
+            void refreshStock()
+            setSection('mapa')
+          }} />
 
           {section === 'mapa' && (
             <WarehouseMap
               zones={zones}
               items={items}
+              locationTarget={mapTarget}
+              selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones)?.id ?? null : null)}
+              onSelectZone={setMapSelectionId}
               state={zonesState}
               error={zonesError}
               onRetry={() => void refreshZones()}

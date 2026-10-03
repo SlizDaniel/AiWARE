@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '../api'
-import { itemsForZone, normalizeZoneName } from './zoneItems'
+import { findZoneByName, itemsForZone, zoneForItem, type MapTarget } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
 
 type Props = {
   zones: Zone[]
   items: Item[]
+  locationTarget: MapTarget | null
+  selectedId: number | null
+  onSelectZone: (id: number | null) => void
   state: LoadState
   error: string
   onRetry: () => void
@@ -19,8 +22,7 @@ function shortLabel(value: string): string {
   return value.length > 25 ? `${value.slice(0, 24)}…` : value
 }
 
-export default function WarehouseMap({ zones, items, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+export default function WarehouseMap({ zones, items, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
@@ -29,6 +31,11 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
   const [draftWarning, setDraftWarning] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const mapRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (locationTarget && state === 'ready') mapRef.current?.focus()
+  }, [locationTarget, state])
 
   useEffect(() => {
     if (draftOpen) nameInputRef.current?.focus()
@@ -41,10 +48,10 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
   const prepareZone = async () => {
     const name = draftName.trim()
     if (!name || draftBusy) return
-    const existing = zones.find((zone) => normalizeZoneName(zone.name) === normalizeZoneName(name))
+    const existing = findZoneByName(name, zones)
     if (existing) {
-      setSelectedId(existing.id)
-      setDraftError(`Strefa „${existing.name}” już istnieje. Wybierz ją z listy, aby zobaczyć szczegóły.`)
+      onSelectZone(existing.id)
+      setDraftError(`Strefa „${existing.name}” już istnieje. Otworzyliśmy jej szczegóły. Jak nazwać nową strefę?`)
       return
     }
 
@@ -75,7 +82,7 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
     try {
       const result = await confirmProposal(draftProposal.id)
       onZoneAdded(result.name ?? draftName.trim(), result.created !== false)
-      setSelectedId(result.id ?? null)
+      onSelectZone(result.id ?? null)
       setDraftProposal(null)
       setDraftName('')
       setDraftWarning('')
@@ -103,12 +110,26 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
 
   const orderedZones = [...zones].sort((a, b) => a.id - b.id)
   const selected = orderedZones.find((zone) => zone.id === selectedId) ?? null
+  const targetZone = locationTarget ? zoneForItem(locationTarget, orderedZones) : null
   const selectedItems = selected ? itemsForZone(selected, items, orderedZones) : []
   const rows = Math.max(3, Math.ceil((orderedZones.length + 1) / 2))
   const height = 172 + rows * 112
 
   return (
-    <section aria-label="Mapa stref magazynu" className="grid gap-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(280px,0.8fr)]">
+    <section ref={mapRef} tabIndex={-1} aria-label="Mapa stref magazynu" className="grid gap-5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#536b56] lg:grid-cols-[minmax(0,1.8fr)_minmax(280px,0.8fr)]">
+      {locationTarget && (
+        <div className={'border p-4 text-sm lg:col-span-2 ' + (targetZone ? 'border-[#cbd8c9] bg-[#edf3ec] text-[#315b37]' : 'border-[#ead9a9] bg-[#fffaf0] text-[#805c12]')} role="status">
+          <p className="font-semibold">{locationTarget.name} · {locationTarget.location || 'Brak zapisanej lokalizacji'}</p>
+          {targetZone ? (
+            <button type="button" onClick={() => onSelectZone(targetZone.id)} className="mt-1 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">Wybierz strefę „{targetZone.name}”</button>
+          ) : (
+            <>
+              <p className="mt-1">Ta pozycja nie ma jeszcze pasującej strefy na schemacie.</p>
+              <button type="button" disabled={draftBusy} onClick={() => { setDraftName(locationTarget.location || locationTarget.name); setDraftProposal(null); setDraftError(''); setDraftWarning(''); setDraftOpen(true) }} className="mt-2 border border-[#ead9a9] bg-white px-3 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12] disabled:opacity-40">Przygotuj strefę dla tej lokalizacji</button>
+            </>
+          )}
+        </div>
+      )}
       <div className="min-w-0 border border-[#e8e5de] bg-white">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#e8e5de] px-5 py-4">
           <h2 className="text-lg font-bold">Rzut magazynu</h2>
@@ -157,27 +178,30 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
 
               const active = selected?.id === zone.id
               const count = itemsState === 'ready' ? itemsForZone(zone, items, orderedZones).length : null
+              const stockLabel = count === null
+                ? itemsState === 'error' ? 'Asortyment niedostępny' : 'Pobieram asortyment…'
+                : `${count} ${count === 1 ? 'pozycja' : 'pozycji'}`
               return (
                 <g
                   key={zone.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Strefa ${zone.name}. ${count === null ? 'Asortyment wczytywany.' : `${count} pozycji.`} Pokaż szczegóły.`}
+                  aria-label={`Strefa ${zone.name}. ${stockLabel}. Pokaż szczegóły.`}
                   aria-pressed={active}
                   className="cursor-pointer"
-                  onClick={() => setSelectedId(zone.id)}
-                  onFocus={() => setSelectedId(zone.id)}
+                  onClick={() => onSelectZone(zone.id)}
+                  onFocus={() => onSelectZone(zone.id)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      setSelectedId(zone.id)
+                      onSelectZone(zone.id)
                     }
                   }}
                 >
                   <rect x={x} y={y} width="325" height="84" fill={active ? '#edf3ec' : '#ffffff'} stroke={active ? '#315b37' : '#bdc8bb'} strokeWidth={active ? 3 : 2} />
                   <rect x={x + 10} y={y + 10} width="5" height="64" fill={active ? '#315b37' : '#a7baa6'} />
                   <text x={x + 29} y={y + 37} fill="#292d2b" fontSize="20" fontWeight="700">{shortLabel(zone.name)}</text>
-                  <text x={x + 29} y={y + 62} fill="#646b64" fontSize="13">{count === null ? 'Pobieram asortyment…' : `${count} ${count === 1 ? 'pozycja' : 'pozycji'}`}</text>
+                  <text x={x + 29} y={y + 62} fill="#646b64" fontSize="13">{stockLabel}</text>
                 </g>
               )
             })}
@@ -189,7 +213,7 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
       <aside className="border border-[#e8e5de] bg-white p-5" aria-label="Szczegóły stref">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-lg font-bold">Strefy</h2>
-          <button type="button" onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} aria-controls="new-zone-form" className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
+          <button type="button" disabled={draftBusy} onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} aria-controls="new-zone-form" className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
         </div>
         {draftOpen && (
           <div id="new-zone-form" className="mt-4 border border-[#cbd8c9] bg-[#f6f8f4] p-4">
@@ -230,7 +254,7 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
                 <button
                   key={zone.id}
                   type="button"
-                  onClick={() => setSelectedId(zone.id)}
+                  onClick={() => onSelectZone(zone.id)}
                   aria-pressed={selected?.id === zone.id}
                   className={'flex w-full items-center justify-between gap-3 border px-3 py-2.5 text-left text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' + (selected?.id === zone.id ? 'border-[#315b37] bg-[#edf3ec] text-[#315b37]' : 'border-[#e8e5de] text-[#454b46] hover:bg-[#fbfaf7]')}
                 >
