@@ -9,6 +9,12 @@ export type Item = {
   location: string
 }
 
+export type Zone = {
+  id: number
+  name: string
+  created: string
+}
+
 export type HistoryEntry = {
   id: number
   ts: string
@@ -87,6 +93,10 @@ export function fetchStock(): Promise<Item[]> {
   return fetch('/api/stock').then((r) => json<{ items: Item[] }>(r)).then((d) => d.items)
 }
 
+export function fetchZones(): Promise<Zone[]> {
+  return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
+}
+
 export function fetchHistory(): Promise<HistoryEntry[]> {
   return fetch('/api/history').then((r) => json<{ entries: HistoryEntry[] }>(r)).then((d) => d.entries)
 }
@@ -115,9 +125,12 @@ export function confirmProposal(id: string): Promise<{
   applied: boolean
   audit_id?: number
   reorder_draft?: ReorderDraft | null
+  created?: boolean
+  id?: number
+  name?: string
 }> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null }>(r),
+    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null; created?: boolean; id?: number; name?: string }>(r),
   )
 }
 
