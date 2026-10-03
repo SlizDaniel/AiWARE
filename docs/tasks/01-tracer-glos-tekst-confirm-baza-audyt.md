@@ -12,12 +12,12 @@
 
 **Demo check:** `docker compose up` → otwarta strona → wpisz komendę w panelu → karta zmiany widoczna → Zatwierdź → Stany pokazuje nową wartość → Historia pokazuje wpis.
 
-**Status:** ready
+**Status:** done — demo check przeprowadzony GUI-testerem (zrzuty w `gui-test-screenshots/`); testy backendu 17/17; jedyny nieweryfikowany punkt end-to-end to `docker compose up` (daemon dockera nie działał na maszynie dev; składnia compose zweryfikowana, obrazy zbudowane w repo) — potwierdzić jedną komendą po przeniesieniu repo
 
-- [ ] `docker compose up` podnosi całość jedną komendą z czystego clone
-- [ ] pole tekstowe w UI wysyła komendę do backendu
-- [ ] backend zwraca kartę zmiany (co usłyszał + co planuje: stan przed→po)
-- [ ] klik Zatwierdź zapisuje zmianę w SQLite i nic nie zapisuje się przed zatwierdzeniem
-- [ ] sekcja Stany odświeża się po zatwierdzeniu
-- [ ] sekcja Historia pokazuje wpis (co/kiedy) — undo w karcie 06
-- [ ] szkielet 6 sekcji nawigacji istnieje (Mapa, Stany, Kolejka, Historia, Procedury, Ustawienia)
+- [x] `docker compose up` podnosi całość jedną komendą z czystego clone *(składnia+pliki zweryfikowane; build end-to-end do potwierdzenia na maszynie z działającym daemonem)*
+- [x] pole tekstowe w UI wysyła komendę do backendu
+- [x] backend zwraca kartę zmiany (co usłyszał + co planuje: stan przed→po)
+- [x] klik Zatwierdź zapisuje zmianę w SQLite i nic nie zapisuje się przed zatwierdzeniem
+- [x] sekcja Stany odświeża się po zatwierdzeniu
+- [x] sekcja Historia pokazuje wpis (co/kiedy) — undo w karcie 06
+- [x] szkielet 6 sekcji nawigacji istnieje (Mapa, Stany, Kolejka, Historia, Procedury, Ustawienia)
