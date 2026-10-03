@@ -171,6 +171,55 @@ export async function getItem(db: Db, itemId: number): Promise<Item | null> {
   return one<Item>(db, `SELECT ${ITEM_COLUMNS} FROM items WHERE id = $1`, [itemId])
 }
 
+/** Manager edits to a product are atomic with their audit entry and reorder sync. */
+export async function updateItem(
+  db: Db,
+  itemId: number,
+  changes: Partial<Pick<Item, 'name' | 'quantity' | 'minimum' | 'unit' | 'location'>>,
+  actor: Actor,
+): Promise<Item> {
+  return db.transaction(async (tx) => {
+    const previous = await one<Item>(tx, `SELECT ${ITEM_COLUMNS} FROM items WHERE id = $1 FOR UPDATE`, [itemId])
+    if (previous === null) throw new HttpError(404, 'Nie znaleziono produktu.')
+    const next = { ...previous, ...changes }
+    const duplicate = await one<{ id: number }>(
+      tx,
+      'SELECT id FROM items WHERE lower(name) = lower($1::text) AND id <> $2 LIMIT 1',
+      [next.name, itemId],
+    )
+    if (duplicate !== null) throw new HttpError(409, 'Produkt o takiej nazwie już istnieje.')
+    const updated = await one<Item>(
+      tx,
+      `UPDATE items SET name = $1, quantity = $2, minimum = $3, unit = $4, location = $5
+       WHERE id = $6 RETURNING ${ITEM_COLUMNS}`,
+      [next.name, next.quantity, next.minimum, next.unit, next.location, itemId],
+    )
+    const labels: [keyof typeof next, string][] = [
+      ['name', 'nazwa'], ['quantity', 'ilość'], ['minimum', 'minimum'], ['unit', 'jednostka'], ['location', 'lokalizacja'],
+    ]
+    const details = labels
+      .filter(([field]) => previous[field] !== updated![field])
+      .map(([field, label]) => `${label}: ${previous[field] || (field === 'quantity' || field === 'minimum' ? 0 : '—')}→${updated![field] || (field === 'quantity' || field === 'minimum' ? 0 : '—')}`)
+      .join('; ')
+    if (details) {
+      await tx.query(
+        `INSERT INTO audit_log (actor, actor_id, text, item_id, item_name, delta, before, after, event_type, details)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [actor.name, uuidOrNull(actor.id), 'Edycja produktu', itemId, updated!.name,
+          updated!.quantity - previous.quantity, previous.quantity, updated!.quantity, 'inventory_item_updated', details],
+      )
+      if (previous.name !== updated!.name || previous.quantity !== updated!.quantity ||
+          previous.minimum !== updated!.minimum || previous.unit !== updated!.unit) {
+        await syncPendingReorder(tx, {
+          itemId, itemName: updated!.name, quantity: updated!.quantity, minimum: updated!.minimum,
+          unit: updated!.unit, source: 'edycji produktu', actor,
+        })
+      }
+    }
+    return updated!
+  })
+}
+
 /**
  * Insert new inventory rows and update existing rows by their (case-insensitive) name.
  * New rows without a minimum get the owner's default minimum (card 12); existing thresholds stay.
