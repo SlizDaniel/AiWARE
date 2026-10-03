@@ -96,6 +96,27 @@ JSON odpowiedzi i argumentów funkcji z powtórzonymi kluczami jest odrzucany
 (agent nie wybiera po cichu ostatniej wartości). Nadmierne zagnieżdżenie JSON
 również uruchamia fallback offline zamiast błędu serwera.
 
+### Próba z rzeczywistym LLM (karta 03)
+
+Ustaw `LLM_API_KEY` lokalnie w `.env` (nie w commicie ani na czacie),
+opcjonalnie `LLM_BASE_URL`/`LLM_MODEL`. Wyłącz `DEMO_MODE` i uruchom z repo:
+
+```powershell
+.\backend\.venv\Scripts\python.exe .\scripts\check-live-llm.py
+```
+
+Skrypt wysyła **trzy rzeczywiste zapytania API**, używając wyłącznie syntetycznych
+stanów magazynowych. Sprawdza schematy wszystkich narzędzi i poprawność ID,
+ale nie wykonuje narzędzi ani nie otwiera SQLite. Używa tego samego providera,
+walidatora i limitów co aplikacja. Klucz i treść odpowiedzi nie są wypisywane.
+Zmienne środowiskowe mają pierwszeństwo przed `.env`; inny plik wskaż przez
+`--env-file`. Brak klucza albo włączone demo zwracają kod 2, błąd providera — 1.
+Kod 0 oznacza poprawny kontrakt dla trzech zdań; dopasowanie intencji i cały
+przepływ karty/confirm nadal trzeba sprawdzić w GUI.
+Przy lokalnym uruchomieniu backendu załaduj ten sam plik jawnie
+(z katalogu `backend`): `uv run uvicorn app.main:app --env-file ../.env --reload --port 8000`.
+Docker Compose ładuje zmienne z głównego `.env` przy uruchomieniu kontenerów.
+
 Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
 LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
 kartę wymagającą zatwierdzenia. Oryginalną komendę do audytu dostarcza serwer.
@@ -211,4 +232,5 @@ pokazuje treść na karcie przed zatwierdzeniem. Następnie `jak pakujemy szkło
 procedurę z przyciskiem **Pokaż na mapie**, jeśli powiązana strefa istnieje i jest jednoznaczna.
 Przycisk otwiera Mapę i zaznacza strefę. Do tego przykładu najpierw dodaj `strefa: C2`
 i zatwierdź kartę. Nieznana lokalizacja nie podświetla innej strefy. Brak procedury
-wywołuje prośbę o jej zapamiętanie. Próba GUI karty 10 pozostaje do wykonania.
+wywołuje prośbę o jej zapamiętanie. Próba GUI karty 10 przeszła w lokalnym Firefoksie
+na osobnej testowej bazie, w tym przejście z odpowiedzi o lokalizacji do strefy procedury.

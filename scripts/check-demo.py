@@ -43,7 +43,7 @@ def main() -> int:
     if not run("Frontend typecheck and production build", [*npm_command, "run", "build"], repo / "frontend", env):
         return 1
     node = shutil.which("node")
-    if not node or not run("Map zone matching", [node, "--test", "src/components/zoneItems.test.mjs"], repo / "frontend", env):
+    if not node or not run("Map zone matching and procedure search", [node, "--test", "src/components/zoneItems.test.mjs", "src/components/procedures.test.mjs"], repo / "frontend", env):
         return 1
     if docker:
         compose = [docker, "compose", "-f", str(repo / "docker-compose.yml"), "-f", str(repo / "docker-compose.demo.yml")]

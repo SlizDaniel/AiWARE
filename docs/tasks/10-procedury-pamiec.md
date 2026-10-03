@@ -12,12 +12,12 @@
 
 **Demo check:** „zapamiętaj: szkło pakujemy w kartony Y, strefa C2" → zatwierdź → „jak pakujemy szkło?" → procedura na karcie → „pokaż na mapie" → strefa C2 podświetlona.
 
-**Status:** implemented — lista i wyszukiwarka Procedur, podgląd treści przed zatwierdzeniem oraz „Pokaż na mapie” z karty odpowiedzi i listy. Backend zachowuje confirm-before-write, recall i audyt; temat i wyszukiwanie obsługują polskie wielkie litery z transkrypcji. Po scaleniu `origin/main` (`af5ae2a`) backend 123/123, frontend typecheck/build i testy 9/9 przeszły; review Standards/Spec bez uwag do kodu. Lint zgłasza ostrzeżenie `react(set-state-in-effect)` przy odświeżaniu danych w `App.tsx`. GUI-check pozostaje otwarty: narzędzie przeglądarki zwraca „No browser is available”.
+**Status:** done — lista i wyszukiwarka Procedur, podgląd treści przed zatwierdzeniem oraz „Pokaż na mapie” z karty odpowiedzi i listy. Backend zachowuje confirm-before-write, recall i audyt; temat i wyszukiwanie obsługują polskie wielkie litery z transkrypcji. Po scaleniu `origin/main` (`b001799`) backend 123/123, frontend typecheck/build i testy 13/13 przeszły; review Standards/Spec bez uwag do kodu. GUI-check wykonany w lokalnym headless Firefox na osobnej bazie i jednorazowym profilu: zapis/confirm, recall, wyszukiwanie po temacie/treści, brak wyników, podświetlenie C2, aktualizacja wielkimi literami, istniejąca strefa, lokalizacja B-2 → procedura C2, zmiana stanu i audyt. Lint zgłasza ostrzeżenie `react(set-state-in-effect)` przy odświeżaniu danych w `App.tsx`.
 
 - [x] zapis procedury przez potwierdzoną kartę (spójnie z resztą)
 - [x] recall po pytaniu zwraca procedurę + lokalizację na mapie
 - [x] brak procedury → agent proponuje zapamiętanie zamiast zmyślać
 - [x] wyszukiwarka w sekcji Procedury działa po fragmencie tekstu
-- [ ] GUI-check: zapis → confirm → recall → „Pokaż na mapie” → C2 podświetlona; wyszukiwanie po fragmencie i stan bez wyników
+- [x] GUI-check: zapis → confirm → recall → „Pokaż na mapie” → C2 podświetlona; wyszukiwanie po fragmencie i stan bez wyników
 
 Powiązanie mapy wymaga istniejącej strefy. Jawna nieznana lub sprzeczna lokalizacja nie wybiera innej strefy; bez lokalizacji link jest dostępny tylko dla jednoznacznego powiązania tematu z nazwą strefy/towaru. Lista odświeża się po potwierdzeniu i zdarzeniu WebSocket.

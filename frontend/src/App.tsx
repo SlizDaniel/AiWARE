@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
 import WarehouseMap from './components/WarehouseMap'
 import { connectWs, fetchHistory, fetchProcedures, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type Procedure, type ReorderDraft, type Zone } from './api'
+import { zoneForItem, type MapTarget } from './components/zoneItems'
 import { SECTIONS, type SectionId } from './sections'
 
 const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
@@ -35,6 +36,8 @@ export default function App() {
   const [zones, setZones] = useState<Zone[]>([])
   const [zonesState, setZonesState] = useState<LoadState>('loading')
   const [zonesError, setZonesError] = useState('')
+  const [mapTarget, setMapTarget] = useState<MapTarget | null>(null)
+  const [mapSelectionId, setMapSelectionId] = useState<number | null>(null)
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [historyState, setHistoryState] = useState<LoadState>('loading')
   const [historyError, setHistoryError] = useState('')
@@ -44,7 +47,6 @@ export default function App() {
   const [procedures, setProcedures] = useState<Procedure[]>([])
   const [proceduresState, setProceduresState] = useState<LoadState>('loading')
   const [proceduresError, setProceduresError] = useState('')
-  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null)
   const [connected, setConnected] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -138,7 +140,8 @@ export default function App() {
   }
 
   const showZone = (id: number) => {
-    setSelectedZoneId(id)
+    setMapTarget(null)
+    setMapSelectionId(id)
     setSection('mapa')
   }
 
@@ -165,18 +168,27 @@ export default function App() {
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
           {section === 'stany' && <InventoryImport onImported={refresh} />}
-          <CommandPanel onApplied={onApplied} zones={zones} items={items} onShowZone={showZone} />
+          <CommandPanel onApplied={onApplied} zones={zones} items={items} onShowZone={showZone} onShowLocation={(target) => {
+            setMapTarget({ ...target })
+            setMapSelectionId(null)
+            setZonesState('loading')
+            setStockState('loading')
+            void refreshZones()
+            void refreshStock()
+            setSection('mapa')
+          }} />
 
           {section === 'mapa' && (
             <WarehouseMap
               zones={zones}
               items={items}
+              locationTarget={mapTarget}
+              selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones)?.id ?? null : null)}
+              onSelectZone={setMapSelectionId}
               state={zonesState}
               error={zonesError}
               onRetry={() => void refreshZones()}
               itemsState={stockState}
-              selectedId={selectedZoneId}
-              onSelectZone={setSelectedZoneId}
               onRetryItems={() => void refreshStock()}
               onZoneAdded={(name, created) => {
                 showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)

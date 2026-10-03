@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   confirmProposal,
   fetchAgentMode,
+  fetchZones,
   sendCommand,
   transcribeAudio,
   updateAgentMode,
@@ -13,23 +14,25 @@ import {
   type Zone,
 } from '../api'
 import ProcedureLocation from './ProcedureLocation'
+import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
   zones: Zone[]
   items: Item[]
   onShowZone: (id: number) => void
+  onShowLocation: (target: MapTarget) => void
 }
 
 type State =
   | { kind: 'proposal'; proposal: Proposal }
-  | { kind: 'answer'; tool: string; text: string; procedure: Pick<Procedure, 'topic' | 'text'> | null }
-  | { kind: 'clarify'; message: string }
+  | { kind: 'answer'; tool: string; text: string; target: MapTarget | null; procedure: Pick<Procedure, 'topic' | 'text'> | null }
+  | { kind: 'clarify'; message: string; target?: MapTarget }
   | { kind: 'unknown'; text: string; hints?: string[] }
   | { kind: 'error'; message: string }
   | null
 
-export default function CommandPanel({ onApplied, zones, items, onShowZone }: Props) {
+export default function CommandPanel({ onApplied, zones, items, onShowZone, onShowLocation }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
@@ -83,12 +86,31 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone }: Pr
     try {
       const res = await sendCommand(t)
       setResponseWarning(res.warning ?? null)
-      if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
-      else if (res.type === 'answer') {
+      if (res.type === 'proposal') {
+        const name = res.proposal.args?.name
+        let existing: Zone | null = null
+        if (res.proposal.tool === 'add_zone' && typeof name === 'string') {
+          try {
+            existing = findZoneByName(name, await fetchZones())
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : 'Brak połączenia.'
+            setResponseWarning([res.warning, `Nie udało się sprawdzić listy stref: ${detail} Przy potwierdzeniu baza sprawdzi, czy ta nazwa już istnieje.`].filter(Boolean).join(' '))
+          }
+        }
+        if (existing) {
+          setState({
+            kind: 'clarify',
+            message: `Strefa „${existing.name}” już istnieje. Chcesz ją otworzyć? Aby dodać inną, wpisz „strefa: inna nazwa”.`,
+            target: { name: existing.name, location: existing.name },
+          })
+        } else setState({ kind: 'proposal', proposal: res.proposal })
+      } else if (res.type === 'answer') {
+        const target = mapTargetFromAnswer(res.tool, res.data)
         const first = res.tool === 'recall_procedure' && Array.isArray(res.data.procedures) ? res.data.procedures[0] : null
         const procedure = first && typeof first.topic === 'string' && typeof first.text === 'string'
           ? { topic: first.topic, text: first.text } : null
-        setState({ kind: 'answer', tool: res.tool, text: res.text, procedure })
+        setState({ kind: 'answer', tool: res.tool, text: res.text, target, procedure })
+        if (res.tool === 'get_location' && target) onShowLocation(target)
       }
       else if (res.type === 'clarify') setState({ kind: 'clarify', message: res.message })
       else setState({ kind: 'unknown', text: res.text, hints: res.hints })
@@ -108,6 +130,15 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone }: Pr
     setActionError('')
     try {
       const result = await confirmProposal(state.proposal.id)
+      if (state.proposal.tool === 'add_zone' && result.created === false) {
+        const name = result.name ?? String(state.proposal.args?.name ?? '')
+        setState({
+          kind: 'clarify',
+          message: `Strefa „${name}” już istnieje. Nie dodano duplikatu. Chcesz ją otworzyć czy podać inną nazwę?`,
+          target: { name, location: name },
+        })
+        return
+      }
       onApplied(state.proposal.summary, result.reorder_draft ?? null)
       setState(null)
       setText('')
@@ -279,12 +310,14 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone }: Pr
           </div>
           <p className="mt-2 whitespace-pre-wrap text-base text-[#454b46]">{state.text}</p>
           {state.procedure && <ProcedureLocation procedure={state.procedure} zones={zones} items={items} onShowZone={onShowZone} />}
+          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#cbd8c9] bg-white px-4 py-2 text-sm font-semibold text-[#315b37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">Pokaż na mapie</button>}
         </div>
       )}
       {state?.kind === 'clarify' && (
         <div className="mt-5 border border-[#ead9a9] bg-[#fffaf0] p-5">
           <div className="font-semibold text-[#805c12]">Doprecyzujmy</div>
           <p className="mt-1 text-sm text-[#805c12]">{state.message}</p>
+          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12]">Otwórz istniejącą strefę</button>}
         </div>
       )}
       {state?.kind === 'unknown' && (

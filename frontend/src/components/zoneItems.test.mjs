@@ -1,12 +1,43 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { itemsForZone, normalizeZoneName } from './zoneItems.ts'
+import { findZoneByName, itemsForZone, mapTargetFromAnswer, normalizeZoneName, zoneForItem } from './zoneItems.ts'
 
 const items = [
   { id: 1, name: 'Kartony', quantity: 54, minimum: 12, unit: 'szt', location: 'Strefa A-1' },
   { id: 2, name: 'Taśma', quantity: 9, minimum: 3, unit: 'szt', location: 'Strefa A-1, regał 2' },
   { id: 3, name: 'Folia', quantity: 15, minimum: 6, unit: 'rolka', location: 'Strefa A-10' },
 ]
+
+test('a location query highlights the most specific recorded zone', () => {
+  const zones = [
+    { id: 1, name: 'kartony', created: '' },
+    { id: 2, name: 'A', created: '' },
+    { id: 3, name: 'A-1', created: '' },
+  ]
+  assert.equal(zoneForItem({ name: 'Kartony', location: 'Strefa A-1, regał 2' }, zones)?.id, 3)
+})
+
+test('API location and single-stock answers expose a map target', () => {
+  assert.deepEqual(mapTargetFromAnswer('get_location', {
+    item_id: 1, item_name: 'Kartony', location: 'Strefa A-1', quantity: 54, unit: 'szt',
+  }), { name: 'Kartony', location: 'Strefa A-1' })
+  assert.deepEqual(mapTargetFromAnswer('get_stock', { item: items[0] }), {
+    name: 'Kartony', location: 'Strefa A-1',
+  })
+})
+
+test('equivalent zone names identify an existing zone before confirmation', () => {
+  const zones = [{ id: 2, name: 'A-1', created: '' }]
+  assert.equal(findZoneByName('  Strefa: a 1 ', zones)?.id, 2)
+  assert.equal(findZoneByName('A-10', zones), null)
+})
+
+test('missing zones and unrelated or malformed answers do not invent a map location', () => {
+  assert.equal(zoneForItem({ name: 'Szkło', location: 'C2' }, []), null)
+  assert.equal(mapTargetFromAnswer('get_stock', { items }), null)
+  assert.equal(mapTargetFromAnswer('recall_procedure', { item_name: 'Kartony', location: 'A-1' }), null)
+  assert.equal(mapTargetFromAnswer('get_location', { item_name: 'Kartony', location: null }), null)
+})
 
 test('zone named after an item shows that item even when its location uses a code', () => {
   const zone = { id: 1, name: 'kartony', created: '' }
