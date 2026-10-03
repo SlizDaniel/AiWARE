@@ -12,7 +12,7 @@
 
 **Demo check:** klik „mów" → powiedz „wzięliśmy paletę kartonów" → transkrypcja pojawia się na ekranie → karta zmiany jak z karty 01; z użyciem słuchawek w flankujących warunkach (muzyka w tle).
 
-**Status:** ready
+**Status:** done — merged do `origin/main` (cb93692) z kartami 03/07/13; backend 119/119, frontend build+lint, zoneItems 4/4; GUI-check po merge: happy path głosowy (Mów → transkrypcja w polu → karta zmiany → confirm → stany), fallback przy braku klucza STT (banner + podświetlone pole, apka żyje), recovery po błędzie (test). Live demo-check z prawdziwym mikrofonem (słuchawki, muzyka w tle) — do potwierdzenia przez ownera; STT_API_KEY w .env włącza Groq whisper-large-v3.
 
 - [x] push-to-talk działa z mikrofonu laptopa (i touch na telefonie)
 - [x] transkrypcja widoczna PRZED wysłaniem do agenta (kontrola użytkownika — kryterium kategorii)
