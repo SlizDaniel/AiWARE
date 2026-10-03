@@ -1,0 +1,20 @@
+# 03: LLMProvider z function calling (chmura) + przełącznik trybu
+
+**What to build:** Za kontraktem z karty 02 stoi teraz prawdziwy LLM z function calling: dowolne polskie zdanie o pracy na hali mapuje się na narzędzia (nie tylko 6 komend demo). Przełącznik w konfiguracji/env wybiera tryb: `llm` (domyślny) / `offline` (parser z karty 02) / `mock` (karta 13). Odpowiedzi LLM przechodzą walidację schematu — zła odpowiedź modelu = fallback na parser + komunikat na ekranie, nigdy crash.
+
+**Blocked by:** 02 (kontrakt + rejestr narzędzi)
+
+**Estimate:** 1 / 2
+
+**Owner:** A
+
+**TDD:** ten sam seam co karta 02, rozszerzony o fixtury „trudnych" sformułowań („odeszliśmy do Bratysławy 3 palety z Jasiem", „przenieś kartony do strefy C2") — walidacja, że odpowiedź LLM jest poprawnym wywołaniem narzędzia lub czytelnym pytaniem zwrotnym; test walidacji schematu odrzuca śmieciowy JSON.
+
+**Demo check:** ustawić tryb `llm`, wpisać 3 naturalne zdania niebędące komendami demo (np. „zabrakło nam opakowań, wzięliśmy 4 opakowania folii") — agent mapuje na narzędzie lub pyta; przełączyć na `offline` — wciąż działa 6 komend.
+
+**Status:** ready
+
+- [ ] klucz API z .env, brak klucza = automatyczny start w trybie offline z ostrzeżeniem na ekranie
+- [ ] dowolne zdanie mapuje się na narzędzie lub generuje pytanie zwrotne na karcie
+- [ ] walidacja odpowiedzi LLM; śmieć → fallback na parser, UI żyje
+- [ ] przełączanie trybów konfiguracją, bez restartu dema
