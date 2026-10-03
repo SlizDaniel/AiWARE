@@ -2,6 +2,9 @@ import { useState } from 'react'
 import type { Item, Procedure, Zone } from '@/lib/api'
 import ProcedureLocation from './ProcedureLocation'
 import { filterProcedures } from './procedures'
+import { EmptyState, LoadError, Skeleton } from './ui/feedback'
+import { SearchIcon } from './ui/icons'
+import { buttonClass, fieldClass, panelClass } from './ui/styles'
 
 type Props = {
   procedures: Procedure[]
@@ -17,35 +20,62 @@ export default function ProcedureList({ procedures, state, error, onRetry, zones
   const [query, setQuery] = useState('')
 
   if (state === 'loading') {
-    return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram procedury…</div>
+    return <Skeleton rows={4} label="Pobieram procedury…" />
   }
   if (state === 'error') {
-    return (
-      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
-        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać procedur.</p>
-        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
-        <button type="button" onClick={onRetry} className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]">Spróbuj ponownie</button>
-      </div>
-    )
+    return <LoadError title="Nie udało się pobrać procedur." detail={error || undefined} onRetry={onRetry} />
   }
 
   const filtered = filterProcedures(procedures, query)
   return (
-    <section aria-label="Zapisane procedury" className="space-y-4">
-      <div className="border border-[#e8e5de] bg-white p-5">
-        <label htmlFor="procedure-search" className="block text-sm font-semibold">Szukaj w procedurach</label>
-        <input id="procedure-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Fragment tematu lub treści…" className="mt-2 w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]" />
-        <p className="mt-3 text-sm text-[#646b64]">Dodaj lub zaktualizuj wiedzę w panelu komend, np. „zapamiętaj: szkło pakujemy w kartony Y, strefa C2”, i zatwierdź kartę.</p>
+    <section aria-label="Zapisane procedury" className={panelClass}>
+      <div className="space-y-3 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="relative w-full max-w-sm">
+            <label htmlFor="procedure-search" className="sr-only">Szukaj w procedurach</label>
+            <SearchIcon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
+            <input
+              id="procedure-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Fragment tematu lub treści…"
+              className={`${fieldClass} h-10 pl-10`}
+            />
+          </div>
+          <p className="text-sm text-ink-2" role="status">
+            Znaleziono: <span className="font-semibold tabular-nums text-ink">{filtered.length}</span>
+          </p>
+        </div>
+        <p className="max-w-[70ch] text-sm text-ink-2">
+          Dodaj lub zaktualizuj wiedzę w panelu komend, np. „zapamiętaj: szkło pakujemy w kartony Y, strefa C2”, i zatwierdź kartę.
+        </p>
       </div>
-      <p className="text-sm text-[#646b64]" role="status">Znaleziono: {filtered.length}</p>
+
       {filtered.length === 0 ? (
-        <p className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]">{procedures.length === 0 ? 'Brak zapisanych procedur. Zatwierdź pierwszą kartę zapamiętania.' : 'Brak procedur pasujących do wyszukiwania.'}</p>
+        <div className="border-t border-line p-5">
+          {procedures.length === 0 ? (
+            <EmptyState title="Brak zapisanych procedur">Zatwierdź pierwszą kartę zapamiętania.</EmptyState>
+          ) : (
+            <EmptyState
+              title="Brak procedur pasujących do wyszukiwania."
+              action={
+                <button type="button" onClick={() => setQuery('')} className={buttonClass('secondary', 'sm')}>
+                  Wyczyść wyszukiwanie
+                </button>
+              }
+            />
+          )}
+        </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="divide-y divide-line border-t border-line">
           {filtered.map((procedure) => (
-            <li key={procedure.id} className="border border-[#e8e5de] bg-white p-5">
-              <h2 className="text-lg font-bold">{procedure.topic}</h2>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#454b46]">{procedure.text}</p>
+            <li key={procedure.id} className="px-5 py-5">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 className="text-lg font-semibold leading-snug text-ink">{procedure.topic}</h2>
+                <span className="narrow text-xs tabular-nums text-mute">#{procedure.id}</span>
+              </div>
+              <p className="mt-2 max-w-[70ch] whitespace-pre-wrap text-[15px] leading-7 text-ink-2">{procedure.text}</p>
               <ProcedureLocation procedure={procedure} zones={zones} items={items} onShowZone={onShowZone} />
             </li>
           ))}

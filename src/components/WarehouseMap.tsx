@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '@/lib/api'
+import RangeIndicator from './ui/RangeIndicator'
+import { LoadError, Notice, RollingNumber, Skeleton } from './ui/feedback'
+import { CheckIcon, CloseIcon, PinIcon, PlusIcon } from './ui/icons'
+import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
+import { STOCK_LEVEL, countDeviations, stockLevel } from './ui/stockLevel'
+import { buttonClass, fieldClass, panelClass } from './ui/styles'
 import { findZoneByName, itemsForZone, zoneForItem, type MapTarget } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -18,9 +24,17 @@ type Props = {
   onZoneAdded: (name: string, created: boolean) => void
 }
 
-function shortLabel(value: string): string {
-  return value.length > 25 ? `${value.slice(0, 24)}…` : value
+type ZoneStats = { count: number; deviation: { kind: 'alarm' | 'warn'; count: number } | null }
+
+/** Liczba pozycji strefy i odchylenia (braki → kwadrat, poniżej minimum → trójkąt). */
+function zoneStats(zone: Zone, items: Item[], zones: Zone[]): ZoneStats {
+  const zoneItems = itemsForZone(zone, items, zones)
+  const { empty, below } = countDeviations(zoneItems)
+  const low = empty + below
+  return { count: zoneItems.length, deviation: low > 0 ? { kind: empty > 0 ? 'alarm' : 'warn', count: low } : null }
 }
+
+const SLOT = 'min-h-[5.5rem] rounded-md'
 
 export default function WarehouseMap({ zones, items, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
@@ -95,206 +109,294 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
   }
 
   if (state === 'loading') {
-    return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram mapę stref…</div>
+    return <Skeleton rows={5} label="Pobieram mapę stref…" />
   }
 
   if (state === 'error') {
-    return (
-      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
-        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać mapy stref.</p>
-        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
-        <button type="button" onClick={onRetry} className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]">Spróbuj ponownie</button>
-      </div>
-    )
+    return <LoadError title="Nie udało się pobrać mapy stref." detail={error || undefined} onRetry={onRetry} />
   }
 
   const orderedZones = [...zones].sort((a, b) => a.id - b.id)
   const selected = orderedZones.find((zone) => zone.id === selectedId) ?? null
   const targetZone = locationTarget ? zoneForItem(locationTarget, orderedZones) : null
   const selectedItems = selected ? itemsForZone(selected, items, orderedZones) : []
+  const stats = new Map<number, ZoneStats>(
+    itemsState === 'ready' ? orderedZones.map((zone) => [zone.id, zoneStats(zone, items, orderedZones)]) : [],
+  )
   const rows = Math.max(3, Math.ceil((orderedZones.length + 1) / 2))
-  const height = 172 + rows * 112
+  const targetLabel = locationTarget ? `${locationTarget.name} · ${locationTarget.location || 'Brak zapisanej lokalizacji'}` : ''
 
   return (
-    <section ref={mapRef} tabIndex={-1} aria-label="Mapa stref magazynu" className="grid gap-5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#536b56] lg:grid-cols-[minmax(0,1.8fr)_minmax(280px,0.8fr)]">
-      {locationTarget && (
-        <div className={'border p-4 text-sm lg:col-span-2 ' + (targetZone ? 'border-[#cbd8c9] bg-[#edf3ec] text-[#315b37]' : 'border-[#ead9a9] bg-[#fffaf0] text-[#805c12]')} role="status">
-          <p className="font-semibold">{locationTarget.name} · {locationTarget.location || 'Brak zapisanej lokalizacji'}</p>
-          {targetZone ? (
-            <button type="button" onClick={() => onSelectZone(targetZone.id)} className="mt-1 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">Wybierz strefę „{targetZone.name}”</button>
-          ) : (
-            <>
-              <p className="mt-1">Ta pozycja nie ma jeszcze pasującej strefy na schemacie.</p>
-              <button type="button" disabled={draftBusy} onClick={() => { setDraftName(locationTarget.location || locationTarget.name); setDraftProposal(null); setDraftError(''); setDraftWarning(''); setDraftOpen(true) }} className="mt-2 border border-[#ead9a9] bg-white px-3 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12] disabled:opacity-40">Przygotuj strefę dla tej lokalizacji</button>
-            </>
-          )}
-        </div>
-      )}
-      <div className="min-w-0 border border-[#e8e5de] bg-white">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#e8e5de] px-5 py-4">
-          <h2 className="text-lg font-bold">Rzut magazynu</h2>
-          <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">schemat · {orderedZones.length} stref</span>
-        </div>
-        <div className="overflow-x-auto p-3 sm:p-5">
-          <svg viewBox={`0 0 960 ${height}`} className="w-full min-w-[620px]" role="group" aria-label="Schemat magazynu. Strefy można wybrać myszą lub klawiaturą.">
-            <rect x="24" y="34" width="912" height={height - 68} fill="#fbfaf7" stroke="#bfc8bc" strokeWidth="2" />
-            <rect x="390" y="34" width="180" height="38" fill="#e6e9e2" stroke="#bfc8bc" />
-            <text x="480" y="58" textAnchor="middle" fill="#454b46" fontSize="13" fontWeight="700">BRAMA / PRZYJĘCIE</text>
-            <rect x="442" y="83" width="76" height={height - 156} fill="#f0efe9" />
-            <text x="480" y={height - 62} textAnchor="middle" fill="#70756f" fontSize="12">CIĄG KOMUNIKACYJNY</text>
-            <text x="90" y="76" fill="#70756f" fontSize="12" fontWeight="700" letterSpacing="2">REGAŁY A</text>
-            <text x="545" y="76" fill="#70756f" fontSize="12" fontWeight="700" letterSpacing="2">REGAŁY B</text>
-
-            {Array.from({ length: rows * 2 }, (_, index) => {
-              const x = index % 2 === 0 ? 90 : 545
-              const y = 92 + Math.floor(index / 2) * 112
-              const zone = orderedZones[index]
-              if (!zone) {
-                if (index === orderedZones.length) {
-                  return (
-                    <g
-                      key="add-zone"
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Dodaj strefę w następnym wolnym miejscu"
-                      aria-expanded={draftOpen}
-                      aria-controls="new-zone-form"
-                      className="cursor-pointer"
-                      onClick={() => setDraftOpen(true)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          setDraftOpen(true)
-                        }
-                      }}
-                    >
-                      <rect x={x} y={y} width="325" height="84" fill="#f6f8f4" stroke="#759177" strokeWidth="2" strokeDasharray="6 5" />
-                      <text x={x + 29} y={y + 49} fill="#315b37" fontSize="17" fontWeight="700">+ Dodaj strefę</text>
-                    </g>
-                  )
-                }
-                return <rect key={`empty-${index}`} x={x} y={y} width="325" height="84" fill="#f7f6f3" stroke="#d8d6cf" strokeDasharray="6 6" />
-              }
-
-              const active = selected?.id === zone.id
-              const count = itemsState === 'ready' ? itemsForZone(zone, items, orderedZones).length : null
-              const stockLabel = count === null
-                ? itemsState === 'error' ? 'Asortyment niedostępny' : 'Pobieram asortyment…'
-                : `${count} ${count === 1 ? 'pozycja' : 'pozycji'}`
-              return (
-                <g
-                  key={zone.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Strefa ${zone.name}. ${stockLabel}. Pokaż szczegóły.`}
-                  aria-pressed={active}
-                  className="cursor-pointer"
-                  onClick={() => onSelectZone(zone.id)}
-                  onFocus={() => onSelectZone(zone.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      onSelectZone(zone.id)
-                    }
-                  }}
-                >
-                  <rect x={x} y={y} width="325" height="84" fill={active ? '#edf3ec' : '#ffffff'} stroke={active ? '#315b37' : '#bdc8bb'} strokeWidth={active ? 3 : 2} />
-                  <rect x={x + 10} y={y + 10} width="5" height="64" fill={active ? '#315b37' : '#a7baa6'} />
-                  <text x={x + 29} y={y + 37} fill="#292d2b" fontSize="20" fontWeight="700">{shortLabel(zone.name)}</text>
-                  <text x={x + 29} y={y + 62} fill="#646b64" fontSize="13">{stockLabel}</text>
-                </g>
-              )
-            })}
-          </svg>
-        </div>
-        <p className="border-t border-[#e8e5de] px-5 py-3 text-xs text-[#70756f]">Układ schematyczny. Położenie stref na rzucie nie oznacza fizycznych współrzędnych.</p>
-      </div>
-
-      <aside className="border border-[#e8e5de] bg-white p-5" aria-label="Szczegóły stref">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-lg font-bold">Strefy</h2>
-          <button type="button" disabled={draftBusy} onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} aria-controls="new-zone-form" className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
-        </div>
-        {draftOpen && (
-          <div id="new-zone-form" className="mt-4 border border-[#cbd8c9] bg-[#f6f8f4] p-4">
-            <form onSubmit={(event) => { event.preventDefault(); void prepareZone() }}>
-              <label htmlFor="new-zone-name" className="block text-sm font-semibold text-[#454b46]">Nazwa nowej strefy</label>
-              <input
-                ref={nameInputRef}
-                id="new-zone-name"
-                value={draftName}
-                disabled={draftBusy || draftProposal !== null}
-                onChange={(event) => { setDraftName(event.target.value); setDraftError(''); setDraftWarning('') }}
-                placeholder="np. kartony"
-                className="mt-2 w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] disabled:opacity-60"
-              />
-              {!draftProposal && <button type="submit" disabled={draftBusy || !draftName.trim()} className="mt-3 bg-[#292d2b] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40">{draftBusy ? 'Przygotowuję…' : 'Przygotuj kartę'}</button>}
-            </form>
-            {draftProposal && (
-              <div className="mt-4 border-t border-[#cbd8c9] pt-4">
-                <p className="text-sm font-semibold text-[#315b37]">{draftProposal.summary}</p>
-                <p className="mt-1 text-xs text-[#646b64]">Nic nie zapisano. Potwierdź dodanie strefy.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button ref={confirmButtonRef} type="button" onClick={() => void confirmZone()} disabled={draftBusy} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftBusy ? 'Zapisuję…' : 'Zatwierdź'}</button>
-                  <button type="button" onClick={() => { setDraftProposal(null); setDraftError('') }} disabled={draftBusy} className="border border-[#d8d6cf] bg-white px-4 py-2 text-sm font-semibold text-[#646b64] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">Odrzuć</button>
-                </div>
-              </div>
-            )}
-            {draftWarning && <p className="mt-3 border border-[#ead9a9] bg-[#fffaf0] p-3 text-sm text-[#805c12]" role="status">{draftWarning}</p>}
-            {draftError && <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">{draftError}</p>}
+    <section ref={mapRef} tabIndex={-1} aria-label="Mapa stref magazynu" className="@container rounded-lg focus-visible:outline-offset-4">
+      <div className="grid gap-x-8 gap-y-6 @4xl:grid-cols-[minmax(0,1fr)_minmax(17rem,20rem)]">
+        {locationTarget && (targetZone ? (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-lg bg-act-soft px-5 py-4 text-act-ink @4xl:col-span-2">
+            <p className="flex min-w-0 items-start gap-2.5 font-semibold">
+              <PinIcon size={18} className="mt-0.5 shrink-0" />
+              <span className="min-w-0">
+                {locationTarget.name} · <span className="font-normal">{locationTarget.location || 'Brak zapisanej lokalizacji'}</span>
+              </span>
+            </p>
+            <button type="button" onClick={() => onSelectZone(targetZone.id)} className={buttonClass('secondary', 'sm')}>
+              Wybierz strefę „{targetZone.name}”
+            </button>
           </div>
-        )}
-        {orderedZones.length === 0 ? (
-          <p className="mt-3 text-sm leading-6 text-[#646b64]">Nie ma jeszcze stref. W panelu komend wpisz na przykład „strefa: kartony” i zatwierdź propozycję.</p>
         ) : (
-          <>
-            <p className="mt-1 text-sm text-[#646b64]">Wybierz strefę na rzucie lub z listy.</p>
-            <div className="mt-4 space-y-1" aria-label="Lista stref">
-              {orderedZones.map((zone) => (
-                <button
-                  key={zone.id}
-                  type="button"
-                  onClick={() => onSelectZone(zone.id)}
-                  aria-pressed={selected?.id === zone.id}
-                  className={'flex w-full items-center justify-between gap-3 border px-3 py-2.5 text-left text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' + (selected?.id === zone.id ? 'border-[#315b37] bg-[#edf3ec] text-[#315b37]' : 'border-[#e8e5de] text-[#454b46] hover:bg-[#fbfaf7]')}
-                >
-                  <span className="truncate">{zone.name}</span>
-                  <span className="font-mono text-xs">{itemsState === 'ready' ? itemsForZone(zone, items, orderedZones).length : '—'}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+          <Notice
+            tone="warn"
+            role="status"
+            className="@4xl:col-span-2"
+            title={targetLabel}
+            action={
+              <button
+                type="button"
+                disabled={draftBusy}
+                onClick={() => { setDraftName(locationTarget.location || locationTarget.name); setDraftProposal(null); setDraftError(''); setDraftWarning(''); setDraftOpen(true) }}
+                className={buttonClass('secondary', 'sm')}
+              >
+                <PlusIcon size={16} />
+                Przygotuj strefę dla tej lokalizacji
+              </button>
+            }
+          >
+            Ta pozycja nie ma jeszcze pasującej strefy na schemacie.
+          </Notice>
+        ))}
 
-        {selected && (
-          <div className="mt-6 border-t border-[#e8e5de] pt-5" aria-live="polite">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#70756f]">Wybrana strefa</p>
-            <h3 className="mt-1 text-xl font-bold">{selected.name}</h3>
-            {itemsState === 'loading' ? (
-              <p className="mt-3 text-sm text-[#646b64]" role="status">Pobieram asortyment…</p>
-            ) : itemsState === 'error' ? (
-              <div className="mt-3 text-sm text-[#8f3936]" role="alert">
-                <p>Nie udało się pobrać asortymentu tej strefy.</p>
-                <button type="button" onClick={onRetryItems} className="mt-2 border border-[#d8a9a5] px-3 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#8f3936]">Spróbuj ponownie</button>
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="text-lg font-semibold text-ink">Rzut magazynu</h2>
+            <span className="text-sm text-ink-2">schemat · <span className="tabular-nums">{orderedZones.length}</span> stref</span>
+          </div>
+
+          {/* Rzut hali: obrys ściany, brama (przerwa w ścianie), ciąg komunikacyjny i dwa rzędy regałów. */}
+          <div
+            role="group"
+            aria-label="Schemat magazynu. Strefy można wybrać myszą lub klawiaturą."
+            className="rounded-lg border border-line-strong bg-sheet px-3 pb-4 sm:px-5 sm:pb-5"
+          >
+            <div className="label-caps mx-auto -mt-px w-fit rounded-b-md border border-t-0 border-line-strong bg-ground px-5 py-2">
+              Brama / przyjęcie
+            </div>
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 sm:grid-cols-[minmax(0,1fr)_3.75rem_minmax(0,1fr)] sm:gap-x-4">
+              <p className="label-caps" style={{ gridColumn: 1, gridRow: 1 }}>Regały A</p>
+              <p className="label-caps" style={{ gridColumn: 3, gridRow: 1 }}>Regały B</p>
+              <div
+                className="relative flex items-center justify-center rounded-md bg-ground"
+                style={{ gridColumn: 2, gridRow: `2 / span ${rows}` }}
+              >
+                <span aria-hidden="true" className="absolute inset-y-3 left-1/2 border-l border-dashed border-line-strong" />
+                <span className="label-caps relative rotate-180 bg-ground py-3 [writing-mode:vertical-rl]">Ciąg komunikacyjny</span>
               </div>
-            ) : selectedItems.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-[#646b64]">Brak pozycji pasujących nazwą lub lokalizacją do tej strefy.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-[#e8e5de]">
-                {selectedItems.map((item) => (
-                  <li key={item.id} className="flex items-baseline justify-between gap-3 py-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[#454b46]">{item.name}</p>
-                      <p className="truncate text-xs text-[#70756f]">{item.location || 'Bez lokalizacji'}</p>
+
+              {Array.from({ length: rows * 2 }, (_, index) => {
+                const placement = { gridColumn: index % 2 === 0 ? 1 : 3, gridRow: Math.floor(index / 2) + 2 }
+                const zone = orderedZones[index]
+                if (!zone) {
+                  if (index === orderedZones.length) {
+                    return (
+                      <button
+                        key="add-zone"
+                        type="button"
+                        aria-label="Dodaj strefę w następnym wolnym miejscu"
+                        aria-expanded={draftOpen}
+                        aria-controls="new-zone-form"
+                        onClick={() => setDraftOpen(true)}
+                        style={placement}
+                        className={`${SLOT} flex items-center justify-center gap-2 border border-dashed border-line-strong px-3 text-sm font-semibold text-ink-2 transition-colors duration-150 hover:border-act hover:bg-act-soft/60 hover:text-act-ink`}
+                      >
+                        <PlusIcon size={18} />
+                        Dodaj strefę
+                      </button>
+                    )
+                  }
+                  return <div key={`empty-${index}`} aria-hidden="true" style={placement} className={`${SLOT} border border-dashed border-line`} />
+                }
+
+                const active = selected?.id === zone.id
+                const isTarget = targetZone?.id === zone.id
+                const stat = stats.get(zone.id) ?? null
+                const stockLabel = stat === null
+                  ? itemsState === 'error' ? 'Asortyment niedostępny' : 'Pobieram asortyment…'
+                  : `${stat.count} ${stat.count === 1 ? 'pozycja' : 'pozycji'}`
+                const deviationLabel = stat?.deviation ? `${stat.deviation.count} poniżej minimum` : ''
+                return (
+                  <button
+                    key={zone.id}
+                    type="button"
+                    aria-label={`Strefa ${zone.name}. ${stockLabel}.${deviationLabel ? ` ${deviationLabel}.` : ''} Pokaż szczegóły.`}
+                    aria-pressed={active}
+                    onClick={() => onSelectZone(zone.id)}
+                    onFocus={() => onSelectZone(zone.id)}
+                    style={placement}
+                    className={
+                      `${SLOT} flex min-w-0 flex-col justify-between gap-2 border px-3 py-3 text-left transition-colors duration-150 sm:px-4 ` +
+                      (active ? 'border-act bg-act-soft ring-1 ring-act' : 'border-line-strong bg-sheet hover:border-ink-2 hover:bg-ground/50')
+                    }
+                  >
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 break-words text-base font-semibold leading-snug text-ink sm:text-[17px]">{zone.name}</span>
+                      {isTarget && <PinIcon size={18} className="mt-0.5 shrink-0 text-act" />}
+                    </span>
+                    <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span className="text-[13px] tabular-nums text-ink-2">{stockLabel}</span>
+                      {stat?.deviation && (
+                        <StateMark kind={stat.deviation.kind} className="whitespace-nowrap tabular-nums">{deviationLabel}</StateMark>
+                      )}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-mute">Układ schematyczny. Położenie stref na rzucie nie oznacza fizycznych współrzędnych.</p>
+        </div>
+
+        <aside
+          aria-label="Szczegóły stref"
+          className={`${panelClass} grid self-start divide-y divide-line @2xl:grid-cols-2 @2xl:divide-x @2xl:divide-y-0 @4xl:grid-cols-1 @4xl:divide-x-0 @4xl:divide-y`}
+        >
+          <div className={`min-w-0 p-5 ${selected ? '' : '@2xl:col-span-2 @4xl:col-span-1'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-ink">Strefy</h2>
+              <button
+                type="button"
+                disabled={draftBusy}
+                onClick={() => setDraftOpen((open) => !open)}
+                aria-expanded={draftOpen}
+                aria-controls="new-zone-form"
+                className={buttonClass('ghost', 'sm')}
+              >
+                {draftOpen ? <CloseIcon size={16} /> : <PlusIcon size={16} />}
+                {draftOpen ? 'Zamknij' : 'Dodaj strefę'}
+              </button>
+            </div>
+
+            {draftOpen && (
+              <div id="new-zone-form" className="mt-4 space-y-4 border-y border-line py-4">
+                <form onSubmit={(event) => { event.preventDefault(); void prepareZone() }} className="space-y-3">
+                  <div>
+                    <label htmlFor="new-zone-name" className="label-caps mb-1.5 block">Nazwa nowej strefy</label>
+                    <input
+                      ref={nameInputRef}
+                      id="new-zone-name"
+                      value={draftName}
+                      disabled={draftBusy || draftProposal !== null}
+                      onChange={(event) => { setDraftName(event.target.value); setDraftError(''); setDraftWarning('') }}
+                      placeholder="np. kartony"
+                      className={fieldClass}
+                    />
+                  </div>
+                  {!draftProposal && (
+                    <button type="submit" disabled={draftBusy || !draftName.trim()} className={buttonClass('primary', 'sm')}>
+                      {draftBusy ? 'Przygotowuję…' : 'Przygotuj kartę'}
+                    </button>
+                  )}
+                </form>
+                {draftProposal && (
+                  <div className="rounded-md bg-act-soft px-4 py-3">
+                    <p className="flex items-start gap-2 text-sm font-semibold text-act-ink">
+                      <StateShape kind="decision" className="mt-[5px]" />
+                      {draftProposal.summary}
+                    </p>
+                    <p className="mt-1 pl-[18px] text-xs text-ink-2">Nic nie zapisano. Potwierdź dodanie strefy.</p>
+                    <div className="mt-3 flex flex-wrap gap-2 pl-[18px]">
+                      <button ref={confirmButtonRef} type="button" onClick={() => void confirmZone()} disabled={draftBusy} className={buttonClass('action', 'sm')}>
+                        <CheckIcon size={16} />
+                        {draftBusy ? 'Zapisuję…' : 'Zatwierdź'}
+                      </button>
+                      <button type="button" onClick={() => { setDraftProposal(null); setDraftError('') }} disabled={draftBusy} className={buttonClass('danger', 'sm')}>
+                        Odrzuć
+                      </button>
                     </div>
-                    <span className="shrink-0 font-bold tabular-nums text-[#292d2b]">{item.quantity} <span className="text-xs font-normal text-[#646b64]">{item.unit}</span></span>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                )}
+                {draftWarning && <Notice tone="warn" role="status">{draftWarning}</Notice>}
+                {draftError && <Notice tone="alarm" role="alert">{draftError}</Notice>}
+              </div>
+            )}
+
+            {orderedZones.length === 0 ? (
+              <p className="mt-3 max-w-[60ch] text-sm leading-6 text-ink-2">Nie ma jeszcze stref. W panelu komend wpisz na przykład „strefa: kartony” i zatwierdź propozycję.</p>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-ink-2">Wybierz strefę na rzucie lub z listy.</p>
+                <ul className="-mx-2 mt-3 space-y-0.5" aria-label="Lista stref">
+                  {orderedZones.map((zone) => {
+                    const active = selected?.id === zone.id
+                    const stat = stats.get(zone.id) ?? null
+                    return (
+                      <li key={zone.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectZone(zone.id)}
+                          aria-pressed={active}
+                          className={
+                            'flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors duration-150 ' +
+                            (active ? 'bg-act-soft font-semibold text-act-ink' : 'font-medium text-ink hover:bg-ground')
+                          }
+                        >
+                          <span className="truncate">{zone.name}</span>
+                          <span className="flex shrink-0 items-center gap-2 text-ink-2">
+                            {stat?.deviation && (
+                              <>
+                                <StateShape kind={stat.deviation.kind} />
+                                <span className="sr-only">{stat.deviation.count} poniżej minimum,</span>
+                              </>
+                            )}
+                            <span className="tabular-nums">{stat ? stat.count : '—'}</span>
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
             )}
           </div>
-        )}
-      </aside>
+
+          {selected && (
+            <div className="min-w-0 p-5" aria-live="polite">
+              <h3 className="break-words text-xl font-semibold leading-tight text-ink">{selected.name}</h3>
+              <p className="mt-1 text-sm text-ink-2">Wybrana strefa</p>
+              {itemsState === 'loading' ? (
+                <div className="mt-4"><Skeleton rows={3} label="Pobieram asortyment…" /></div>
+              ) : itemsState === 'error' ? (
+                <div className="mt-4"><LoadError title="Nie udało się pobrać asortymentu tej strefy." onRetry={onRetryItems} /></div>
+              ) : selectedItems.length === 0 ? (
+                <p className="mt-3 text-sm leading-6 text-ink-2">Brak pozycji pasujących nazwą lub lokalizacją do tej strefy.</p>
+              ) : (
+                <ul className="mt-4 divide-y divide-line border-t border-line">
+                  {selectedItems.map((item) => {
+                    const level = stockLevel(item.quantity, item.minimum)
+                    const { label, kind } = STOCK_LEVEL[level]
+                    const deviation = level === 'empty' || level === 'below'
+                    return (
+                      <li key={item.id} className="py-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-ink">{item.name}</p>
+                            <p className="narrow truncate text-xs text-ink-2">{item.location || 'Bez lokalizacji'}</p>
+                          </div>
+                          <span className="flex shrink-0 items-baseline gap-1 whitespace-nowrap">
+                            <RollingNumber
+                              value={item.quantity}
+                              className={`text-base font-semibold tabular-nums ${deviation ? stateTextClass(kind) : 'text-ink'}`}
+                            />
+                            <span className="text-xs text-ink-2">{item.unit}</span>
+                          </span>
+                        </div>
+                        <RangeIndicator value={item.quantity} minimum={item.minimum} label={item.name} unit={item.unit} size="sm" className="mt-2" />
+                        {level !== 'ok' && <StateMark kind={kind} className="mt-1.5">{label}</StateMark>}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </aside>
+      </div>
     </section>
   )
 }
