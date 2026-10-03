@@ -586,3 +586,18 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
     expect(await stock('Szkło')).toBe(16)
   })
 })
+
+describe('LLM context size', () => {
+  it('sends only the items a command can be about in a large warehouse', async () => {
+    const { contextItems, MAX_CONTEXT_ITEMS } = await import('./commands')
+    const rows = Array.from({ length: 300 }, (_, index) => ({
+      id: index + 1, name: `Towar ${index + 1}`, quantity: 1, minimum: 0, unit: 'szt', location: '',
+    }))
+    rows.push({ id: 301, name: 'Kartony', quantity: 54, minimum: 12, unit: 'szt', location: 'A-1' })
+    rows.push({ id: 302, name: 'Folia stretch', quantity: 15, minimum: 6, unit: 'rolka', location: 'C-1' })
+    const picked = contextItems(rows, 'wzięliśmy dwie palety kartonów i rolkę folii')
+    expect(picked).toHaveLength(MAX_CONTEXT_ITEMS)
+    expect(picked.slice(0, 2).map((item) => item.name).sort()).toEqual(['Folia stretch', 'Kartony'])
+    expect(contextItems(rows.slice(0, 10), 'cokolwiek')).toHaveLength(10)
+  })
+})

@@ -67,6 +67,52 @@ export type ConfirmPayload = { applied: true } & Record<string, unknown>
 
 type RunOptions = { provider: LLMProvider | null; actor?: Actor }
 
+// The prompt carries only the items the command can be about; small warehouses go in whole.
+export const MAX_CONTEXT_ITEMS = 40
+const MIN_PREFIX = 4
+
+function foldText(text: string): string {
+  return text
+    .toLocaleLowerCase('pl')
+    .replaceAll('ł', 'l')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+}
+
+function words(text: string): string[] {
+  return foldText(text).split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 3)
+}
+
+function commonPrefix(a: string, b: string): number {
+  let length = 0
+  while (length < a.length && length < b.length && a[length] === b[length]) length += 1
+  return length
+}
+
+/**
+ * Items worth showing the model for this command: every item whose name shares
+ * a word stem with it (Polish inflection changes the ending, not the start),
+ * best matches first; the rest of the list fills up to MAX_CONTEXT_ITEMS.
+ */
+export function contextItems(rows: Item[], command: string): Item[] {
+  if (rows.length <= MAX_CONTEXT_ITEMS) return rows
+  const commandWords = words(command)
+  const scored = rows.map((row, index) => {
+    let score = 0
+    for (const word of words(row.name)) {
+      let best = 0
+      for (const token of commandWords) {
+        const shared = commonPrefix(word, token)
+        if (shared >= Math.min(MIN_PREFIX, word.length, token.length)) best = Math.max(best, shared)
+      }
+      score += best
+    }
+    return { row, index, score }
+  })
+  scored.sort((a, b) => b.score - a.score || a.index - b.index)
+  return scored.slice(0, MAX_CONTEXT_ITEMS).map((entry) => entry.row)
+}
+
 function inventoryContext(rows: Item[]): string {
   // JSON keeps commas/quotes in names from looking like another item or field.
   return JSON.stringify({
@@ -92,7 +138,7 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   let parsed: ParsedCommand | null
 
   if (status.mode === 'llm' && options.provider !== null) {
-    const context = inventoryContext(rows)
+    const context = inventoryContext(contextItems(rows, command))
     try {
       const interpretation = await options.provider.interpret(command, toolSchemas(), context)
       if (interpretation.toolCall === null) {
