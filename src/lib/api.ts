@@ -210,24 +210,38 @@ function redirectToLogin() {
   window.location.assign('/login')
 }
 
-async function json<T>(res: Response): Promise<T> {
+/**
+ * Błąd z odpowiedzi nie-OK ({"detail": "..."}) z obsługą sesji: 401 → /login, 403 → nasłuchujący.
+ * Do użycia także przy odpowiedziach innych niż JSON (np. eksport CSV).
+ */
+export async function apiErrorFromResponse(res: Response): Promise<ApiError> {
   let payload: unknown = null
   try {
     payload = await res.json()
   } catch {
     payload = null
   }
-  if (!res.ok) {
-    const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
-    const detail =
-      record && typeof record.detail === 'string' ? record.detail : `${res.status} ${res.statusText}`.trim()
-    if (res.status === 401) redirectToLogin()
-    if (res.status === 403) forbiddenListeners.forEach((listener) => listener(detail))
-    throw new ApiError(res.status, detail)
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
+  const detail = record && typeof record.detail === 'string' ? record.detail : `${res.status} ${res.statusText}`.trim()
+  if (res.status === 401) redirectToLogin()
+  if (res.status === 403) forbiddenListeners.forEach((listener) => listener(detail))
+  return new ApiError(res.status, detail)
+}
+
+/** JSON z odpowiedzi API albo ApiError (z tą samą obsługą 401/403 co reszta klienta). */
+export async function readApiJson<T>(res: Response): Promise<T> {
+  if (!res.ok) throw await apiErrorFromResponse(res)
+  let payload: unknown = null
+  try {
+    payload = await res.json()
+  } catch {
+    payload = null
   }
   if (payload === null) throw new ApiError(res.status, 'Serwer zwrócił nieprawidłową odpowiedź.')
   return payload as T
 }
+
+const json = readApiJson
 
 function sendJson(method: 'POST' | 'PUT' | 'PATCH', body: unknown): RequestInit {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
