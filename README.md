@@ -113,6 +113,7 @@ Reset próby: `npm run demo:reset` (zatrzymaj wcześniej `npm run dev`) albo `PO
 
 ```bash
 npm run dev          # serwer deweloperski
+npm run db:setup     # tworzy tabele w Supabase (DATABASE_URL), seed, sprawdza połączenie i RLS
 npm run build        # build produkcyjny (to samo robi Vercel)
 npm test             # vitest: parser, narzędzia, reorder, import/eksport, Gemini (mock), auth, API
 npm run typecheck
@@ -140,3 +141,7 @@ Google Gemini (`gemini-3.8-flash` lub model z `GEMINI_MODEL`): interpretacja kom
 transkrypcja mowy, propozycja mapowania kolumn przy imporcie. Użytkownik widzi transkrypcję
 i kartę zmiany przed zapisem; każda zmiana trafia do audytu z autorem i możliwością cofnięcia.
 Gotowy tekst do zgłoszenia: **Ustawienia → Użycie AI**.
+
+## Import w wersji legacy (karta 05)
+
+W legacy/ mapowanie korzysta ze wspólnego providera OpenAI przy aktywnym LLM_API_KEY i trybie llm. Wysyła nagłówki i pierwsze 5 wierszy; ekran pokazuje źródło sugestii i szacowaną pewność. Awaria lub błędna odpowiedź uruchamia jawny fallback po nazwach kolumn. Offline/mock/demo nie wysyłają danych. Ręczna korekta i zatwierdzenie pozostają wymagane; re-import aktualizuje pozycje. Próba z prawdziwym API wymaga klucza. Nowa aplikacja Next.js używa istniejącego mapowania Gemini w src/server/columnMapping.ts.

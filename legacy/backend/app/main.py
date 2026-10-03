@@ -32,6 +32,7 @@ from app.settings import SettingsPatch, ai_usage, command_text, init_settings, r
 from app.demo import demo_db_path, init_demo_db
 from app.agent_contract import normalize_call, tool_schemas
 from app.llm import LLMProviderError, provider_from_env
+from app.inventory_mapping import suggest_llm_mapping
 
 from app.inventory import (
     FIELDS,
@@ -186,6 +187,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
         import_id = uuid.uuid4().hex
         pending_imports[import_id] = (headers, rows)
         mapping = suggest_mapping(headers)
+        mapping_source = "deterministic"
+        mapping_warning = None
+        mode_status = get_agent_mode()
+        if mode_status["effective_mode"] == "llm":
+            try:
+                mapping = await suggest_llm_mapping(headers, rows)
+                mapping_source = "llm"
+            except LLMProviderError:
+                mapping_warning = "AI nie zwróciło poprawnego mapowania — użyto dopasowania po nazwach kolumn. Sprawdź przypisania."
+        else:
+            mapping_warning = "Mapowanie bez AI — dopasowanie po nazwach kolumn. " + (mode_status["warning"] or "Wybrano tryb offline.")
         missing_required = [
             field for field in REQUIRED_FIELDS if mapping[field]["column"] is None
         ]
@@ -193,6 +205,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             f"Nie znaleziono kolumny „{field}”. Wybierz ją ręcznie przed importem."
             for field in missing_required
         ]
+        if mapping_warning:
+            warnings.insert(0, mapping_warning)
         if mapping["minimum"]["column"] is None:
             warnings.append(f"Nie znaleziono minimum — nowe pozycje otrzymają {read_settings(path)['default_minimum']}, a istniejące zachowają obecny próg.")
         if mapping["location"]["column"] is None:
@@ -203,6 +217,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "preview": rows[:5],
             "row_count": len(rows),
             "mapping": mapping,
+            "mapping_source": mapping_source,
             "missing_required": missing_required,
             "warnings": warnings,
         }

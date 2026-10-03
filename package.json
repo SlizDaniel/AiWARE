@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo:reset": "tsx scripts/demo-reset.ts",
-    "check:gemini": "tsx scripts/check-gemini.ts"
+    "check:gemini": "tsx scripts/check-gemini.ts",
+    "db:setup": "tsx scripts/db-setup.ts"
   },
   "engines": {
     "node": ">=20.9"
