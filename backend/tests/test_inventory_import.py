@@ -170,7 +170,7 @@ def test_missing_optional_columns_preserve_existing_minimum_unit_and_location(cl
 def test_missing_required_mapping_reports_warning_and_cannot_confirm(client):
     preview = client.post(
         "/api/import/preview?filename=items.csv",
-        content="Towar,Uwagi\nKartony,do sprawdzenia\n".encode(),
+        content="Opis,Uwagi\nKartony,do sprawdzenia\n".encode(),
     ).json()
     assert "name" in preview["missing_required"]
     assert "quantity" in preview["missing_required"]
