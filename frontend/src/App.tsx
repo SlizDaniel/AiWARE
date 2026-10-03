@@ -3,19 +3,15 @@ import CommandPanel from './components/CommandPanel'
 import HistoryList from './components/HistoryList'
 import InventoryExport from './components/InventoryExport'
 import InventoryImport from './components/InventoryImport'
-import Placeholder from './components/Placeholder'
 import ProcedureList from './components/ProcedureList'
 import ReorderQueue from './components/ReorderQueue'
+import SettingsPanel from './components/SettingsPanel'
 import Sidebar from './components/Sidebar'
 import StockTable from './components/StockTable'
 import WarehouseMap from './components/WarehouseMap'
-import { connectWs, fetchHistory, fetchProcedures, fetchReorderDrafts, fetchStock, fetchZones, type HistoryEntry, type Item, type Procedure, type ReorderDraft, type Zone } from './api'
+import { connectWs, fetchHistory, fetchProcedures, fetchReorderDrafts, fetchSettings, fetchStock, fetchZones, type AppSettings, type HistoryEntry, type Item, type Procedure, type ReorderDraft, type Zone } from './api'
 import { zoneForItem, type MapTarget } from './components/zoneItems'
-import { SECTIONS, type SectionId } from './sections'
-
-const PLACEHOLDER_NOTES: Partial<Record<SectionId, string>> = {
-  ustawienia: 'Prefix agenta, adapter danych, progi, tryb głosu — karta 09.',
-}
+import { type SectionId } from './sections'
 
 const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
   mapa: { title: 'Mapa magazynu', subtitle: 'Schematyczny rzut hal i stref' },
@@ -48,6 +44,9 @@ export default function App() {
   const [proceduresState, setProceduresState] = useState<LoadState>('loading')
   const [proceduresError, setProceduresError] = useState('')
   const [connected, setConnected] = useState(false)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [settingsError, setSettingsError] = useState('')
+  const [openImport, setOpenImport] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -106,17 +105,30 @@ export default function App() {
     }
   }, [])
 
+  const refreshSettings = useCallback(async () => {
+    try {
+      setSettings(await fetchSettings())
+      setSettingsError('')
+    } catch {
+      setSettingsError('Nie udało się pobrać konfiguracji. Odśwież stronę lub sprawdź połączenie.')
+    }
+  }, [])
+
   const refresh = useCallback(() => {
     void refreshStock()
     void refreshZones()
     void refreshHistory()
     void refreshQueue()
     void refreshProcedures()
-  }, [refreshHistory, refreshProcedures, refreshQueue, refreshStock, refreshZones])
+    void refreshSettings()
+  }, [refreshHistory, refreshProcedures, refreshQueue, refreshSettings, refreshStock, refreshZones])
 
   useEffect(() => {
     refresh()
-    return connectWs(refresh, setConnected)
+    return connectWs(refresh, (online) => {
+      setConnected(online)
+      if (online) refresh()
+    })
   }, [refresh])
 
   const showToast = (message: string) => {
@@ -167,8 +179,8 @@ export default function App() {
         </header>
 
         <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
-          {section === 'stany' && <InventoryImport onImported={refresh} />}
-          <CommandPanel onApplied={onApplied} zones={zones} items={items} onShowZone={showZone} onShowLocation={(target) => {
+          {section === 'stany' && <InventoryImport onImported={refresh} initialOpen={openImport || settings?.adapter === 'file_import'} />}
+          <CommandPanel onApplied={onApplied} settings={settings} settingsError={settingsError} showModeControl={section !== 'ustawienia'} onSettingsChanged={() => void refreshSettings()} zones={zones} items={items} onShowZone={showZone} onShowLocation={(target) => {
             setMapTarget({ ...target })
             setMapSelectionId(null)
             setZonesState('loading')
@@ -177,6 +189,7 @@ export default function App() {
             void refreshStock()
             setSection('mapa')
           }} />
+          {section === 'ustawienia' && <SettingsPanel onSaved={() => void refreshSettings()} onOpenImport={() => { setOpenImport(true); setSection('stany') }} />}
 
           {section === 'mapa' && (
             <WarehouseMap
@@ -223,10 +236,6 @@ export default function App() {
 
           {section === 'procedury' && (
             <ProcedureList procedures={procedures} state={proceduresState} error={proceduresError} onRetry={() => void refreshProcedures()} zones={zones} items={items} onShowZone={showZone} />
-          )}
-
-          {section === 'ustawienia' && (
-            <Placeholder label={SECTIONS.find((s) => s.id === section)?.label ?? section} note={PLACEHOLDER_NOTES[section]} />
           )}
         </div>
       </main>

@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import db, stt
+from app.settings import SettingsPatch, ai_usage, command_text, init_settings, read_settings, update_settings
 from app.demo import demo_db_path, init_demo_db
 from app.agent_contract import normalize_call, tool_schemas
 from app.llm import LLMProviderError, provider_from_env
@@ -92,6 +93,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             init_demo_db(path)
         else:
             db.init_db(path)
+        init_settings(path, requested_mode)
         yield
 
     app = FastAPI(title="MAGAZYNIER", version="0.2.0", lifespan=lifespan)
@@ -105,23 +107,38 @@ def create_app(db_path: str | None = None) -> FastAPI:
     sockets: set[WebSocket] = set()
     pending_imports: dict[str, tuple[list[str], list[list[str]]]] = {}
 
+    @app.get("/api/settings")
+    def get_settings() -> dict:
+        config = {key: value for key, value in read_settings(path).items() if key != "retired_prefixes"}
+        mode_status = get_agent_mode()
+        return {**config, "mode": mode_status["mode"], "mode_status": mode_status, "version": app.version, "ai_usage": ai_usage(config, mode_status)}
+
+    @app.patch("/api/settings")
+    async def patch_settings(body: SettingsPatch) -> dict:
+        if demo_mode and body.mode is not None and body.mode != "mock":
+            raise HTTPException(status_code=409, detail="Demo offline jest zablokowane na czas tej sesji. Wyłącz DEMO_MODE i uruchom backend ponownie.")
+        update_settings(path, body.model_dump(exclude_unset=True))
+        await broadcast({"event": "updated"})
+        return get_settings()
+
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "mode": get_agent_mode()["effective_mode"], "demo_mode": demo_mode}
 
     @app.get("/api/agent-mode")
     def get_agent_mode() -> dict:
+        requested = "mock" if demo_mode else read_settings(path)["mode"]
         key_present = bool(os.environ.get("LLM_API_KEY", "").strip())
-        effective_mode = requested_mode
+        effective_mode = requested
         warning = None
-        if requested_mode == "llm" and not key_present:
+        if requested == "llm" and not key_present:
             effective_mode = "offline"
             warning = "Brak LLM_API_KEY — agent działa w trybie offline."
-        elif requested_mode == "mock":
+        elif requested == "mock":
             effective_mode = "offline"
             warning = "Demo offline — osobna baza, komendy tekstowe, bez zewnętrznych API." if demo_mode else "Mock: parser offline. Seed demo włączysz przez DEMO_MODE=1 przy starcie."
         return {
-            "mode": requested_mode,
+            "mode": requested,
             "effective_mode": effective_mode,
             "llm_available": key_present,
             "warning": warning,
@@ -129,11 +146,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         }
 
     @app.put("/api/agent-mode")
-    def set_agent_mode(body: AgentModeIn) -> dict:
-        nonlocal requested_mode
-        if demo_mode and body.mode != "mock":
-            raise HTTPException(status_code=409, detail="Demo offline jest zablokowane na czas tej sesji. Wyłącz DEMO_MODE i uruchom backend ponownie.")
-        requested_mode = body.mode
+    async def set_agent_mode(body: AgentModeIn) -> dict:
+        await patch_settings(SettingsPatch(mode=body.mode))
         return get_agent_mode()
 
     @app.get("/api/stock")
@@ -180,7 +194,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             for field in missing_required
         ]
         if mapping["minimum"]["column"] is None:
-            warnings.append("Nie znaleziono minimum — nowe pozycje otrzymają 0, a istniejące zachowają obecny próg.")
+            warnings.append(f"Nie znaleziono minimum — nowe pozycje otrzymają {read_settings(path)['default_minimum']}, a istniejące zachowają obecny próg.")
         if mapping["location"]["column"] is None:
             warnings.append("Nie znaleziono lokalizacji — nowe pozycje pozostaną bez lokalizacji, a istniejące zachowają obecną.")
         return {
@@ -205,7 +219,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             imported_items = validate_and_map_rows(headers, rows, mapping)
         except ImportFileError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        result = db.import_items(path, imported_items)
+        result = db.import_items(path, imported_items, default_minimum=read_settings(path)["default_minimum"])
         pending_imports.pop(body.import_id, None)
         await broadcast({"event": "updated"})
         return result
@@ -247,6 +261,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         """
         if demo_mode:
             raise HTTPException(status_code=503, detail="Demo offline — STT wyłączone; wpisz komendę w polu tekstowym.")
+        if read_settings(path)["voice_mode"] == "text":
+            raise HTTPException(status_code=503, detail="Tryb tekstowy — mikrofon wyłączony w Ustawieniach.")
         data = await request.body()
         if not data:
             raise HTTPException(status_code=422, detail="Brak nagrania audio.")
@@ -262,9 +278,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/command")
     async def command(body: CommandIn) -> dict:
+        config = read_settings(path)
+        interpreted_text = command_text(body.text, config)
+        if interpreted_text is None:
+            return {"type": "clarify", "text": body.text, "message": f"Aktualny prefix to „{config['prefix']}”. Użyj go albo wpisz komendę bez prefixu."}
         rows = db.list_items(path)
         items = [ItemRef(id=r["id"], name=r["name"]) for r in rows]
-        requested = requested_mode
+        requested = "mock" if demo_mode else config["mode"]
         warning = None
         parsed = None
 
@@ -276,7 +296,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )
             try:
                 interpretation = await provider_from_env().interpret(
-                    body.text, tool_schemas(), "W tym demo jedna paleta = 2 jednostki towaru. " + inventory_context
+                    interpreted_text, tool_schemas(), "W tym demo jedna paleta = 2 jednostki towaru. " + inventory_context
                 )
                 if interpretation.tool_call is None:
                     return {
@@ -286,21 +306,21 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     }
                 parsed = normalize_call(interpretation.tool_call, body.text, items)
             except LLMProviderError:
-                parsed = parse_command(body.text, items)
+                parsed = parse_command(interpreted_text, items)
                 warning = "LLM nie zwrócił poprawnej propozycji — użyto parsera offline."
         else:
-            parsed = parse_command(body.text, items)
+            parsed = parse_command(interpreted_text, items)
             if requested == "llm":
                 warning = "Brak LLM_API_KEY — użyto parsera offline."
             elif requested == "mock":
                 warning = get_agent_mode()["warning"]
 
-        response = await dispatch_command(body, parsed)
+        response = await dispatch_command(body, parsed, config["default_minimum"])
         if warning:
             response["warning"] = warning
         return response
 
-    async def dispatch_command(body: CommandIn, parsed: ParsedCommand | None) -> dict:
+    async def dispatch_command(body: CommandIn, parsed: ParsedCommand | None, default_minimum: int) -> dict:
         if parsed is None:
             # nieznana komenda → prośba o doprecyzowanie, nigdy ciche zgadywanie
             return {"type": "unknown", "text": body.text, "hints": HINTS}
@@ -311,8 +331,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             proposal = _proposal(
                 tool="add_item",
                 text=body.text,
-                args={"name": name, "quantity": 0, "unit": "szt"},
-                summary=f"Nowa pozycja: {name} (0 szt)",
+                args={"name": name, "quantity": 0, "unit": "szt", "minimum": default_minimum},
+                summary=f"Nowa pozycja: {name} (0 szt, minimum {default_minimum})",
                 item_name=name,
             )
             return {"type": "proposal", "proposal": proposal}
@@ -332,11 +352,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
             return _answer(path, body.text, parsed, data)
 
         if parsed.tool in {"add_item", "draft_order"}:
+            args = parsed.args
             if parsed.tool == "add_item":
-                summary = f"Nowa pozycja: {parsed.args['name']} ({parsed.args.get('quantity', 0)} {parsed.args.get('unit', 'szt')})"
+                args = {"minimum": default_minimum, **parsed.args}
+                summary = f"Nowa pozycja: {args['name']} ({args.get('quantity', 0)} {args.get('unit', 'szt')}, minimum {args['minimum']})"
             else:
                 summary = f"Szkic zamówienia: {parsed.item_name} — {parsed.args['quantity']}"
-            proposal = _proposal(tool=parsed.tool, text=body.text, args=parsed.args, summary=summary)
+            proposal = _proposal(tool=parsed.tool, text=body.text, args=args, summary=summary)
             return {"type": "proposal", "proposal": proposal}
 
         if parsed.tool == "add_zone":

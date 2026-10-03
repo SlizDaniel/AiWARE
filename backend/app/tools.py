@@ -171,11 +171,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
                     "name": {"type": "string"},
                     "quantity": {"type": "integer"},
                     "unit": {"type": "string"},
+                    "minimum": {"type": "integer", "minimum": 0},
                 },
                 required=["name"],
             ),
-            handler=lambda db_path, *, name, quantity=0, unit="szt": db.add_item(
-                db_path, name=name, quantity=quantity, unit=unit
+            handler=lambda db_path, *, name, quantity=0, unit="szt", minimum=0: db.add_item(
+                db_path, name=name, quantity=quantity, unit=unit, minimum=minimum
             ),
         ),
     ]

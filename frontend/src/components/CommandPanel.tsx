@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   confirmProposal,
-  fetchAgentMode,
   fetchZones,
   sendCommand,
   transcribeAudio,
@@ -9,6 +8,7 @@ import {
   type AgentMode,
   type Item,
   type Procedure,
+  type AppSettings,
   type Proposal,
   type ReorderDraft,
   type Zone,
@@ -22,6 +22,10 @@ type Props = {
   items: Item[]
   onShowZone: (id: number) => void
   onShowLocation: (target: MapTarget) => void
+  settings: AppSettings | null
+  settingsError: string
+  onSettingsChanged: () => void
+  showModeControl?: boolean
 }
 
 type State =
@@ -32,7 +36,7 @@ type State =
   | { kind: 'error'; message: string }
   | null
 
-export default function CommandPanel({ onApplied, zones, items, onShowZone, onShowLocation }: Props) {
+export default function CommandPanel({ onApplied, zones, items, onShowZone, onShowLocation, settings, settingsError, onSettingsChanged, showModeControl = true }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
@@ -53,28 +57,34 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
   }, [])
 
   const [responseWarning, setResponseWarning] = useState<string | null>(null)
-  const [mode, setMode] = useState<AgentMode>('llm')
-  const [modeWarning, setModeWarning] = useState<string | null>(null)
-  const [demoMode, setDemoMode] = useState(false)
+  const [modeError, setModeError] = useState('')
+  const [modeBusy, setModeBusy] = useState(false)
+  const mode = settings?.mode ?? 'llm'
+  const demoMode = settings?.mode_status.demo_mode ?? false
+  const modeWarning = modeError || settingsError || settings?.mode_status.warning
+  const voiceEnabled = Boolean(settings && settings.voice_mode === 'push_to_talk' && !demoMode)
+  const voiceHelp = demoMode
+    ? 'Demo offline — użyj pola tekstowego. Mikrofon z API jest wyłączony.'
+    : !settings
+      ? 'Czekam na konfigurację. Pole tekstowe pozostaje dostępne.'
+      : voiceEnabled
+        ? 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
+        : 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
 
   useEffect(() => {
-    void fetchAgentMode()
-      .then((status) => {
-        setMode(status.mode)
-        setModeWarning(status.warning)
-        setDemoMode(status.demo_mode)
-      })
-      .catch(() => setModeWarning('Nie udało się pobrać trybu agenta.'))
-  }, [])
+    if (!voiceEnabled && recorderRef.current?.state === 'recording') recorderRef.current.stop()
+  }, [voiceEnabled])
 
   const changeMode = async (nextMode: AgentMode) => {
-    setMode(nextMode)
+    setModeBusy(true)
+    setModeError('')
     try {
-      const status = await updateAgentMode(nextMode)
-      setMode(status.mode)
-      setModeWarning(status.warning)
+      await updateAgentMode(nextMode)
+      onSettingsChanged()
     } catch {
-      setModeWarning('Nie udało się zmienić trybu agenta.')
+      setModeError('Nie udało się zmienić trybu agenta.')
+    } finally {
+      setModeBusy(false)
     }
   }
 
@@ -183,7 +193,7 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
   }
 
   const startRecording = async () => {
-    if (busy || transcribing || recording) return
+    if (busy || transcribing || recording || !voiceEnabled) return
     setVoiceNote('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -218,20 +228,20 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <label className="flex items-center gap-2 text-sm text-[#70756f]">
+          {showModeControl && <label className="flex items-center gap-2 text-sm text-[#70756f]">
             Tryb agenta
             <select
               value={mode}
               onChange={(event) => void changeMode(event.target.value as AgentMode)}
               className="border border-[#d8d6cf] bg-white px-2 py-1"
               aria-label="Tryb agenta"
-              disabled={demoMode}
+              disabled={demoMode || modeBusy || !settings}
             >
               <option value="llm">LLM</option>
               <option value="offline">Offline</option>
               <option value="mock">Mock</option>
             </select>
-          </label>
+          </label>}
           <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">
             tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia
           </span>
@@ -239,7 +249,7 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
       </div>
 
       {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
-      <p className="mt-1 text-xs text-slate-400">Wpisz komendę lub nagraj głos. Sprawdź transkrypcję przed wysłaniem.</p>
+      <p className="mt-1 text-xs text-slate-400">{voiceHelp}</p>
 
       <form
         className="mt-4 flex gap-3"
@@ -251,7 +261,7 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
         <button
           type="button"
           onClick={toggleRecording}
-          disabled={busy || transcribing}
+          disabled={busy || transcribing || (!voiceEnabled && !recording)}
           aria-pressed={recording}
           title={recording ? 'Zakończ nagrywanie' : 'Nagraj komendę głosem'}
           className={
@@ -270,7 +280,7 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
           ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder='np. „wzięliśmy paletę kartonów”'
+          placeholder={`np. „${settings?.prefix ?? 'Magu'}, ile mamy kartonów?”`}
           className={
             'min-w-0 flex-1 border px-4 py-3 text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' +
             (voiceFallback
