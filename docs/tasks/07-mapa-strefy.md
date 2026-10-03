@@ -12,7 +12,7 @@
 
 **Demo check:** wpisz „strefa: kartony" → strefa pojawia się na mapie → klik → panel z asortymentem strefy; powtórz dla 3 stref — mapa wygląda jak magazyn, nie jak schowek.
 
-**Status:** ready
+**Status:** in progress — frontend renderuje strefy z `/api/zones` na schematycznym SVG, odświeża je po zatwierdzeniu komendy i pokazuje pasujące pozycje z `/api/stock` po wybraniu strefy. Pozycje są kojarzone po nazwie lub polu `location`; backend nie przechowuje współrzędnych. Nadal otwarte: pytanie przy duplikacie (obecny kontrakt backendu jest idempotentny), bezpośrednie dodawanie strefy przez tapnięcie mapy oraz GUI check (automatyzacja przeglądarki blokowana przez zapisane ustawienie użytkownika).
 
 - [ ] strefy dodane głosem/tekstem pojawiają się na mapie bez przeładowania
 - [ ] klik w strefę = szczegóły (asortyment + stany)

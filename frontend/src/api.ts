@@ -9,6 +9,12 @@ export type Item = {
   location: string
 }
 
+export type Zone = {
+  id: number
+  name: string
+  created: string
+}
+
 export type HistoryEntry = {
   id: number
   ts: string
@@ -84,6 +90,10 @@ async function json<T>(res: Response): Promise<T> {
 
 export function fetchStock(): Promise<Item[]> {
   return fetch('/api/stock').then((r) => json<{ items: Item[] }>(r)).then((d) => d.items)
+}
+
+export function fetchZones(): Promise<Zone[]> {
+  return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
 }
 
 export function fetchHistory(): Promise<HistoryEntry[]> {
