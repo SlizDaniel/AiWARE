@@ -16,11 +16,13 @@
 
 **Integracja z B (karta 10):** `CommandPanel.onShowLocation({ name, location })` przełącza widok na mapę. Callback może obsłużyć też lokalizację odczytaną z procedury; rozpoznawanie procedur pozostaje w zakresie B. Wspólna logika `zoneForItem` dopasowuje najdokładniejszą strefę po lokalizacji, a następnie po nazwie.
 
-**Ograniczenia / następny krok:** układ pozostaje schematyczny, backend nie przechowuje współrzędnych. Do zamknięcia karty potrzebny jest GUI-check (tekst/głos → dodanie 3 stref → klik → szczegóły → zapytanie o lokalizację) na ekranie demo i telefonie. Dostęp automatyzacji do `localhost:5173` jest blokowany przez zapisane uprawnienie witryny; nie potwierdzono jeszcze wyglądu ani interakcji w przeglądarce.
+**Ograniczenia / następny krok:** układ pozycji schematyczny, backend nie przechowuje współrzędnych. GUI-check na ekranie demo zaliczony 2026-10-04 (demo offline, port 3002, dowody `gui-test-screenshots/t11–t14`, `t19`); weryfikacja na telefonie pozostaje w karcie 14.
 
 **Weryfikacja ostatniego kroku:** 8 testów dopasowania stref i kontraktu odpowiedzi API, frontend build, lint (jedno wcześniejsze ostrzeżenie `react(set-state-in-effect)` w App), 119 testów backendu. Kontenery zbudowane i uruchomione. Przy otwieraniu wyniku mapa pobiera świeże strefy i asortyment; błąd sprawdzania listy stref jest jawny i zachowuje kartę propozycji, a ponowną nazwę chroni idempotencja backendu.
 
-- [ ] strefy dodane głosem/tekstem pojawiają się na mapie bez przeładowania
-- [ ] klik w strefę = szczegóły (asortyment + stany)
-- [ ] duplikat nazwy strefy → pytanie o doprecyzowanie
-- [ ] layout wygląda przekonująco na ekranie demo (projekt „prawdziwego" magazynu: brama, regały, strefy)
+**GUI-check 2026-10-04 (Next.js, offline):** „strefa: kartony" → karta `add_zone` → zatwierdzenie → mapa „1 STREF" bez przeładowania (toast „Zapisano w bazie…"), klik strefy → panel „WYBRANA STREFA" z asortymentem (Kartony 13 szt, Strefa A-1), duplikat → karta „Doprecyzujmy" z „Otwórz istniejącą strefę", 3 strefy na rzucie (brama, regały A/B, ciąg komunikacyjny). „Gdzie leży szkło?" → odpowiedź `get_location` + „Pokaż na mapie" + podświetlenie strefy. Nit: strefa „folia" pokazuje 0 pozycji (pozycja „Folia stretch" leży w „Strefie C-1" — dopasowanie po nazwie nie łapie; na demo nazywać strefy jak nazwy pozycji).
+
+- [x] strefy dodane głosem/tekstem pojawiają się na mapie bez przeładowania
+- [x] klik w strefę = szczegóły (asortyment + stany)
+- [x] duplikat nazwy strefy → pytanie o doprecyzowanie
+- [x] layout wygląda przekonująco na ekranie demo (projekt „prawdziwego" magazynu: brama, regały, strefy)
