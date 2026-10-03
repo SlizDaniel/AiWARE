@@ -23,7 +23,7 @@ import anyio
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -31,7 +31,18 @@ from app import db, stt
 from app.demo import demo_db_path, init_demo_db
 from app.agent_contract import normalize_call, tool_schemas
 from app.llm import LLMProviderError, provider_from_env
-from app.inventory import FIELDS, MAX_UPLOAD_BYTES, REQUIRED_FIELDS, ImportFileError, read_inventory_file, suggest_mapping, validate_and_map_rows
+
+from app.inventory import (
+    FIELDS,
+    MAX_UPLOAD_BYTES,
+    REQUIRED_FIELDS,
+    ImportFileError,
+    export_inventory_csv,
+    export_inventory_xlsx,
+    read_inventory_file,
+    suggest_mapping,
+    validate_and_map_rows,
+)
 
 from app.models import ItemRef
 from app.parser import ParsedCommand, parse_command
@@ -128,6 +139,21 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/stock")
     def stock() -> dict:
         return {"items": db.list_items(path)}
+
+    @app.get("/api/export/{file_format}")
+    def export_inventory(file_format: Literal["csv", "xlsx"]) -> Response:
+        items = db.list_items(path)
+        if file_format == "csv":
+            return Response(
+                content=export_inventory_csv(items),
+                media_type="text/csv; charset=utf-8",
+                headers={"Content-Disposition": 'attachment; filename="magazyn.csv"'},
+            )
+        return Response(
+            content=export_inventory_xlsx(items),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="magazyn.xlsx"'},
+        )
 
     @app.get("/api/history")
     def history() -> dict:

@@ -118,7 +118,7 @@ class OpenAICompatibleProvider:
             try:
                 function = calls[0]["function"]
                 name = function["name"]
-                arguments = json.loads(function["arguments"])
+                arguments = _decode_json(function["arguments"])
             except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
                 raise LLMProviderError("LLM returned malformed function arguments") from exc
             _validate_tool_call(name, arguments, tools)
@@ -154,7 +154,7 @@ class OpenAICompatibleProvider:
                 body = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(body) > MAX_RESPONSE_BYTES:
                     raise LLMProviderError("LLM response exceeds the size limit")
-                decoded = json.loads(body.decode("utf-8"))
+                decoded = _decode_json(body.decode("utf-8"))
         except HTTPError as exc:
             # Do not include provider response bodies, which can contain sensitive data.
             raise LLMProviderError(f"LLM endpoint returned HTTP {exc.code}") from exc
@@ -163,6 +163,22 @@ class OpenAICompatibleProvider:
         if not isinstance(decoded, dict):
             raise LLMProviderError("LLM endpoint returned a non-object response")
         return decoded
+
+
+def _decode_json(value: str) -> Any:
+    """Reject ambiguous objects and excessive nesting before schema validation."""
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, child in pairs:
+            if key in result:
+                raise LLMProviderError("LLM JSON contains duplicate keys")
+            result[key] = child
+        return result
+
+    try:
+        return json.loads(value, object_pairs_hook=unique_object)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise LLMProviderError("LLM returned invalid or excessively nested JSON") from exc
 
 
 def provider_from_env() -> OpenAICompatibleProvider:

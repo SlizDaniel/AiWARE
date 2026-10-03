@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import CommandPanel from './components/CommandPanel'
 import HistoryList from './components/HistoryList'
+import InventoryExport from './components/InventoryExport'
 import InventoryImport from './components/InventoryImport'
 import Placeholder from './components/Placeholder'
 import ReorderQueue from './components/ReorderQueue'
@@ -177,9 +178,12 @@ export default function App() {
 
           {(section === 'stany' || section === 'historia' || section === 'kolejka') && (
             <section>
-              <h2 className="mb-3 text-lg font-bold">
-                {section === 'stany' ? 'Pozycje' : section === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
-              </h2>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">
+                  {section === 'stany' ? 'Pozycje' : section === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
+                </h2>
+                {section === 'stany' && <InventoryExport />}
+              </div>
               {section === 'stany' ? (
                 <StockTable items={items} state={stockState} error={stockError} onRetry={() => void refreshStock()} />
               ) : section === 'historia' ? (
