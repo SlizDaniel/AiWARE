@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Item, Zone } from '../api'
+import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '../api'
 import { itemsForZone } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -12,14 +12,65 @@ type Props = {
   onRetry: () => void
   itemsState: LoadState
   onRetryItems: () => void
+  onZoneAdded: (name: string) => void
 }
 
 function shortLabel(value: string): string {
   return value.length > 25 ? `${value.slice(0, 24)}…` : value
 }
 
-export default function WarehouseMap({ zones, items, state, error, onRetry, itemsState, onRetryItems }: Props) {
+export default function WarehouseMap({ zones, items, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [draftOpen, setDraftOpen] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
+  const [draftBusy, setDraftBusy] = useState(false)
+  const [draftError, setDraftError] = useState('')
+
+  const prepareZone = async () => {
+    const name = draftName.trim()
+    if (!name || draftBusy) return
+    const existing = zones.find((zone) => zone.name.toLocaleLowerCase('pl-PL') === name.toLocaleLowerCase('pl-PL'))
+    if (existing) {
+      setSelectedId(existing.id)
+      setDraftError(`Strefa „${existing.name}” już istnieje. Wybierz ją z listy, aby zobaczyć szczegóły.`)
+      return
+    }
+
+    setDraftBusy(true)
+    setDraftError('')
+    try {
+      const result = await sendCommand(`strefa: ${name}`)
+      if (result.type === 'proposal' && result.proposal.tool === 'add_zone') {
+        setDraftProposal(result.proposal)
+      } else if (result.type === 'clarify') {
+        setDraftError(result.message)
+      } else {
+        setDraftError('Nie udało się przygotować strefy. Sprawdź nazwę i spróbuj ponownie.')
+      }
+    } catch (reason) {
+      setDraftError(reason instanceof Error ? reason.message : 'Nie udało się przygotować strefy.')
+    } finally {
+      setDraftBusy(false)
+    }
+  }
+
+  const confirmZone = async () => {
+    if (!draftProposal || draftBusy) return
+    setDraftBusy(true)
+    setDraftError('')
+    try {
+      await confirmProposal(draftProposal.id)
+      onZoneAdded(draftName.trim())
+      setDraftProposal(null)
+      setDraftName('')
+      setDraftOpen(false)
+    } catch (reason) {
+      setDraftError(reason instanceof Error ? reason.message : 'Nie udało się dodać strefy.')
+    } finally {
+      setDraftBusy(false)
+    }
+  }
 
   if (state === 'loading') {
     return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram mapę stref…</div>
@@ -37,8 +88,8 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
 
   const orderedZones = [...zones].sort((a, b) => a.id - b.id)
   const selected = orderedZones.find((zone) => zone.id === selectedId) ?? null
-  const selectedItems = selected ? itemsForZone(selected, items) : []
-  const rows = Math.max(3, Math.ceil(orderedZones.length / 2))
+  const selectedItems = selected ? itemsForZone(selected, items, orderedZones) : []
+  const rows = Math.max(3, Math.ceil((orderedZones.length + 1) / 2))
   const height = 172 + rows * 112
 
   return (
@@ -63,11 +114,32 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
               const y = 92 + Math.floor(index / 2) * 112
               const zone = orderedZones[index]
               if (!zone) {
+                if (index === orderedZones.length) {
+                  return (
+                    <g
+                      key="add-zone"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Dodaj strefę w następnym wolnym miejscu"
+                      className="cursor-pointer"
+                      onClick={() => setDraftOpen(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          setDraftOpen(true)
+                        }
+                      }}
+                    >
+                      <rect x={x} y={y} width="325" height="84" fill="#f6f8f4" stroke="#759177" strokeWidth="2" strokeDasharray="6 5" />
+                      <text x={x + 29} y={y + 49} fill="#315b37" fontSize="17" fontWeight="700">+ Dodaj strefę</text>
+                    </g>
+                  )
+                }
                 return <rect key={`empty-${index}`} x={x} y={y} width="325" height="84" fill="#f7f6f3" stroke="#d8d6cf" strokeDasharray="6 6" />
               }
 
               const active = selected?.id === zone.id
-              const count = itemsState === 'ready' ? itemsForZone(zone, items).length : null
+              const count = itemsState === 'ready' ? itemsForZone(zone, items, orderedZones).length : null
               return (
                 <g
                   key={zone.id}
@@ -98,7 +170,37 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
       </div>
 
       <aside className="border border-[#e8e5de] bg-white p-5" aria-label="Szczegóły stref">
-        <h2 className="text-lg font-bold">Strefy</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-lg font-bold">Strefy</h2>
+          <button type="button" onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
+        </div>
+        {draftOpen && (
+          <div className="mt-4 border border-[#cbd8c9] bg-[#f6f8f4] p-4">
+            <form onSubmit={(event) => { event.preventDefault(); void prepareZone() }}>
+              <label htmlFor="new-zone-name" className="block text-sm font-semibold text-[#454b46]">Nazwa nowej strefy</label>
+              <input
+                id="new-zone-name"
+                value={draftName}
+                disabled={draftBusy || draftProposal !== null}
+                onChange={(event) => { setDraftName(event.target.value); setDraftError('') }}
+                placeholder="np. kartony"
+                className="mt-2 w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] disabled:opacity-60"
+              />
+              {!draftProposal && <button type="submit" disabled={draftBusy || !draftName.trim()} className="mt-3 bg-[#292d2b] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40">{draftBusy ? 'Przygotowuję…' : 'Przygotuj kartę'}</button>}
+            </form>
+            {draftProposal && (
+              <div className="mt-4 border-t border-[#cbd8c9] pt-4">
+                <p className="text-sm font-semibold text-[#315b37]">{draftProposal.summary}</p>
+                <p className="mt-1 text-xs text-[#646b64]">Nic nie zapisano. Potwierdź dodanie strefy.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void confirmZone()} disabled={draftBusy} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftBusy ? 'Zapisuję…' : 'Zatwierdź'}</button>
+                  <button type="button" onClick={() => { setDraftProposal(null); setDraftError('') }} disabled={draftBusy} className="border border-[#d8d6cf] bg-white px-4 py-2 text-sm font-semibold text-[#646b64] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">Odrzuć</button>
+                </div>
+              </div>
+            )}
+            {draftError && <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">{draftError}</p>}
+          </div>
+        )}
         {orderedZones.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-[#646b64]">Nie ma jeszcze stref. W panelu komend wpisz na przykład „strefa: kartony” i zatwierdź propozycję.</p>
         ) : (
@@ -114,7 +216,7 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
                   className={'flex w-full items-center justify-between gap-3 border px-3 py-2.5 text-left text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' + (selected?.id === zone.id ? 'border-[#315b37] bg-[#edf3ec] text-[#315b37]' : 'border-[#e8e5de] text-[#454b46] hover:bg-[#fbfaf7]')}
                 >
                   <span className="truncate">{zone.name}</span>
-                  <span className="font-mono text-xs">{itemsState === 'ready' ? itemsForZone(zone, items).length : '—'}</span>
+                  <span className="font-mono text-xs">{itemsState === 'ready' ? itemsForZone(zone, items, orderedZones).length : '—'}</span>
                 </button>
               ))}
             </div>

@@ -10,10 +10,15 @@ function normalize(value: string): string {
     .trim()
 }
 
-export function itemsForZone(zone: Zone, items: Item[]): Item[] {
-  const name = normalize(zone.name)
+export function itemsForZone(zone: Zone, items: Item[], allZones: Zone[]): Item[] {
+  const knownZones = allZones.map((candidate) => ({ id: candidate.id, name: normalize(candidate.name) }))
   return items.filter((item) => {
     const location = normalize(item.location)
-    return normalize(item.name) === name || location === name || location.startsWith(`${name} `)
+    const locationMatch = knownZones
+      .filter((candidate) => candidate.name && (location === candidate.name || location.startsWith(`${candidate.name} `)))
+      .sort((a, b) => b.name.length - a.name.length)[0]
+    if (locationMatch) return locationMatch.id === zone.id
+
+    return knownZones.find((candidate) => candidate.name === normalize(item.name))?.id === zone.id
   })
 }

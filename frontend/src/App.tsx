@@ -154,6 +154,10 @@ export default function App() {
               onRetry={() => void refreshZones()}
               itemsState={stockState}
               onRetryItems={() => void refreshStock()}
+              onZoneAdded={(name) => {
+                showToast(`Dodano strefę: ${name}`)
+                refresh()
+              }}
             />
           )}
 

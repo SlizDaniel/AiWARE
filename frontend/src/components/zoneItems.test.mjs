@@ -9,9 +9,20 @@ const items = [
 ]
 
 test('zone named after an item shows that item even when its location uses a code', () => {
-  assert.deepEqual(itemsForZone({ id: 1, name: 'kartony', created: '' }, items).map((item) => item.id), [1])
+  const zone = { id: 1, name: 'kartony', created: '' }
+  assert.deepEqual(itemsForZone(zone, items, [zone]).map((item) => item.id), [1])
 })
 
 test('zone location matches its exact code and sublocations, but not a different code', () => {
-  assert.deepEqual(itemsForZone({ id: 2, name: 'A-1', created: '' }, items).map((item) => item.id), [1, 2])
+  const zone = { id: 2, name: 'A-1', created: '' }
+  assert.deepEqual(itemsForZone(zone, items, [zone]).map((item) => item.id), [1, 2])
+})
+
+test('a recorded location wins over a matching product name when both zones exist', () => {
+  const nameZone = { id: 1, name: 'kartony', created: '' }
+  const locationZone = { id: 2, name: 'A-1', created: '' }
+  const zones = [nameZone, locationZone]
+
+  assert.deepEqual(itemsForZone(nameZone, items, zones).map((item) => item.id), [])
+  assert.deepEqual(itemsForZone(locationZone, items, zones).map((item) => item.id), [1, 2])
 })
