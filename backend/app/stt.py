@@ -53,7 +53,13 @@ def transcribe(data: bytes, filename: str) -> str:
     if response.status_code != 200:
         raise _fail(f"API STT zwróciło błąd ({response.status_code})")
 
-    text = str(response.json().get("text", "")).strip()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise _fail("API STT zwróciło nieprawidłowy JSON") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+        raise _fail("API STT zwróciło nieprawidłowy format transkrypcji")
+    text = payload["text"].strip()
     if not text:
         raise _fail("API STT nie zwróciło tekstu")
     return text

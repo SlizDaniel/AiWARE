@@ -196,6 +196,27 @@ def test_stt_without_api_key_signals_unavailable(client, monkeypatch):
     assert "STT" in r.json()["detail"]
 
 
+@pytest.mark.parametrize("body", [
+    b"not-json",
+    b"[]",
+    b'{"text": null}',
+    b'{"text": 42}',
+    b'{"text": {"unexpected": "command"}}',
+    b'{"text": "   "}',
+])
+def test_malformed_stt_response_uses_text_fallback_and_session_survives(client, monkeypatch, body):
+    monkeypatch.setenv("STT_API_KEY", "test-key")
+    monkeypatch.setattr(stt_module.httpx, "post", lambda *args, **kwargs: httpx.Response(200, content=body))
+
+    response = client.post(
+        "/api/stt?filename=audio.wav", content=wav_fixture(), headers={"Content-Type": "audio/wav"},
+    )
+    assert response.status_code == 503
+    assert "wpisz komendę" in response.json()["detail"]
+    assert client.get("/api/health").json()["status"] == "ok"
+    assert client.post("/api/command", json={"text": "ile mamy szkła?"}).json()["type"] == "answer"
+
+
 def test_slow_stt_does_not_block_other_endpoints(client, monkeypatch, whisper_stub):
     """Synchroniczne wywołanie STT w handlerze async blokowałoby wspólny event loop
     (WS, /api/command, health) na czas oczekiwania — to musi iść w wątku.
