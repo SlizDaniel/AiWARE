@@ -1,8 +1,10 @@
 # Sprawdzanie Gemini w Pythonie — Agent A, karta 03
 
-`scripts/check-gemini.py` ocenia 13 syntetycznych komend: pobranie, przyjęcie,
+`scripts/check-gemini.py` ocenia 23 syntetyczne komendy: pobranie, przyjęcie,
 palety, stan, lokalizacja, progi, szkic zamówienia, odczyt/zapis procedury,
-strefa, błąd transkrypcji, brak ilości i nieznany towar.
+strefa, błąd transkrypcji, brak ilości i nieznany towar. Rozszerzenie obejmuje
+zwrot, liczbę w nazwie stanowiska, negację, plan, kilka towarów, nieznany
+przelicznik, ustawienie stanu, przeniesienie, brak odwołania i podobny nieznany towar.
 
 ## Uruchomienie
 
@@ -15,6 +17,7 @@ python scripts/check-gemini.py --list
 
 # Prawdziwe zapytania do Gemini na danych syntetycznych:
 python scripts/check-gemini.py --case withdrawal --case receipt
+python scripts/check-gemini.py --case negated-withdrawal --case unknown-similar-item
 python scripts/check-gemini.py --report data/llm-readiness.json
 
 # Opcjonalnie inny lokalny plik konfiguracji:
@@ -49,7 +52,7 @@ Nie uruchamiamy go automatycznie w CI ani podczas `npm test`.
   Diagnostyka nie drukuje surowych odpowiedzi, stderr procesu ani wyjątków.
 
 Kody wyjścia: **0** same zgodne intencje, **1** FAIL/ERROR, **2** konfiguracja lub
-zapis raportu, **3** konieczna ręczna ocena pytań bez FAIL/ERROR. Dwa niejednoznaczne
+zapis raportu, **3** konieczna ręczna ocena pytań bez FAIL/ERROR. Dziesięć niejednoznacznych
 scenariusze pełnego zestawu powinny prowadzić do REVIEW, więc poprawne zachowanie
 całego zestawu może kończyć się kodem 3. Raport JSON: `selected`, `completed`,
 `not_run`, `counts` oraz wyniki z ID, oczekiwanym narzędziem i czasem całej próby

@@ -7,7 +7,8 @@
 import { normalizeCall, toolSchemas } from './agentContract'
 import { DEFAULT_ACTOR, StaleStockProposalError, getItem, listItems, logEvent, saveProposal, takeProposal, type Actor, type Item, type StockSnapshot } from './db'
 import { HttpError } from './http'
-import { delta, parseCommand, type ParsedCommand } from './parser'
+import { GeminiRequestError } from './llm'
+import { delta, parseCommand, SZT_NA_PALETE, type ParsedCommand } from './parser'
 import { commandText, getAgentModeStatus, getAppSettings } from './settings'
 import type { Db } from './sql'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
@@ -24,6 +25,20 @@ export const HINTS = [
 
 export const NO_KEY_COMMAND_WARNING = 'Brak GEMINI_API_KEY — użyto parsera offline.'
 export const LLM_FALLBACK_WARNING = 'LLM nie zwrócił poprawnej propozycji — użyto parsera offline.'
+
+/** Only fixed labels reach the UI; provider messages may contain private data. */
+function fallbackWarning(error: unknown): string {
+  if (!(error instanceof GeminiRequestError)) return LLM_FALLBACK_WARNING
+  let reason: string
+  if (error.kind === 'timeout') reason = 'Gemini nie odpowiedział w wyznaczonym czasie'
+  else if (error.kind === 'network') reason = 'Nie udało się połączyć z Gemini'
+  else if (error.status === 429) reason = 'Gemini: przekroczono limit zapytań lub dostępny limit API'
+  else if (error.status === 401 || error.status === 403 || error.reason === 'API_KEY_INVALID') reason = 'Gemini: sprawdź klucz API i uprawnienia do modelu'
+  else if (error.status === 404) reason = 'Gemini: skonfigurowany model jest niedostępny'
+  else if (error.status !== null && error.status >= 500) reason = 'Gemini jest chwilowo niedostępny'
+  else return LLM_FALLBACK_WARNING
+  return `${reason} — użyto parsera offline.`
+}
 
 const READ_TOOLS = new Set(Object.values(TOOL_REGISTRY).filter((spec) => spec.kind === 'read').map((spec) => spec.name))
 
@@ -53,13 +68,11 @@ export type ConfirmPayload = { applied: true } & Record<string, unknown>
 type RunOptions = { provider: LLMProvider | null; actor?: Actor }
 
 function inventoryContext(rows: Item[]): string {
-  return rows
-    .map(
-      (row) =>
-        `id=${row.id}, nazwa=${row.name}, ilość=${row.quantity} ${row.unit}, ` +
-        `minimum=${row.minimum}, lokalizacja=${row.location}`,
-    )
-    .join(', ')
+  // JSON keeps commas/quotes in names from looking like another item or field.
+  return JSON.stringify({
+    units_per_pallet: SZT_NA_PALETE,
+    items: rows.map(({ id, name, quantity, unit, minimum, location }) => ({ id, name, quantity, unit, minimum, location })),
+  })
 }
 
 /** POST /api/command: text → proposal | answer | clarify | unknown (+ optional warning). */
@@ -79,17 +92,17 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   let parsed: ParsedCommand | null
 
   if (status.mode === 'llm' && options.provider !== null) {
-    const context = 'W tym demo jedna paleta = 2 jednostki towaru. ' + inventoryContext(rows)
+    const context = inventoryContext(rows)
     try {
       const interpretation = await options.provider.interpret(command, toolSchemas(), context)
       if (interpretation.toolCall === null) {
         return { type: 'clarify', text, message: interpretation.clarification || 'Doprecyzuj polecenie.' }
       }
       parsed = normalizeCall(interpretation.toolCall, command, items)
-    } catch {
+    } catch (error) {
       // LLMProviderError (or any provider failure): never block the warehouse — use the offline parser.
       parsed = parseCommand(command, items)
-      warning = LLM_FALLBACK_WARNING
+      warning = fallbackWarning(error)
     }
   } else {
     parsed = parseCommand(command, items)

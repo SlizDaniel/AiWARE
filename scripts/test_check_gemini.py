@@ -13,6 +13,25 @@ spec.loader.exec_module(checker)
 
 
 class GeminiReadinessTests(unittest.TestCase):
+    def test_regressions_reject_calls_for_ambiguous_commands(self):
+        ids = {'negated-withdrawal', 'planned-withdrawal', 'multiple-items', 'unknown-conversion',
+               'absolute-stock', 'move-item', 'missing-reference', 'unknown-similar-item'}
+        cases = {case['id']: case for case in checker.CASES}
+        self.assertTrue(ids.issubset(cases))
+        for case_id in ids:
+            with self.subTest(case=case_id):
+                case = cases[case_id]
+                self.assertIsNone(case['tool'])
+                call = {'kind': 'call', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': -2}}
+                self.assertEqual(checker.assess(case, call)['status'], 'fail')
+                self.assertEqual(checker.assess(case, {'kind': 'clarification'})['status'], 'review')
+
+    def test_fixture_context_matches_item_ids_and_explicit_units(self):
+        context = json.loads(checker.CONTEXT)
+        self.assertEqual(context['units_per_pallet'], 2)
+        self.assertEqual([{key: row[key] for key in ('id', 'name')} for row in context['items']], checker.ITEMS)
+        self.assertEqual(context['items'][2]['unit'], 'rolka')
+
     def test_correct_tool_and_arguments_pass(self):
         case = checker.CASES[0]
         self.assertEqual(checker.assess(case, {'kind': 'call', 'tool': case['tool'], 'args': case['args']})['status'], 'pass')

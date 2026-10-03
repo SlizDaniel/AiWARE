@@ -16,13 +16,14 @@ import time
 REPO = Path(__file__).resolve().parents[1]
 ENV_NAMES = {'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_MODEL', 'DEMO_MODE'}
 ITEMS = [{'id': 1, 'name': 'Kartony'}, {'id': 2, 'name': 'Szkło'}, {'id': 3, 'name': 'Folia stretch'}]
-CONTEXT = (
-    'Syntetyczny magazyn: id=1 Kartony, ilość=13, minimum=12, strefa A-1; '
-    'id=2 Szkło, ilość=20, minimum=8, strefa B-2; '
-    'id=3 Folia stretch, ilość=15, minimum=6, strefa C-1. '
-    'Jedna paleta = 2 jednostki. Procedura: szkło pakujemy w piankę. '
-    'Nie ma innych towarów. Nie zakładaj ilości, których użytkownik nie podał.'
-)
+CONTEXT = json.dumps({
+    'units_per_pallet': 2,
+    'items': [
+        {'id': 1, 'name': 'Kartony', 'quantity': 13, 'minimum': 12, 'unit': 'szt', 'location': 'Strefa A-1'},
+        {'id': 2, 'name': 'Szkło', 'quantity': 20, 'minimum': 8, 'unit': 'szt', 'location': 'Strefa B-2'},
+        {'id': 3, 'name': 'Folia stretch', 'quantity': 15, 'minimum': 6, 'unit': 'rolka', 'location': 'Strefa C-1'},
+    ],
+}, ensure_ascii=False)
 
 # Każdy scenariusz definiuje konkretną intencję, nie tylko poprawny JSON.
 # tool=None oznacza, że model powinien zapytać zamiast zgadywać zapis.
@@ -40,6 +41,16 @@ CASES = [
     {'id': 'speech-error', 'text': 'Wzięliśmy dwie sztuki kartonuw.', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': -2}},
     {'id': 'missing-quantity', 'text': 'Wzięliśmy kartony, ale nie wiem ile.', 'tool': None, 'args': {}},
     {'id': 'unknown-item', 'text': 'Zabraliśmy pięć sztuk nieznanego towaru.', 'tool': None, 'args': {}},
+    {'id': 'return', 'text': 'Zwróciliśmy do magazynu trzy sztuki kartonów.', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': 3}},
+    {'id': 'number-in-location', 'text': 'Na stanowisko numer 2 wydaliśmy cztery rolki folii stretch.', 'tool': 'update_stock', 'args': {'item_id': 3, 'delta': -4}},
+    {'id': 'negated-withdrawal', 'text': 'Nie pobraliśmy pięciu kartonów.', 'tool': None, 'args': {}},
+    {'id': 'planned-withdrawal', 'text': 'Jutro weźmiemy pięć kartonów.', 'tool': None, 'args': {}},
+    {'id': 'multiple-items', 'text': 'Wzięliśmy dwa kartony i trzy sztuki szkła.', 'tool': None, 'args': {}},
+    {'id': 'unknown-conversion', 'text': 'Wzięliśmy dwa kilogramy kartonów.', 'tool': None, 'args': {}},
+    {'id': 'absolute-stock', 'text': 'Ustaw stan kartonów na 10.', 'tool': None, 'args': {}},
+    {'id': 'move-item', 'text': 'Przenieś kartony do strefy C2.', 'tool': None, 'args': {}},
+    {'id': 'missing-reference', 'text': 'Weź jeszcze dwie sztuki tego samego.', 'tool': None, 'args': {}},
+    {'id': 'unknown-similar-item', 'text': 'Wydaliśmy pięć rolek folii aluminiowej.', 'tool': None, 'args': {}},
 ]
 
 
