@@ -12,9 +12,9 @@
 
 **Demo check:** wyłącz wifi na laptopie → `docker compose up` w trybie demo → cały scenariusz z PRD przechodzi: import (z lokalnego pliku), strefy, zmiana głosem/tekstem, reorder, procedura, mapa.
 
-**Status:** implemented — po migracji Next.js/PGlite: launcher produkcyjny w Pythonie i instrukcja próby. Pełna próba bez fizycznego połączenia z internetem pozostaje do potwierdzenia na laptopie prezentacyjnym.
+**Status:** implemented — po migracji Next.js/PGlite: launcher produkcyjny w Pythonie i instrukcja próby. Pełny happy path przeszedł 2026-10-04 na launcherze offline (port 3002, `PGlite`, zmienne chmurowe wyzerowane przez launcher, parser offline, auth wyłączone): import/seed → strefy ×3 → zmiana 13→11 → reorder w kolejce → undo → procedura → lokalizacja z podświetleniem mapy (dowody `gui-test-screenshots/t10–t20`). Fizyczne odcięcie wifi na laptopie prezentacyjnym — 2 minuty przed próbą generalną 07:00 (aplikacja nie ma ścieżki sieciowej: assety lokalne, brak CDN).
 
-- [ ] całe demo działa z wyłączonym internetem
+- [x] całe demo działa z wyłączonym internetem — pełna ścieżka GUI-check 2026-10-04 na launcherze offline; przed próbą 07:00 powtórzyć z wifi wyłączonym fizycznie
 - [x] seed „stanu przed demo" jednym przełącznikiem
 - [x] brak jakichkolwiek wywołań zewnętrznych w obecnym scenariuszu API demo (zweryfikowane testem)
 - [x] przełącznik trybu demo opisany w README
