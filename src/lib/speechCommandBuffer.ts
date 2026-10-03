@@ -1,33 +1,32 @@
-/** Web Speech can finish "Magu, wzięliśmy" before emitting "paletę bułek". */
-export function createSpeechCommandBuffer(submit: (text: string, startMs: number | null) => void, waitMs = 650) {
-  let pending: { text: string; startMs: number | null } | null = null
+/** Łączy segmenty jednej wypowiedzi; wynik końcowy STT nie musi być końcem komendy. */
+export function createSpeechCommandBuffer(onReady: (text: string, startMs: number | null) => void, pauseMs = 1000) {
+  const segments = new Map<number, { text: string; final: boolean; startMs: number | null }>()
   let timer: ReturnType<typeof setTimeout> | undefined
-  const cancel = () => {
+  const preview = () => [...segments.values()].map(segment => segment.text).filter(Boolean).join(' ')
+  const clear = () => {
     clearTimeout(timer)
     timer = undefined
-    pending = null
+    segments.clear()
   }
   const flush = () => {
-    const command = pending
-    cancel()
-    if (command) submit(command.text, command.startMs)
-  }
-  const defer = () => {
-    if (!pending) return
-    clearTimeout(timer)
-    timer = setTimeout(flush, waitMs)
+    if (!segments.size || [...segments.values()].some(segment => !segment.final)) return
+    const text = preview()
+    const startMs = [...segments.values()].find(segment => segment.startMs !== null)?.startMs ?? null
+    clear()
+    if (text) onReady(text, startMs)
   }
   return {
-    pending: () => pending !== null,
-    cancel,
-    defer,
-    push(text: string, startMs: number | null, continuation: boolean) {
-      if (pending && !continuation) flush()
+    clear,
+    flush,
+    get pending() { return segments.size > 0 },
+    update(index: number, text: string, final: boolean, startMs: number | null, startsCommand = false): string {
+      // Nowy prefiks zastępuje jeszcze niewysłaną komendę. Rewizja tego samego
+      // indeksu nadal należy do jednej wypowiedzi i zachowuje początek nagrania.
+      if (startsCommand && !segments.has(index)) clear()
       clearTimeout(timer)
-      pending = pending
-        ? { text: `${pending.text} ${text}`, startMs: pending.startMs }
-        : { text, startMs }
-      defer()
+      segments.set(index, { text, final, startMs: segments.get(index)?.startMs ?? startMs })
+      if ([...segments.values()].every(segment => segment.final)) timer = setTimeout(flush, pauseMs)
+      return preview()
     },
   }
 }

@@ -15,10 +15,11 @@ import {
   type Zone,
 } from '@/lib/api'
 import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
-import { createRecognition, fullTranscript, type SpeechRecognitionLike } from '@/lib/speech'
+import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
+import { abortRecognition, createRecognition, fullTranscript, voiceDecision, type SpeechRecognitionLike } from '@/lib/speech'
+import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
 import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
-import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
 import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/commandConversation'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
@@ -29,19 +30,14 @@ const MAX_PUSH_TO_TALK_MS = 29_000
 const PUSH_TO_TALK_TAIL_MS = 300
 const MIN_AUDIO_SECONDS = 0.3
 
-/** Jedno naciśnięcie „Mów”: tekst sprzed nagrania, początek na zegarze nagrania, podgląd przeglądarki. */
+/** Jedno naciśnięcie „Mów”: początek na zegarze nagrania i podgląd przeglądarki. */
 type PushToTalkSession = {
-  base: string
   startMs: number
   browserText: string
   recognition: SpeechRecognitionLike | null
   timer: ReturnType<typeof setTimeout> | undefined
   /** nagranie PCM → /api/stt (bez Web Speech albo przy włączonym poprawianiu) */
   serverStt: boolean
-}
-
-function joinText(base: string, heard: string): string {
-  return base && heard ? `${base} ${heard}` : base || heard
 }
 
 type Props = {
@@ -93,6 +89,9 @@ export default function CommandPanel({
   const [state, setState] = useState<State>(null)
   const conversationRef = useRef(createCommandConversation())
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const [processingCommand, setProcessingCommand] = useState('')
+  const [micStarting, setMicStarting] = useState(false)
   const [actionError, setActionError] = useState('')
   const [listening, setListening] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -104,6 +103,7 @@ export default function CommandPanel({
   const pushToTalkRef = useRef<PushToTalkSession | null>(null)
   // czy wolno jeszcze wysłać nagranie (tryb głosu mógł się zmienić w trakcie)
   const uploadAllowedRef = useRef(false)
+  const voiceSessionRef = useRef(0)
   const proposalShownAtRef = useRef(0)
   const stateRef = useRef<State>(null)
   // Najnowsze akcje panelu dla callbacków rozpoznawania mowy (żyją dłużej niż jeden render).
@@ -111,8 +111,14 @@ export default function CommandPanel({
 
   // nagranie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu, bez wysyłania
   useEffect(() => {
+    const unlock = () => unlockListeningCue()
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
     return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
       uploadAllowedRef.current = false
+      voiceSessionRef.current++
       cancelPushToTalk(pushToTalkRef, pcmRef)
     }
   }, [])
@@ -134,17 +140,22 @@ export default function CommandPanel({
     enabled: wakeMode,
     prefix,
     refine: sttRefine,
+    paused: busy,
     onCorrection: setVoiceNote,
     cardStatus: () => {
       const pending = stateRef.current?.kind === 'proposal'
       return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
     },
     onEvent: (event: WakeEvent) => {
+      if (busyRef.current) return
       const actions = latestRef.current
-      if (event.type === 'interim') { setText(event.text); setVoiceNote('') }
+      if (event.type === 'interim') {
+        setText(event.text)
+        setVoiceNote('')
+      }
       else if (event.type === 'armed') setText('')
       else if (event.type === 'submit') {
-        const corrected = correctInventorySpeech(event.text, items.map((item) => item.name))
+        const corrected = correctInventorySpeech(event.text, items.map((item) => item.name), prefix)
         if (corrected.corrections.length) setVoiceNote(speechCorrectionNote(corrected.corrections))
         setText(corrected.text)
         if (!actions.busy) void actions.runCommand(corrected.text)
@@ -162,6 +173,7 @@ export default function CommandPanel({
   if (pushToTalk !== pushToTalkBefore) {
     setPushToTalkBefore(pushToTalk)
     if (!pushToTalk) setListening(false)
+    if (!pushToTalk) setMicStarting(false)
   }
   const micLive = listening && pushToTalk
   const voiceHelp = demoMode
@@ -181,6 +193,7 @@ export default function CommandPanel({
   // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie, zwolnij mikrofon,
   // a trwające nagranie nie trafi już na serwer
   useEffect(() => {
+    voiceSessionRef.current++
     uploadAllowedRef.current = pushToTalk
     if (!pushToTalk) cancelPushToTalk(pushToTalkRef, pcmRef)
   }, [pushToTalk])
@@ -200,7 +213,15 @@ export default function CommandPanel({
 
   const runCommand = async (command: string) => {
     const t = command.trim()
-    if (!t || busy) return
+    if (!t || busyRef.current || pushToTalkRef.current || transcribing) return
+    if (stateRef.current?.kind === 'proposal') {
+      const decision = voiceDecision(t, prefix)
+      if (decision === 'confirm') return latestRef.current.confirm()
+      if (decision === 'reject') { latestRef.current.reject(); return }
+    }
+    wake.resetForReply()
+    busyRef.current = true
+    setProcessingCommand(t)
     setBusy(true)
     setActionError('')
     try {
@@ -224,7 +245,11 @@ export default function CommandPanel({
           onSpeak?.(message)
         } else {
           proposalShownAtRef.current = Date.now()
-          setState({ kind: 'proposal', proposal: res.proposal })
+          const nextState: State = { kind: 'proposal', proposal: res.proposal }
+          stateRef.current = nextState
+          setState(nextState)
+          setText('')
+          wake.resetForReply()
         }
       } else if (res.type === 'answer') {
         const target = mapTargetFromAnswer(res.tool, res.data)
@@ -246,12 +271,16 @@ export default function CommandPanel({
         message: error instanceof Error ? error.message : 'Nie udało się połączyć z magazynem.',
       })
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
 
   const confirm = async () => {
-    if (!state || state.kind !== 'proposal' || busy) return
+    if (!state || state.kind !== 'proposal' || busyRef.current) return
+    busyRef.current = true
+    wake.resetForReply()
+    setProcessingCommand(state.proposal.text)
     setBusy(true)
     setActionError('')
     try {
@@ -266,22 +295,29 @@ export default function CommandPanel({
         return
       }
       onApplied(state.proposal.summary, result.reorder_draft ?? null)
+      stateRef.current = null
       setState(null)
       setText('')
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Nie udało się zapisać zmiany.')
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
 
   const reject = () => {
+    wake.resetForReply()
+    stateRef.current = null
     setState(null)
     setActionError('')
     setText('')
   }
 
-  const submit = () => runCommand(text)
+  const submit = () => {
+    if (micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining'))) return
+    return runCommand(text)
+  }
 
   useEffect(() => {
     stateRef.current = state
@@ -293,18 +329,19 @@ export default function CommandPanel({
     setVoiceFallback(true)
   }
 
-  // „Mów”: nagranie PCM (zawsze) + podgląd przeglądarki na żywo (Chrome/Edge). Po stopie albo
-  // ciszy fragment idzie jako WAV do STT na serwerze i jego tekst zastępuje podgląd.
+  // „Mów”: podgląd na żywo (Chrome/Edge), opcjonalnie nagranie PCM do poprawiania przez serwer.
+  // Po stopie fragment idzie jako WAV do STT, jeśli sesja wymaga rozpoznawania na serwerze.
   // Użytkownik sprawdza tekst i sam klika „Wyślij”.
   const startPushToTalk = async () => {
-    if (busy || transcribing || pushToTalkRef.current || !pushToTalk) return
+    if (busyRef.current || transcribing || pushToTalkRef.current || !pushToTalk) return
+    unlockListeningCue()
+    setMicStarting(true)
     setVoiceNote('')
     setVoiceFallback(false)
     // Bez Web Speech (Firefox) zawsze serwer; z Web Speech — tylko przy włączonym poprawianiu.
-    const recognition = liveSpeech ? createRecognition({ continuous: false }) : null
+    const recognition = liveSpeech ? createRecognition({ continuous: true }) : null
     const serverStt = !recognition || sttRefine
     const session: PushToTalkSession = {
-      base: text.trim(),
       startMs: 0,
       browserText: '',
       recognition: null,
@@ -312,12 +349,14 @@ export default function CommandPanel({
       serverStt,
     }
     pushToTalkRef.current = session
+    setText('')
     if (serverStt) {
       const recorder = (pcmRef.current ??= new PcmRecorder())
       try {
         await recorder.start()
       } catch {
         if (pushToTalkRef.current === session) pushToTalkRef.current = null
+        setMicStarting(false)
         showVoiceFallback('Nie udało się włączyć mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
         return
       }
@@ -325,12 +364,18 @@ export default function CommandPanel({
       session.startMs = recorder.now()
     }
     session.timer = setTimeout(() => void finishPushToTalk(), MAX_PUSH_TO_TALK_MS)
-    setListening(true)
-    if (!recognition) return
+    const ready = () => {
+      if (pushToTalkRef.current !== session) return
+      setMicStarting(false)
+      setListening(true)
+      playListeningCue()
+    }
+    if (!recognition) { ready(); return }
+    recognition.onstart = ready
     recognition.onresult = (event) => {
       if (pushToTalkRef.current !== session) return
       session.browserText = fullTranscript(event.results, prefix)
-      setText(joinText(session.base, session.browserText))
+      setText(session.browserText)
     }
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
@@ -343,7 +388,7 @@ export default function CommandPanel({
         )
       }
     }
-    // koniec podglądu (cisza) kończy też nagranie
+    // Koniec sesji przeglądarki kończy też nagranie; krótkie pauzy pozostają w jednej komendzie.
     recognition.onend = () => {
       if (pushToTalkRef.current === session) void finishPushToTalk()
     }
@@ -356,8 +401,9 @@ export default function CommandPanel({
         pushToTalkRef.current = null
         clearTimeout(session.timer)
         setListening(false)
+        setMicStarting(false)
         showVoiceFallback('Nie udało się włączyć rozpoznawania mowy — wpisz komendę ręcznie.')
-      }
+      } else ready()
     }
   }
 
@@ -368,16 +414,16 @@ export default function CommandPanel({
     clearTimeout(session.timer)
     detachRecognition(session)
     setListening(false)
+    setMicStarting(false)
     if (!session.serverStt) {
       // tekst przeglądarki jest ostateczny — nic nie wysyłamy
-      const corrected = correctInventorySpeech(session.browserText, items.map((item) => item.name), prefix)
-      setText(joinText(session.base, corrected.text))
-      if (corrected.corrections.length) setVoiceNote(speechCorrectionNote(corrected.corrections))
       if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+      else applyVoiceTranscript(session.browserText)
       inputRef.current?.focus()
       return
     }
     setTranscribing(true)
+    const voiceSession = voiceSessionRef.current
     setRefiningLive(Boolean(session.browserText))
     const recorder = pcmRef.current
     try {
@@ -385,21 +431,23 @@ export default function CommandPanel({
       const samples = recorder ? recorder.slice(session.startMs, recorder.now()) : new Float32Array(0)
       const sampleRate = recorder?.sampleRate ?? 16_000
       recorder?.stop()
-      if (!uploadAllowedRef.current) return
+      if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       if (samples.length < sampleRate * MIN_AUDIO_SECONDS) {
         if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
         return
       }
       const transcription = await transcribeAudioDetailed(wavBlob(samples, sampleRate))
       const heard = transcription.text.trim()
+      if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       if (heard) {
-        setText(joinText(session.base, heard))
-        setVoiceNote(speechCorrectionNote(transcription.corrections ?? []))
+        applyVoiceTranscript(heard)
+        if (transcription.corrections?.length) setVoiceNote(speechCorrectionNote(transcription.corrections))
         setVoiceFallback(false)
       } else if (!session.browserText) {
         setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
       }
     } catch (error) {
+      if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       const detail = error instanceof Error ? error.message : 'Transkrypcja nieudana — wpisz komendę ręcznie.'
       showVoiceFallback(
         session.browserText ? `Nie udało się poprawić transkrypcji (${detail}) — zostawiam tekst rozpoznany w przeglądarce.` : detail,
@@ -408,6 +456,17 @@ export default function CommandPanel({
       setTranscribing(false)
       inputRef.current?.focus()
     }
+  }
+
+  // Decyzja z nowego nagrania dotyczy oczekującej karty; nie wysyłamy jej ponownie do LLM.
+  const applyVoiceTranscript = (heard: string) => {
+    const corrected = correctInventorySpeech(heard, items.map((item) => item.name), prefix)
+    setText(corrected.text)
+    setVoiceNote(corrected.corrections.length ? speechCorrectionNote(corrected.corrections) : '')
+    if (stateRef.current?.kind !== 'proposal' || busyRef.current) return
+    const decision = voiceDecision(heard, prefix)
+    if (decision === 'confirm') void latestRef.current.confirm()
+    else if (decision === 'reject') latestRef.current.reject()
   }
 
   const toggleMic = () => {
@@ -470,13 +529,13 @@ export default function CommandPanel({
           <button
             type="button"
             onClick={toggleMic}
-            disabled={busy || transcribing || !pushToTalk}
+            disabled={busy || transcribing || micStarting || !pushToTalk}
             aria-pressed={micLive}
             title={micLive ? 'Zakończ' : pushToTalk ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
             className={micButtonClass(micLive)}
           >
             <span aria-hidden className={'inline-block size-3 rounded-full ' + (micLive ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
-            {micLive ? (liveSpeech ? 'Słucham…' : 'Nagrywam…') : transcribing ? 'Słyszę…' : 'Mów'}
+            {micStarting ? 'Włączam…' : micLive ? (liveSpeech ? 'Słucham…' : 'Nagrywam…') : transcribing ? 'Rozpoznaję…' : 'Mów'}
           </button>
         )}
         <label htmlFor="inventory-command" className="sr-only">Komenda magazynowa</label>
@@ -485,7 +544,8 @@ export default function CommandPanel({
           ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={`np. „${settings?.prefix ?? 'Magu'}, ile mamy kartonów?”`}
+          readOnly={micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining'))}
+          placeholder={state?.kind === 'proposal' ? '„zatwierdź” albo „odrzuć”' : `np. „${settings?.prefix ?? 'Magu'}, ile mamy kartonów?”`}
           className={
             'order-first min-w-0 basis-full border px-4 py-3 text-base sm:order-none sm:flex-1 sm:basis-auto outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' +
             (voiceFallback
@@ -495,19 +555,30 @@ export default function CommandPanel({
         />
         <button
           type="submit"
-          disabled={busy || !text.trim()}
+          disabled={busy || micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining')) || !text.trim()}
           className="flex-1 bg-[#292d2b] px-6 py-3 font-semibold text-white sm:flex-none transition-colors hover:bg-[#454b46] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? 'Przetwarzam…' : 'Wyślij'}
         </button>
       </form>
 
+      <div className="mt-3 min-h-24 border border-[#d8d6cf] bg-[#f6f8f4] p-4" aria-label="Bufor komendy" aria-busy={busy || transcribing}>
+        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#536b56]" role="status">
+          <span aria-hidden className={'size-2 rounded-full bg-[#536b56] ' + (busy || micLive || transcribing || wake.phase === 'hearing' ? 'animate-pulse' : '')} />
+          {busy ? 'Agent przetwarza komendę' : micStarting ? 'Włączam mikrofon…' : transcribing || wake.phase === 'refining' ? 'Rozpoznaję — sprawdzam transkrypcję' : micLive || wake.phase === 'hearing' ? 'Słucham — podgląd wypowiedzi' : text.trim() ? 'Komenda gotowa' : state?.kind === 'proposal' ? 'Czekam na decyzję' : 'Czekam na komendę'}
+        </p>
+        <p className="mt-2 whitespace-pre-wrap break-words text-base text-[#292d2b]">
+          {busy ? processingCommand || 'Zatwierdzam zmianę…' : text || (micLive ? liveSpeech ? 'Mów teraz — tekst pojawi się tutaj.' : 'Nagrywam. Transkrypcja pojawi się po zakończeniu.' : state?.kind === 'proposal' ? 'Powiedz „zatwierdź” albo „odrzuć”.' : 'Twoja wypowiedź pojawi się tutaj.')}
+        </p>
+        {(micLive || wake.phase === 'hearing') && <p className="mt-1 text-xs text-[#70756f]">To wstępny zapis mowy. Agent zinterpretuje komendę po zakończeniu wypowiedzi.</p>}
+      </div>
+
       {responseWarning && <p className="mt-3 text-sm text-amber-700">{responseWarning}</p>}
       {micLive && (
         <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
           <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#8f3936]" />
           {liveSpeech
-            ? 'Słucham — tekst pojawia się w polu. Kończę po chwili ciszy albo po kliknięciu „Słucham…”.'
+            ? 'Słucham — tekst pojawia się na bieżąco. Kliknij „Słucham…”, aby zakończyć (maks. 29 s).'
             : 'Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.'}
         </p>
       )}
@@ -532,7 +603,9 @@ export default function CommandPanel({
               : wake.phase === 'refining'
                 ? 'Poprawiam transkrypcję…'
                 : wake.phase === 'paused'
-                  ? 'Nasłuch wstrzymany, gdy Magazynier mówi.'
+                  ? 'Nasłuch wstrzymany na czas odpowiedzi agenta.'
+                  : wake.phase === 'starting'
+                    ? 'Włączam mikrofon…'
                   : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
           </p>
           <button type="button" onClick={wake.turnOff} className={smallButtonClass}>
@@ -644,14 +717,7 @@ function detachRecognition(session: PushToTalkSession) {
   const recognition = session.recognition
   session.recognition = null
   if (!recognition) return
-  recognition.onresult = null
-  recognition.onerror = null
-  recognition.onend = null
-  try {
-    recognition.abort()
-  } catch {
-    /* już zatrzymany */
-  }
+  abortRecognition(recognition)
 }
 
 const smallButtonClass =

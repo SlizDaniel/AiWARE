@@ -35,6 +35,7 @@ export interface SpeechRecognitionLike {
   onresult: ((event: SpeechRecognitionEventLike) => void) | null
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
   onend: (() => void) | null
+  onstart?: (() => void) | null
   onspeechstart?: (() => void) | null
   start(): void
   stop(): void
@@ -69,6 +70,20 @@ export function createRecognition({ continuous }: { continuous: boolean }): Spee
     return recognition
   } catch {
     return null
+  }
+}
+
+/** Odetnij wyniki starej wypowiedzi przed przejściem do odpowiedzi na kartę. */
+export function abortRecognition(recognition: SpeechRecognitionLike): void {
+  recognition.onresult = null
+  recognition.onerror = null
+  recognition.onend = null
+  recognition.onstart = null
+  recognition.onspeechstart = null
+  try {
+    recognition.abort()
+  } catch {
+    /* sesja już zakończona */
   }
 }
 

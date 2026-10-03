@@ -18,9 +18,14 @@ Użytkownik zgłasza np. bułki rozpoznawane jako półki.
 - Prefiks rozdzielony na dwa słowa („Mag u”, „Ma gu”) i brak spacji po przecinku
   są rozpoznawane bez dodania fragmentu prefiksu do komendy.
 - Rozpoznany prefiks w wyniku pośrednim uzbraja nasłuch na kolejną frazę.
-- Wyniki końcowe dzielące jedną komendę są łączone do pauzy 650 ms. Początek
-  nagrania pozostaje przy pierwszym fragmencie; powtórzony indeks końcowy nie
-  wysyła komendy ponownie. Wyłączenie/zmiana prefiksu lub STT/TTS anuluje bufor.
+- Wyniki dzielące jedną komendę są łączone do pauzy 1000 ms po wynikach końcowych.
+  Bufor kolegi identyfikuje fragmenty po indeksie: aktualizacja zastępuje fragment,
+  a wynik pośredni blokuje wysłanie do czasu wyniku końcowego. Początek nagrania
+  pozostaje przy pierwszym fragmencie. Wyłączenie/zmiana prefiksu lub STT/TTS
+  anuluje bufor. Zachowano jego sygnał gotowości mikrofonu, pauzę podczas pracy
+  agenta i rozdzielenie nowych komend od decyzji o oczekującej karcie.
+  Nowy prefiks w kolejnym indeksie zastępuje poprzednią, jeszcze niewysłaną
+  komendę; nie skleja dwóch poleceń i nie wykonuje poprzedniego w tle.
 - Korekta tylko nazwy towaru na końcu prostego pytania lub komendy przyjęcia/
   wydania. Liczby, jednostki i czasowniki pozostają takie same.
 - Normalizacja polskich znaków + odległość Levenshteina (1–2 edycje, najwyżej
@@ -49,14 +54,14 @@ Korekta może być błędna przy nowym, podobnie brzmiącym produkcie, którego 
 ma jeszcze w bazie. Dlatego karta potwierdzenia i informacja o korekcie pozostają
 obowiązkowe. Nie przerabiamy ręcznie wpisywanych komend. Przy niepewności tekst
 pozostaje oryginalny — LLM może dopytać, a użytkownik może edytować transkrypcję.
-Pauza dłuższa niż 650 ms kończy bieżącą komendę; to nie ciągłe dyktowanie.
+Pauza dłuższa niż 1000 ms po końcowym wyniku kończy bieżącą komendę; to nie ciągłe dyktowanie.
 Decyzje o kartach zachowują dotychczasową obsługę. Web Speech zależy od
 przeglądarki/usługi rozpoznawania; prawdziwa jakość wymaga próby w warunkach demo.
 Nie zmieniono mobilnego mechanizmu nasłuchu prefiksu ani dostawców/modeli STT.
 
 ## Weryfikacja
 
-42 pliki testowe: 756 passed, 2 skipped. Build webowy, typecheck web/mobile,
+Po integracji z poprawkami głosu kolegi: 43 pliki testowe, 762 passed, 2 skipped. Build webowy, typecheck web/mobile,
 lint i diff check przeszły. Testy używają syntetycznych wyników Web Speech i
 kontrolowanych odpowiedzi STT; nie wysyłają nagrań do usług chmurowych.
 GUI w izolowanym demo: komenda tekstowa nadal tworzy kartę 13→11, bez zapisu
