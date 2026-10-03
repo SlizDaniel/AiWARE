@@ -5,8 +5,15 @@ type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
 }
 
-type Unknown = { kind: 'unknown'; text: string }
-type State = { kind: 'proposal'; proposal: Proposal } | Unknown | null
+type Unknown = { kind: 'unknown'; text: string; hints?: string[] }
+type Answer = { kind: 'answer'; tool: string; text: string }
+type Clarify = { kind: 'clarify'; message: string }
+type State =
+  | { kind: 'proposal'; proposal: Proposal }
+  | Answer
+  | Clarify
+  | Unknown
+  | null
 
 export default function CommandPanel({ onApplied }: Props) {
   const [text, setText] = useState('')
@@ -20,9 +27,12 @@ export default function CommandPanel({ onApplied }: Props) {
     try {
       const res = await sendCommand(t)
       if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
-      else setState({ kind: 'unknown', text: res.text })
+      else if (res.type === 'answer') setState({ kind: 'answer', tool: res.tool, text: res.text })
+      else if (res.type === 'clarify') setState({ kind: 'clarify', message: res.message })
+      else setState({ kind: 'unknown', text: res.text, hints: res.hints })
     } catch {
-      setState({ kind: 'unknown', text: t })
+      // brak połączenia z backendem — nie mylić z „nie rozumiem komendy”
+      setState({ kind: 'clarify', message: 'Nie udało się połączyć z backendem. Sprawdź, czy serwer działa, i spróbuj ponownie.' })
     } finally {
       setBusy(false)
     }
@@ -51,7 +61,7 @@ export default function CommandPanel({ onApplied }: Props) {
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
         <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-          tryb tekstowy · głos (STT) w kolejnej karcie
+          tryb offline · głos (STT) w karcie 04
         </span>
       </div>
 
@@ -80,14 +90,39 @@ export default function CommandPanel({ onApplied }: Props) {
       {state?.kind === 'proposal' && (
         <ChangeCard proposal={state.proposal} busy={busy} onConfirm={confirm} onReject={reject} />
       )}
+      {state?.kind === 'answer' && (
+        <div className="mt-5 rounded-xl border border-sky-300 bg-sky-50 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-semibold text-sky-900">Odpowiedź</div>
+            <span className="rounded-full bg-white px-3 py-1 font-mono text-xs text-slate-500 ring-1 ring-slate-200">
+              {state.tool}
+            </span>
+          </div>
+          <p className="mt-2 text-base text-slate-800">{state.text}</p>
+        </div>
+      )}
+      {state?.kind === 'clarify' && (
+        <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-5">
+          <div className="font-semibold text-amber-900">Doprecyzujmy</div>
+          <p className="mt-1 text-sm text-amber-800">{state.message}</p>
+        </div>
+      )}
       {state?.kind === 'unknown' && (
         <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-5">
           <div className="font-semibold text-amber-900">Nie rozumiem tej komendy</div>
           <p className="mt-1 text-sm text-amber-800">
-            W tym tracerze rozumiem na seedowanych pozycjach:{' '}
-            <span className="font-mono">„wzięliśmy paletę X”</span> oraz{' '}
-            <span className="font-mono">„doszła paleta X”</span>, gdzie X to np. kartony, szkło, folia.
+            Agent nie zgaduje po cichu — sformułuj inaczej albo spróbuj jednej z komend demo:
           </p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {(state.hints ?? []).map((h) => (
+              <li
+                key={h}
+                className="rounded-full bg-white px-3 py-1 font-mono text-xs text-slate-600 ring-1 ring-amber-200"
+              >
+                {h}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>
@@ -105,7 +140,6 @@ function ChangeCard({
   onConfirm: () => void
   onReject: () => void
 }) {
-  const sign = proposal.delta > 0 ? `+${proposal.delta}` : `${proposal.delta}`
   return (
     <div className="mt-5 rounded-xl border-2 border-indigo-400 bg-indigo-50/60 p-5 shadow-sm">
       <div className="flex items-center justify-between">
@@ -113,28 +147,15 @@ function ChangeCard({
           Karta zmiany — czeka na zatwierdzenie
         </span>
         <span className="rounded-full bg-white px-3 py-1 font-mono text-xs text-slate-500 ring-1 ring-slate-200">
-          update_stock
+          {proposal.tool}
         </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="text-3xl font-bold">{proposal.item_name}</span>
-        <span className="text-3xl font-bold text-slate-400">{proposal.before}</span>
-        <span className="text-2xl font-bold text-indigo-500">→</span>
-        <span className="text-3xl font-extrabold text-indigo-700">{proposal.after}</span>
-        <span
-          className={
-            'rounded-full px-3 py-1 text-sm font-bold ' +
-            (proposal.delta < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700')
-          }
-        >
-          {sign} {proposal.unit}
-        </span>
-      </div>
+      {proposal.tool === 'update_stock' ? <StockChange proposal={proposal} /> : <GenericChange proposal={proposal} />}
 
       <p className="mt-3 text-sm text-slate-600">
         Usłyszałem: <span className="font-semibold text-slate-800">„{proposal.text}”</span>. Nic nie
-        zostało zapisane — zatwierdź, aby zmienić stan w bazie i dodać wpis w historii.
+        zostało zapisane — zatwierdź, aby wykonać zmianę w bazie i dodać wpis w historii.
       </p>
 
       <div className="mt-4 flex gap-3">
@@ -153,6 +174,35 @@ function ChangeCard({
           Odrzuć
         </button>
       </div>
+    </div>
+  )
+}
+
+function StockChange({ proposal }: { proposal: Proposal }) {
+  const delta = proposal.delta ?? 0
+  const sign = delta > 0 ? `+${delta}` : `${delta}`
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span className="text-3xl font-bold">{proposal.item_name}</span>
+      <span className="text-3xl font-bold text-slate-400">{proposal.before}</span>
+      <span className="text-2xl font-bold text-indigo-500">→</span>
+      <span className="text-3xl font-extrabold text-indigo-700">{proposal.after}</span>
+      <span
+        className={
+          'rounded-full px-3 py-1 text-sm font-bold ' +
+          (delta < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700')
+        }
+      >
+        {sign} {proposal.unit}
+      </span>
+    </div>
+  )
+}
+
+function GenericChange({ proposal }: { proposal: Proposal }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span className="text-2xl font-bold text-indigo-700">{proposal.summary}</span>
     </div>
   )
 }

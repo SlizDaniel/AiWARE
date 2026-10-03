@@ -1,7 +1,10 @@
-"""Warstwa SQLite: schemat, seed, odczyt stanów, potwierdzanie zmian, audyt.
+"""Warstwa SQLite: schemat, seed, odczyt stanów, potwierdzanie zmian, audyt,
+strefy, procedury i kolejka szkiców zamówień (karty 02 + 08).
 
-Zasada tracer bullet: audyt (i zmiana stanu) zapisywane są tylko w
-`confirm_stock_change` — nic nie dotyka bazy przed zatwierdzeniem.
+Zasada confirm-before-write: zapisy stanu dzieją się tylko w `confirm_stock_change`
+(proaktywny szkic reorderu przy przekroczeniu progu — karta 08); reszta zapisów
+(strefa, pozycja, procedura, szkic zamówienia z narzędzia `draft_order`) idzie
+przez `log_event`/`create_reorder_draft` dopiero po zatwierdzeniu karty.
 """
 import sqlite3
 from contextlib import contextmanager
@@ -45,6 +48,19 @@ CREATE TABLE IF NOT EXISTS reorder_drafts (
 
 CREATE UNIQUE INDEX IF NOT EXISTS one_pending_reorder_per_item
 ON reorder_drafts(item_id) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS zones (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name    TEXT NOT NULL UNIQUE,
+    created TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS procedures (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic   TEXT NOT NULL UNIQUE,
+    text    TEXT NOT NULL,
+    created TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 """
 
 DEMO_REORDER_QUANTITY = 50
@@ -59,6 +75,9 @@ SEED_ITEMS = [
 
 @contextmanager
 def connect(db_path: str):
+    # SQLite ma wymuszanie kluczy obcych wyłączone domyślnie i świadomie tego nie
+    # włączamy: audyt wpisuje item_id=0 dla zdarzeń innych niż stany (strefa,
+    # procedura) — patrz log_event.
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -111,7 +130,8 @@ def confirm_stock_change(
     actor: str = "magazynier",
 ) -> dict | None:
     """Atomowo: zmiana stanu + wpis w audycie. Zwraca wpis audytu (albo None,
-    gdy pozycja nie istnieje)."""
+    gdy pozycja nie istnieje). Poniżej progu tworzy proaktywny szkic zamówienia
+    w Kolejce zatwierdzeń (karta 08) — nigdy nie wysyłany automatycznie."""
     with connect(db_path) as conn:
         row = conn.execute(
             "SELECT id, name, quantity, minimum, unit FROM items WHERE id = ?", (item_id,)
@@ -250,6 +270,55 @@ def decide_reorder_draft(db_path: str, draft_id: int, decision: str) -> dict | N
         return result
 
 
+def create_reorder_draft(db_path: str, *, item_id: int, quantity: int) -> dict:
+    """Szkic zamówienia z narzędzia `draft_order` (karta 02) — ta sama kolejka
+    co proaktywny reorder (karta 08). Idempotentny gdy dla pozycji wisi już pending."""
+    with connect(db_path) as conn:
+        item = conn.execute(
+            "SELECT id, name, quantity, minimum, unit FROM items WHERE id = ?", (item_id,)
+        ).fetchone()
+        if item is None:
+            return {}
+        pending = conn.execute(
+            "SELECT id FROM reorder_drafts WHERE item_id = ? AND status = 'pending'",
+            (item_id,),
+        ).fetchone()
+        if pending is not None:
+            existing = conn.execute(
+                "SELECT id, item_id, item_name, quantity, unit, deliver_on, status "
+                "FROM reorder_drafts WHERE id = ?",
+                (pending["id"],),
+            ).fetchone()
+            return {**dict(existing), "created": False}
+        deliver_on = _next_tuesday().isoformat()
+        cur = conn.execute(
+            "INSERT INTO reorder_drafts (item_id, item_name, quantity, unit, deliver_on) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (item_id, item["name"], quantity, item["unit"], deliver_on),
+        )
+        _write_order_audit(
+            conn,
+            item_id=item_id,
+            item_name=item["name"],
+            quantity=quantity,
+            unit=item["unit"],
+            deliver_on=deliver_on,
+            event_type="reorder_draft_created",
+            text=f"Szkic zamówienia: {item['name']} — {quantity} {item['unit']}",
+            before=item["quantity"],
+        )
+        return {
+            "id": cur.lastrowid,
+            "item_id": item_id,
+            "item_name": item["name"],
+            "quantity": quantity,
+            "unit": item["unit"],
+            "deliver_on": deliver_on,
+            "status": "pending",
+            "created": True,
+        }
+
+
 def list_audit(db_path: str) -> list[dict]:
     with connect(db_path) as conn:
         rows = conn.execute(
@@ -257,3 +326,100 @@ def list_audit(db_path: str) -> list[dict]:
             "FROM audit_log ORDER BY id DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def log_event(
+    db_path: str,
+    *,
+    event_type: str,
+    text: str,
+    label: str,
+    details: str = "",
+    actor: str = "magazynier",
+) -> dict:
+    """Wpis audytu dla zmian innych niż stany (strefa, nowa pozycja, procedura,
+    szkic zamówienia z narzędzia). Kolumny liczbowe (item_id=0, delta/before/after=0)
+    są neutralne — Historia renderuje te wpisy po `event_type`, nie po delcie."""
+    with connect(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO audit_log (actor, event_type, text, item_id, item_name, delta, before, after, details) "
+            "VALUES (?, ?, ?, 0, ?, 0, 0, 0, ?)",
+            (actor, event_type, text, label, details),
+        )
+        return {"audit_id": cur.lastrowid, "event_type": event_type, "item_name": label}
+
+
+def add_zone(db_path: str, name: str) -> dict:
+    """Strefa nazwana podczas spaceru („strefa: X”). Idempotentna po nazwie."""
+    name = name.strip()
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, name FROM zones WHERE lower(name) = lower(?)", (name,)
+        ).fetchone()
+        if row is not None:
+            return {"id": row["id"], "name": row["name"], "created": False}
+        cur = conn.execute("INSERT INTO zones (name) VALUES (?)", (name,))
+        return {"id": cur.lastrowid, "name": name, "created": True}
+
+
+def list_zones(db_path: str) -> list[dict]:
+    with connect(db_path) as conn:
+        rows = conn.execute("SELECT id, name, created FROM zones ORDER BY name").fetchall()
+        return [dict(r) for r in rows]
+
+
+def remember_procedure(db_path: str, *, topic: str, text: str) -> dict:
+    """Zapis/aktualizacja procedury po temacie (ten sam temat → nowa treść)."""
+    topic = topic.strip().lower()
+    text = text.strip()
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM procedures WHERE lower(topic) = lower(?)", (topic,)
+        ).fetchone()
+        if row is not None:
+            conn.execute("UPDATE procedures SET text = ? WHERE id = ?", (text, row["id"]))
+            return {"id": row["id"], "topic": topic, "text": text, "updated": True}
+        cur = conn.execute(
+            "INSERT INTO procedures (topic, text) VALUES (?, ?)", (topic, text)
+        )
+        return {"id": cur.lastrowid, "topic": topic, "text": text, "updated": False}
+
+
+def list_procedures(db_path: str) -> list[dict]:
+    with connect(db_path) as conn:
+        rows = conn.execute("SELECT id, topic, text, created FROM procedures ORDER BY topic").fetchall()
+        return [dict(r) for r in rows]
+
+
+def find_procedures(db_path: str, query: str) -> list[dict]:
+    """Recall po fragmencie tematu LUB treści procedury."""
+    like = f"%{query.strip().lower()}%"
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, topic, text FROM procedures "
+            "WHERE lower(topic) LIKE ? OR lower(text) LIKE ? ORDER BY id DESC",
+            (like, like),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_item(
+    db_path: str,
+    *,
+    name: str,
+    quantity: int = 0,
+    unit: str = "szt",
+    minimum: int = 0,
+    location: str = "",
+) -> dict:
+    """Nowa pozycja (ścieżka odtworzenia z karty 02: brak przedmiotu → propozycja dodania)."""
+    name = name.strip()
+    with connect(db_path) as conn:
+        existing = conn.execute("SELECT id FROM items WHERE lower(name) = lower(?)", (name,)).fetchone()
+        if existing is not None:
+            return {"id": existing["id"], "name": name, "created": False}
+        cur = conn.execute(
+            "INSERT INTO items (name, quantity, minimum, unit, location) VALUES (?, ?, ?, ?, ?)",
+            (name, quantity, minimum, unit, location),
+        )
+        return {"id": cur.lastrowid, "name": name, "created": True}

@@ -24,9 +24,15 @@ docker compose up --build
 4. Kliknij **Zatwierdź**
 5. Sekcja **Stany**: Kartony = 52 · sekcja **Historia**: nowy wpis audytu (co/kiedy)
 
-Parser tracerowy jest deterministyczny (offline): rozpoznaje wyłącznie
-„wzięliśmy paletę X" (−2 szt/paletę) i „doszła paleta X" (+2 szt/paletę) na seedowanych
-pozycjach (Kartony 54/min 12, Szkło 20/min 8, Folia stretch 15/min 6).
+Parser tracerowy jest deterministyczny (offline): rozpoznaje **6 komend demo**
+(wzięliśmy paletę X / doszła paleta X / strefa: X / ile mamy X? / gdzie leży X? / jak pakujemy X?)
+plus **„zapamiętaj: X …”** (zapis procedury), i mapuje je na rejestr 8 narzędzi z PRD
+(`get_stock`, `update_stock`, `check_reorder`, `draft_order`, `get_location`, `add_zone`,
+`remember_procedure`, `recall_procedure`).
+Komendy zapisu („paleta”, „strefa”) tworzą **kartę zmiany** i dotykają bazy dopiero po
+zatwierdzeniu; pytania dostają odpowiedź bez zapisu; nieznane komendy dostają prośbę
+o doprecyzowanie z podpowiedziami — agent nigdy nie zgaduje po cichu. Gdy towaru nie ma
+w bazie, agent proponuje jego dodanie (karta zmiany `add_item`).
 
 ## Uruchomienie deweloperskie (bez Dockera)
 
@@ -60,11 +66,12 @@ docs/       PRD i karty tasków (single source of truth)
 
 ## Konfiguracja
 
-`.env.example` — placeholder `LLM_API_KEY` (nieużywany w tracerze; parser LLM dołączy w karcie 02).
-Tracer działa w 100% offline — żadna zewnętrzna zależność nie jest potrzebna do dema.
+`.env.example` — placeholder `LLM_API_KEY` (parser LLM z function calling dołączy w karcie 03,
+pod ten sam rejestr narzędzi co offline-parser). Aplikacja działa w 100% offline — żadna
+zewnętrzna zależność nie jest potrzebna do dema.
 
 ## Sekcje UI
 
-Działają: **Stany**, **Historia** (+ panel komend z kartą zmiany). Placeholdery: Mapa (karta 03),
-Kolejka zatwierdzeń (karta 07), Procedury (karta 08), Ustawienia (karta 09).
-Undo w historii — karta 06. STT (głos) — karta 02.
+Działają: **Stany**, **Historia**, **Kolejka zatwierdzeń** (+ panel komend z kartą zmiany:
+zapis, odpowiedź, doprecyzowanie). Placeholdery: Mapa (karta 07), Procedury (karta 10),
+Ustawienia (karta 12). Undo w historii — karta 06. STT (głos) — karta 04.
