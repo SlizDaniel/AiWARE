@@ -103,6 +103,9 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
             />
             <span className="mt-2 block text-xs text-[#70756f]">XLSX lub CSV · maksymalnie 4 MB</span>
           </label>
+          <p className="text-sm text-[#646b64]">
+            Przy aktywnym trybie LLM nagłówki i pierwsze 5 wierszy są wysyłane do Gemini, aby zaproponować mapowanie. W trybie offline plik jest mapowany lokalnie.
+          </p>
 
           {busy && <p role="status" className="text-sm font-medium text-[#315b37]">Przetwarzam plik…</p>}
           {error && <p role="alert" className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm font-medium text-[#8f3936]">{error}</p>}
@@ -115,6 +118,11 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
                   <h3 className="font-bold">Przypisz kolumny</h3>
                   <span className="text-sm text-[#646b64]">{preview.row_count} wierszy danych · zapis dopiero po zatwierdzeniu</span>
                 </div>
+                <p className="mb-3 text-sm text-[#646b64]">
+                  {preview.mapping_source === 'llm'
+                    ? 'Sugestia AI (Gemini) na podstawie nagłówków i pierwszych 5 wierszy. Procent to szacowana pewność modelu — sprawdź przypisania.'
+                    : 'Dopasowanie po nazwach kolumn (bez AI). Procent to ocena reguł dopasowania — sprawdź przypisania.'}
+                </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {FIELDS.map((field) => (
                     <label key={field.id} className="block">

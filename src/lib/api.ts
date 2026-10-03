@@ -89,6 +89,7 @@ export type ImportPreview = {
   preview: string[][]
   row_count: number
   mapping: Record<ImportField, { column: number | null; confidence: number }>
+  mapping_source: 'llm' | 'rules'
   missing_required: ImportField[]
   warnings: string[]
 }

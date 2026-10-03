@@ -90,7 +90,9 @@ async function diagnose(): Promise<void> {
       signal: AbortSignal.timeout(10_000),
     })
     if (response.ok) {
-      console.error(`Diagnoza: klucz i model ${geminiModel()} są poprawne — problem leży w treści zapytania.`)
+      console.error(
+        `Diagnoza: klucz i model ${geminiModel()} są poprawne. HTTP 429/500/503 to limit albo chwilowe przeciążenie Google — spróbuj ponownie; inny kod oznacza problem z treścią zapytania.`,
+      )
       return
     }
     const payload = (await response.json().catch(() => null)) as { error?: { status?: string; message?: string } } | null
