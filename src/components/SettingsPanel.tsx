@@ -294,6 +294,21 @@ function SettingsForm({
             </span>
           </label>
         </div>
+
+        <div className="flex flex-wrap items-start justify-between gap-3 md:col-span-2">
+          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.stt_refine}
+              onChange={(event) => change('stt_refine', event.target.checked)}
+              className="mt-0.5 size-5 shrink-0 accent-[#315b37] disabled:cursor-not-allowed"
+            />
+            <span>
+              <span className="font-semibold text-[#454b46]">Poprawiaj tekst transkrypcją serwera (Gemini/Groq)</span>
+              <span className={hint}>Domyślnie wyłączone — ostateczny jest tekst rozpoznany w przeglądarce. Włącz, jeśli przeglądarka często się myli.</span>
+            </span>
+          </label>
+        </div>
       </fieldset>
 
       {error && (

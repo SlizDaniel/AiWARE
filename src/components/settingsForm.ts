@@ -7,6 +7,7 @@ export const SETTINGS_KEYS = [
   'default_minimum',
   'voice_mode',
   'tts_enabled',
+  'stt_refine',
   'reorder_default_quantity',
 ] as const satisfies readonly (keyof SettingsValues)[]
 
@@ -22,6 +23,8 @@ export function settingsValues(settings: AppSettings): SettingsValues {
     default_minimum: settings.default_minimum,
     voice_mode: settings.voice_mode,
     tts_enabled: settings.tts_enabled,
+    // starszy serwer bez pola → wyłączone (domyślne)
+    stt_refine: settings.stt_refine === true,
     reorder_default_quantity: settings.reorder_default_quantity,
   }
 }

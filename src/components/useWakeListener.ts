@@ -76,6 +76,11 @@ type Options = {
   /** tryb wake_word, nie demo, ustawienia wczytane */
   enabled: boolean
   prefix: string
+  /**
+   * Poprawianie komendy transkrypcją serwera (ustawienie `stt_refine`). Wyłączone: ostateczny jest
+   * tekst przeglądarki, bez nagrywania PCM i bez wysyłania dźwięku.
+   */
+  refine: boolean
   /** karta zmiany czeka (`pending`) i jest świeża (`fresh` — decyzja także bez prefiksu) */
   cardStatus: () => CardStatus
   onEvent: (event: WakeEvent) => void
@@ -87,7 +92,7 @@ type Options = {
  * z prefiksem idzie do STT na serwerze (dokładniejszy tekst komendy). Decyzje o karcie
  * zmiany („zatwierdź”/„odrzuć”) rozpoznaje sama przeglądarka. Wstrzymany, gdy mówi TTS.
  */
-export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Options) {
+export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardStatus, onEvent }: Options) {
   const supported = useSpeechRecognitionSupported()
   // na serwerze i przy hydratacji „wyłączony” — mikrofon rusza dopiero w przeglądarce
   const userOff = useSyncExternalStore(subscribeOff, readOff, () => true)
@@ -106,12 +111,12 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
   const armedUntilRef = useRef(0)
   const blockedUntilRef = useRef(0)
   const networkErrorsRef = useRef(0)
-  const optionsRef = useRef({ prefix, cardStatus, onEvent })
+  const optionsRef = useRef({ prefix, cardStatus, onEvent, refine: refineEnabled })
   const refineQueueRef = useRef(createOrderedQueue<string>())
   const pendingRefinesRef = useRef(0)
 
   useEffect(() => {
-    optionsRef.current = { prefix, cardStatus, onEvent }
+    optionsRef.current = { prefix, cardStatus, onEvent, refine: refineEnabled }
   })
 
   const recorder = useCallback(() => {
@@ -147,7 +152,6 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
     pendingRefinesRef.current = 0
     armedUntilRef.current = 0
     stopRecognition()
-    recorderRef.current?.stop()
   }, [stopRecognition])
 
   const fail = useCallback(
@@ -235,6 +239,12 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
       }
       if (action.type === 'armed') armedUntilRef.current = Date.now() + ARMED_MS
       else if (action.type !== 'interim') armedUntilRef.current = 0
+      if (action.type === 'submit' && !optionsRef.current.refine) {
+        // tekst przeglądarki jest ostateczny — komenda od razu, bez nagrania i serwera
+        setPhase('listening')
+        emit(action)
+        return
+      }
       if (action.type === 'submit') {
         emit({ type: 'interim', text: action.text })
         const now = recorderRef.current?.now() ?? 0
@@ -312,17 +322,19 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
   const startNow = useCallback(() => {
     networkErrorsRef.current = 0
     blockedUntilRef.current = 0
-    void recorder()
-      .start()
-      .catch(() => {})
+    if (optionsRef.current.refine) {
+      void recorder()
+        .start()
+        .catch(() => {})
+    }
     if (!ttsSpeaking()) startRecognition()
   }, [recorder, startRecognition])
 
-  // Nadzorca: start po wejściu (przeglądarka zapyta o mikrofon), wznawianie po końcu sesji,
-  // pauza, gdy mówi syntezator. Nagrywanie PCM działa przez cały nasłuch.
+  // Nagrywanie PCM tylko przy włączonym poprawianiu (bez niego żadnego AudioContext ani drugiego
+  // odbiorcy mikrofonu). Zatrzymanie zwalnia mikrofon.
   useEffect(() => {
-    if (!active) {
-      stopAll()
+    if (!active || !refineEnabled) {
+      recorderRef.current?.stop()
       return
     }
     void recorder()
@@ -330,6 +342,16 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
       .catch(() => {
         /* bez nagrania komendą zostaje tekst przeglądarki */
       })
+    return () => recorderRef.current?.stop()
+  }, [active, refineEnabled, recorder])
+
+  // Nadzorca: start po wejściu (przeglądarka zapyta o mikrofon), wznawianie po końcu sesji,
+  // pauza, gdy mówi syntezator.
+  useEffect(() => {
+    if (!active) {
+      stopAll()
+      return
+    }
     const tick = () => {
       setAudioSuspended(recorderRef.current?.suspended ?? false)
       if (ttsSpeaking()) {
@@ -350,7 +372,7 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
       clearTimeout(first)
       stopAll()
     }
-  }, [active, recorder, startRecognition, stopAll, stopRecognition])
+  }, [active, startRecognition, stopAll, stopRecognition])
 
   const turnOff = useCallback(() => {
     stopAll()
@@ -378,7 +400,7 @@ export function useWakeListener({ enabled, prefix, cardStatus, onEvent }: Option
     userOff,
     phase: active ? phase : 'off',
     error,
-    audioSuspended: active && audioSuspended,
+    audioSuspended: active && refineEnabled && audioSuspended,
     turnOff,
     turnOn,
     retry,

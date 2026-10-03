@@ -10,6 +10,7 @@ const saved: SettingsValues = {
   voice_mode: 'push_to_talk',
   tts_enabled: false,
   reorder_default_quantity: 50,
+  stt_refine: false,
 }
 
 test('settingsValues keeps only the seven editable fields', () => {
@@ -39,6 +40,7 @@ test('only changed fields are sent and the prefix is compared trimmed', () => {
     tts_enabled: true,
   })
   expect(changedSettings({ ...saved, voice_mode: 'wake_word' }, saved)).toEqual({ voice_mode: 'wake_word' })
+  expect(changedSettings({ ...saved, stt_refine: true }, saved)).toEqual({ stt_refine: true })
   expect(changedSettings({ ...saved, adapter: 'file_import', default_minimum: 3 }, saved)).toEqual({
     adapter: 'file_import',
     default_minimum: 3,
@@ -71,4 +73,16 @@ test('pending accounts are listed first, otherwise server order is kept', () => 
     { id: 'd', role: 'oczekujacy' },
   ]
   expect(pendingFirst(users).map((user) => user.id)).toEqual(['b', 'd', 'a', 'c'])
+})
+
+test('server refinement of speech is off when an older server does not send the field', () => {
+  const settings = {
+    ...saved,
+    version: '0.3.0',
+    mode_status: { demo_mode: false, mode: 'llm', effective_mode: 'llm', llm_available: true, warning: null },
+    ai_usage: { llm_model: '', llm_provider: '', llm_enabled: true, stt_model: '', stt_provider: '', stt_enabled: true, disclosure: '' },
+  } as AppSettings
+  delete (settings as Partial<AppSettings>).stt_refine
+  expect(settingsValues(settings).stt_refine).toBe(false)
+  expect(settingsValues({ ...settings, stt_refine: true }).stt_refine).toBe(true)
 })

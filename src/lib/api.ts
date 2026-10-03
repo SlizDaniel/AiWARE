@@ -135,6 +135,8 @@ export type SettingsValues = {
   voice_mode: VoiceMode
   tts_enabled: boolean
   reorder_default_quantity: number
+  /** Poprawianie tekstu z przeglądarki transkrypcją serwera (domyślnie wyłączone). */
+  stt_refine: boolean
 }
 
 export type AiUsage = {

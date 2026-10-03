@@ -34,6 +34,8 @@ type PushToTalkSession = {
   browserText: string
   recognition: SpeechRecognitionLike | null
   timer: ReturnType<typeof setTimeout> | undefined
+  /** nagranie PCM → /api/stt (bez Web Speech albo przy włączonym poprawianiu) */
+  serverStt: boolean
 }
 
 function joinText(base: string, heard: string): string {
@@ -123,9 +125,12 @@ export default function CommandPanel({
   const voiceEnabled = Boolean(settings && settings.voice_mode !== 'text' && !demoMode)
   const wakeMode = voiceEnabled && settings?.voice_mode === 'wake_word'
 
+  // Tekst przeglądarki jest ostateczny, chyba że kierownik włączył poprawianie serwerem.
+  const sttRefine = settings?.stt_refine === true
   const wake = useWakeListener({
     enabled: wakeMode,
     prefix,
+    refine: sttRefine,
     cardStatus: () => {
       const pending = stateRef.current?.kind === 'proposal'
       return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
@@ -162,7 +167,9 @@ export default function CommandPanel({
         : wakeActive
           ? `Mów bez klikania: „${prefix}, …” i komenda — wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „zatwierdź” albo „tak”, odrzucisz „odrzuć” albo „nie”.`
           : liveSpeech
-            ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco, a po nagraniu serwer go poprawi. Sprawdź i kliknij Wyślij.'
+            ? sttRefine
+              ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco, a po nagraniu serwer go poprawi. Sprawdź i kliknij Wyślij.'
+              : 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco. Sprawdź go i kliknij Wyślij.'
             : 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
 
   // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie, zwolnij mikrofon,
@@ -284,22 +291,32 @@ export default function CommandPanel({
     if (busy || transcribing || pushToTalkRef.current || !pushToTalk) return
     setVoiceNote('')
     setVoiceFallback(false)
-    const recorder = (pcmRef.current ??= new PcmRecorder())
-    const session: PushToTalkSession = { base: text.trim(), startMs: 0, browserText: '', recognition: null, timer: undefined }
-    pushToTalkRef.current = session
-    try {
-      await recorder.start()
-    } catch {
-      if (pushToTalkRef.current === session) pushToTalkRef.current = null
-      showVoiceFallback('Nie udało się włączyć mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
-      return
+    // Bez Web Speech (Firefox) zawsze serwer; z Web Speech — tylko przy włączonym poprawianiu.
+    const recognition = liveSpeech ? createRecognition({ continuous: false }) : null
+    const serverStt = !recognition || sttRefine
+    const session: PushToTalkSession = {
+      base: text.trim(),
+      startMs: 0,
+      browserText: '',
+      recognition: null,
+      timer: undefined,
+      serverStt,
     }
-    if (pushToTalkRef.current !== session) return
-    session.startMs = recorder.now()
+    pushToTalkRef.current = session
+    if (serverStt) {
+      const recorder = (pcmRef.current ??= new PcmRecorder())
+      try {
+        await recorder.start()
+      } catch {
+        if (pushToTalkRef.current === session) pushToTalkRef.current = null
+        showVoiceFallback('Nie udało się włączyć mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
+        return
+      }
+      if (pushToTalkRef.current !== session) return
+      session.startMs = recorder.now()
+    }
     session.timer = setTimeout(() => void finishPushToTalk(), MAX_PUSH_TO_TALK_MS)
     setListening(true)
-    if (!liveSpeech) return
-    const recognition = createRecognition({ continuous: false })
     if (!recognition) return
     recognition.onresult = (event) => {
       if (pushToTalkRef.current !== session) return
@@ -307,7 +324,15 @@ export default function CommandPanel({
       setText(joinText(session.base, session.browserText))
     }
     recognition.onerror = (event) => {
-      if (event.error === 'network') setVoiceNote('Podgląd na żywo niedostępny (brak sieci) — tekst pojawi się po nagraniu.')
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        showVoiceFallback('Brak dostępu do mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
+      } else if (event.error === 'network') {
+        setVoiceNote(
+          serverStt
+            ? 'Podgląd na żywo niedostępny (brak sieci) — tekst pojawi się po nagraniu.'
+            : 'Rozpoznawanie mowy wymaga połączenia z internetem — wpisz komendę ręcznie.',
+        )
+      }
     }
     // koniec podglądu (cisza) kończy też nagranie
     recognition.onend = () => {
@@ -317,7 +342,13 @@ export default function CommandPanel({
       recognition.start()
       session.recognition = recognition
     } catch {
-      /* bez podglądu — samo nagranie */
+      if (!serverStt) {
+        // bez nagrania i bez rozpoznawania nie ma czego słuchać
+        pushToTalkRef.current = null
+        clearTimeout(session.timer)
+        setListening(false)
+        showVoiceFallback('Nie udało się włączyć rozpoznawania mowy — wpisz komendę ręcznie.')
+      }
     }
   }
 
@@ -328,6 +359,12 @@ export default function CommandPanel({
     clearTimeout(session.timer)
     detachRecognition(session)
     setListening(false)
+    if (!session.serverStt) {
+      // tekst przeglądarki jest ostateczny — nic nie wysyłamy
+      if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+      inputRef.current?.focus()
+      return
+    }
     setTranscribing(true)
     setRefiningLive(Boolean(session.browserText))
     const recorder = pcmRef.current
