@@ -27,6 +27,7 @@ import * as settings from '@/app/api/settings/route'
 import * as stock from '@/app/api/stock/route'
 import * as stt from '@/app/api/stt/route'
 import * as users from '@/app/api/users/route'
+import * as userRole from '@/app/api/users/[id]/role/route'
 import * as version from '@/app/api/version/route'
 import * as zones from '@/app/api/zones/route'
 
@@ -267,7 +268,20 @@ describe.each(engines)('API on %s', (_name, open) => {
     setSessionReader(async () => ({ id: '11111111-1111-4111-8111-111111111111', email: 'szefowa@firma.pl', metadata: { full_name: 'Anna Szefowa' } }))
     expect((await ok(me.GET())).user).toMatchObject({ role: 'kierownik', display_name: 'Anna Szefowa' })
 
-    setSessionReader(async () => ({ id: '22222222-2222-4222-8222-222222222222', email: 'jan@firma.pl', metadata: {} }))
+    // A self-registered account waits for approval and cannot touch anything.
+    const JAN = '22222222-2222-4222-8222-222222222222'
+    setSessionReader(async () => ({ id: JAN, email: 'jan@firma.pl', metadata: {} }))
+    expect((await ok(me.GET())).user.role).toBe('oczekujacy')
+    expect(await fails(stock.GET(), 403)).toBe('Konto czeka na zatwierdzenie przez kierownika.')
+    await fails(command.POST(post('/api/command', { text: 'doszła paleta kartonów' })), 403)
+    await fails(version.GET(), 403)
+
+    setSessionReader(async () => ({ id: '11111111-1111-4111-8111-111111111111', email: 'szefowa@firma.pl', metadata: {} }))
+    const pending = (await ok(users.GET())).users.find((user: Json) => user.id === JAN)
+    expect(pending.role).toBe('oczekujacy')
+    await ok(userRole.PUT(put(`/api/users/${JAN}/role`, { role: 'pracownik' }), params({ id: JAN })))
+
+    setSessionReader(async () => ({ id: JAN, email: 'jan@firma.pl', metadata: {} }))
     expect((await ok(me.GET())).user.role).toBe('pracownik')
 
     // Worker: commands and confirming cards are allowed; audit records the author.
@@ -290,5 +304,41 @@ describe.each(engines)('API on %s', (_name, open) => {
     setSessionReader(async () => ({ id: '11111111-1111-4111-8111-111111111111', email: 'szefowa@firma.pl', metadata: {} }))
     const list = (await ok(users.GET())).users
     expect(list.map((user: Json) => user.role).sort()).toEqual(['kierownik', 'pracownik'])
+  })
+})
+
+describe('limits', () => {
+  let db: Db
+  beforeAll(async () => {
+    db = await createPgliteDb(null)
+    await initDb(db)
+    store.__magazynierDb = Promise.resolve(db)
+  })
+  afterAll(() => {
+    store.__magazynierDb = undefined
+  })
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+    for (const name of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'STT_API_KEY', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'AUTH_DISABLED']) vi.stubEnv(name, '')
+    vi.stubEnv('DEMO_MODE', '0')
+    setSessionReader(null)
+  })
+
+  test('history returns only the newest 200 entries', async () => {
+    for (let i = 0; i < 205; i += 1) {
+      await db.query("INSERT INTO audit_log (text, item_name, event_type) VALUES ($1, 'x', 'zone_added')", [`wpis ${i}`])
+    }
+    const entries = (await ok(history.GET())).entries
+    expect(entries).toHaveLength(200)
+    expect(entries[0].text).toBe('wpis 204')
+  })
+
+  test('commands are rate limited per user', async () => {
+    await db.exec('DELETE FROM rate_limits')
+    for (let i = 0; i < 30; i += 1) await ok(command.POST(post('/api/command', { text: 'ile mamy kartonów?' })))
+    expect(await fails(command.POST(post('/api/command', { text: 'ile mamy kartonów?' })), 429)).toContain('Za dużo zapytań')
+    // A new window starts the count again.
+    await db.query("UPDATE rate_limits SET window_start = now() - interval '2 minutes'")
+    await ok(command.POST(post('/api/command', { text: 'ile mamy kartonów?' })))
   })
 })

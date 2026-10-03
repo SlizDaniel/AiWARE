@@ -17,9 +17,14 @@ type Props = {
   /** Cofanie zmian stanów — tylko kierownik. */
   canUndo?: boolean
   onUndo?: (entry: HistoryEntry) => Promise<void>
+  /** Przejście do pełnego dziennika (Dashboard kierownika) — tylko dla kierownika. */
+  onOpenFullLog?: () => void
 }
 
-export default function HistoryList({ entries, state = 'ready', error = '', onRetry, canUndo = false, onUndo }: Props) {
+/** Serwer zwraca najwyżej tyle najnowszych wpisów historii. */
+export const HISTORY_LIMIT = 200
+
+export default function HistoryList({ entries, state = 'ready', error = '', onRetry, canUndo = false, onUndo, onOpenFullLog }: Props) {
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [undoError, setUndoError] = useState<{ id: number; message: string } | null>(null)
@@ -65,6 +70,21 @@ export default function HistoryList({ entries, state = 'ready', error = '', onRe
   }
 
   return (
+    <>
+    {entries.length >= HISTORY_LIMIT && (
+      <div className="mb-3 border border-[#e8e5de] bg-[#fbfaf7] px-4 py-3 text-sm text-[#646b64]" role="note">
+        Pokazano {HISTORY_LIMIT} najnowszych wpisów. Starsze znajdziesz w Dashboardzie kierownika → Dziennik zapisanych akcji.
+        {onOpenFullLog && (
+          <button
+            type="button"
+            onClick={onOpenFullLog}
+            className="ml-2 font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]"
+          >
+            Otwórz dziennik
+          </button>
+        )}
+      </div>
+    )}
     <ol className="space-y-3">
       {entries.map((entry) => {
         const isReorderEvent = entry.event_type.startsWith('reorder_')
@@ -166,5 +186,6 @@ export default function HistoryList({ entries, state = 'ready', error = '', onRe
         )
       })}
     </ol>
+    </>
   )
 }
