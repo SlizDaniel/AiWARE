@@ -7,6 +7,7 @@ const EVENT_LABELS: Record<string, string> = {
   zone_added: 'strefa',
   item_added: 'nowa pozycja',
   procedure_saved: 'procedura',
+  inventory_item_updated: 'edycja produktu',
 }
 
 type Props = {
@@ -127,7 +128,7 @@ export default function HistoryList({ entries, state = 'ready', error = '', onRe
                 {isUndo && <span className="bg-[#edf0f3] px-2 py-0.5 text-xs font-bold text-[#475a70]">cofnięcie</span>}
               </div>
               <div className="mt-0.5 truncate text-sm text-[#646b64]">
-                {isReorderEvent || isImportEvent ? entry.details || entry.text : `„${entry.text}”`}
+                {isReorderEvent || isImportEvent || entry.event_type === 'inventory_item_updated' ? entry.details || entry.text : `„${entry.text}”`}
               </div>
               <div className="mt-1 text-xs text-[#70756f]">
                 {entry.ts} · audyt #{entry.id}

@@ -27,6 +27,7 @@ import {
   ApiError,
   onApiForbidden,
   undoHistoryEntry,
+  updateStockItem,
   type AppSettings,
   type Health,
   type HistoryEntry,
@@ -335,7 +336,18 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
                 {visibleSection === 'stany' && <InventoryExport />}
               </div>
               {visibleSection === 'stany' ? (
-                <StockTable items={stock.data} state={stock.state} error={stock.error} onRetry={() => void reloadStock()} />
+                <StockTable
+                  items={stock.data}
+                  state={stock.state}
+                  error={stock.error}
+                  onRetry={() => void reloadStock()}
+                  canManage={canManage}
+                  onSave={async (id, changes) => {
+                    const item = await updateStockItem(id, changes)
+                    showToast(`Zapisano produkt: ${item.name}`)
+                    refresh()
+                  }}
+                />
               ) : visibleSection === 'historia' ? (
                 <HistoryList
                   entries={history.data}

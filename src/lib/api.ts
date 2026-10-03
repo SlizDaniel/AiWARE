@@ -297,6 +297,12 @@ export function fetchStock(): Promise<Item[]> {
   return fetch('/api/stock').then((r) => json<{ items: Item[] }>(r)).then((d) => d.items)
 }
 
+export function updateStockItem(id: number, changes: Partial<Omit<Item, 'id'>>): Promise<Item> {
+  return fetch(`/api/stock/${id}`, sendJson('PATCH', changes))
+    .then((r) => json<{ item: Item }>(r))
+    .then((d) => d.item)
+}
+
 export function fetchZones(): Promise<Zone[]> {
   return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
 }
