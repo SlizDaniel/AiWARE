@@ -40,7 +40,7 @@ def test_demo_seed_and_commands_never_use_external_network(tmp_path, monkeypatch
         items = client.get("/api/stock").json()["items"]
         assert next(i for i in items if i["name"] == "Kartony")["quantity"] == 13
         assert client.get("/api/history").json()["entries"] == []
-        workbook = Path(__file__).parents[2] / "demo-offline.xlsx"
+        workbook = Path(__file__).parents[3] / "public" / "demo-offline.xlsx"
         preview = client.post("/api/import/preview?filename=demo-offline.xlsx", content=workbook.read_bytes()).json()
         mapping = {field: value["column"] for field, value in preview["mapping"].items()}
         assert client.post("/api/import/confirm", json={"import_id": preview["import_id"], "mapping": mapping}).status_code == 200

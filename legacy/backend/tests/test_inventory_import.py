@@ -87,7 +87,7 @@ def test_csv_preview_suggests_polish_columns_without_writing(client):
 
 
 def test_repository_demo_workbook_uses_polish_inventory_headers(client):
-    workbook = Path(__file__).parents[2] / "demo-magazyn.xlsx"
+    workbook = Path(__file__).parents[3] / "public" / "demo-magazyn.xlsx"
     response = client.post(
         "/api/import/preview?filename=demo-magazyn.xlsx",
         content=workbook.read_bytes(),
