@@ -219,6 +219,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         Błąd/brak konfiguracji STT to JAWNY 503 — frontend wtedy podświetla pole
         tekstowe jako fallback; aplikacja nigdy nie umiera, pipeline tekstowy działa.
         """
+        if demo_mode:
+            raise HTTPException(status_code=503, detail="Demo offline — STT wyłączone; wpisz komendę w polu tekstowym.")
         data = await request.body()
         if not data:
             raise HTTPException(status_code=422, detail="Brak nagrania audio.")

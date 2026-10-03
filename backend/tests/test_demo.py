@@ -13,6 +13,7 @@ from app.main import create_app
 def test_demo_seed_and_commands_never_use_external_network(tmp_path, monkeypatch):
     monkeypatch.setenv("DEMO_MODE", "1")
     monkeypatch.setenv("LLM_API_KEY", "configured-but-forbidden")
+    monkeypatch.setenv("STT_API_KEY", "configured-but-forbidden")
     monkeypatch.setenv("LLM_MODE", "llm")
 
     def forbidden(*args, **kwargs):
@@ -32,6 +33,9 @@ def test_demo_seed_and_commands_never_use_external_network(tmp_path, monkeypatch
         mode = client.get("/api/agent-mode").json()
         assert mode["demo_mode"] is True
         assert mode["effective_mode"] == "offline"
+        stt_response = client.post("/api/stt", content=b"audio")
+        assert stt_response.status_code == 503
+        assert "Demo offline" in stt_response.json()["detail"]
         assert client.put("/api/agent-mode", json={"mode": "llm"}).status_code == 409
         items = client.get("/api/stock").json()["items"]
         assert next(i for i in items if i["name"] == "Kartony")["quantity"] == 13
