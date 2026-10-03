@@ -18,6 +18,20 @@ export type HistoryEntry = {
   delta: number
   before: number
   after: number
+  event_type: 'stock_change' | 'reorder_draft_created' | 'reorder_approved' | 'reorder_rejected' | string
+  details: string
+}
+
+export type ReorderDraft = {
+  id: number
+  item_id: number
+  item_name: string
+  quantity: number
+  unit: string
+  deliver_on: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+  updated_at: string
 }
 
 export type Proposal = {
@@ -73,9 +87,31 @@ export function sendCommand(text: string): Promise<CommandResponse> {
   }).then((r) => json<CommandResponse>(r))
 }
 
-export function confirmProposal(id: string): Promise<{ applied: boolean; audit_id: number }> {
+export function confirmProposal(id: string): Promise<{
+  applied: boolean
+  audit_id: number
+  reorder_draft: ReorderDraft | null
+}> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id: number }>(r),
+    json<{ applied: boolean; audit_id: number; reorder_draft: ReorderDraft | null }>(r),
+  )
+}
+
+export function fetchReorderDrafts(): Promise<ReorderDraft[]> {
+  return fetch('/api/reorder-drafts')
+    .then((r) => json<{ drafts: ReorderDraft[] }>(r))
+    .then((d) => d.drafts)
+}
+
+export function approveReorderDraft(id: number): Promise<{ approved: boolean; sent_to_erp: boolean }> {
+  return fetch(`/api/reorder-drafts/${id}/approve`, { method: 'POST' }).then((r) =>
+    json<{ approved: boolean; sent_to_erp: boolean }>(r),
+  )
+}
+
+export function rejectReorderDraft(id: number): Promise<{ rejected: boolean }> {
+  return fetch(`/api/reorder-drafts/${id}/reject`, { method: 'POST' }).then((r) =>
+    json<{ rejected: boolean }>(r),
   )
 }
 

@@ -137,6 +137,40 @@ def test_xlsx_mapping_confirmation_imports_and_reimport_updates_without_duplicat
     assert len(client.get("/api/stock").json()["items"]) == 4
 
 
+def test_import_keeps_reorder_queue_in_sync_with_stock_and_minimum(client):
+    def import_kartony(quantity: int, minimum: int):
+        preview = client.post(
+            "/api/import/preview?filename=magazyn.csv",
+            content=f"Nazwa,Stan,Minimum,Jednostka\nKartony,{quantity},{minimum},szt\n".encode(),
+        ).json()
+        mapping = {field: value["column"] for field, value in preview["mapping"].items()}
+        return client.post(
+            "/api/import/confirm",
+            json={"import_id": preview["import_id"], "mapping": mapping},
+        )
+
+    assert import_kartony(quantity=10, minimum=12).status_code == 200
+    drafts = client.get("/api/reorder-drafts").json()["drafts"]
+    assert len(drafts) == 1
+    assert drafts[0]["quantity"] == 50
+
+    assert import_kartony(quantity=10, minimum=70).status_code == 200
+    drafts = client.get("/api/reorder-drafts").json()["drafts"]
+    assert len(drafts) == 1
+    assert drafts[0]["quantity"] == 60
+
+    assert import_kartony(quantity=20, minimum=12).status_code == 200
+    assert client.get("/api/reorder-drafts").json()["drafts"] == []
+    assert import_kartony(quantity=20, minimum=0).status_code == 200
+    history = client.get("/api/history").json()["entries"]
+    event_types = {entry["event_type"] for entry in history}
+    assert {"reorder_draft_created", "reorder_draft_updated", "reorder_cancelled"} <= event_types
+    import_events = [entry for entry in history if entry["event_type"] == "inventory_import"]
+    assert len(import_events) == 4
+    assert any("minimum: 12→70" in entry["details"] for entry in import_events)
+    assert any("minimum: 12→0" in entry["details"] for entry in import_events)
+
+
 def test_import_is_not_written_until_user_confirms(client):
     preview = client.post(
         "/api/import/preview?filename=items.csv",

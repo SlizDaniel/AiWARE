@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { confirmProposal, sendCommand, type Proposal } from '../api'
+import { confirmProposal, sendCommand, type Proposal, type ReorderDraft } from '../api'
 
 type Props = {
-  onApplied: (summary: string) => void
+  onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
 }
 
 type Unknown = { kind: 'unknown'; text: string }
@@ -32,8 +32,8 @@ export default function CommandPanel({ onApplied }: Props) {
     if (!state || state.kind !== 'proposal' || busy) return
     setBusy(true)
     try {
-      await confirmProposal(state.proposal.id)
-      onApplied(state.proposal.summary)
+      const result = await confirmProposal(state.proposal.id)
+      onApplied(state.proposal.summary, result.reorder_draft)
       setState(null)
       setText('')
     } finally {
