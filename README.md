@@ -83,6 +83,14 @@ przekazaniem wywołania dalej. Błędna odpowiedź lub błąd sieci wraca do par
 zmiana stanu nadal wymaga zatwierdzenia karty. Selektor `mock` używa parsera offline;
 pełne demo z osobną bazą włącza `DEMO_MODE=1` przy starcie backendu.
 
+Całe oczekiwanie na odpowiedź LLM ma budżet 15 sekund; po jego przekroczeniu
+komenda przechodzi do parsera offline. Odpowiedź HTTP większa niż 1 MiB jest
+odrzucana przed dekodowaniem JSON. Timeout przerywa oczekiwanie aplikacji;
+standardowy wątek HTTP kończy się osobno (nie jest siłowo zatrzymywany).
+W jednym procesie mogą trwać najwyżej dwa wywołania LLM. Zajęte oba miejsca
+oznaczają natychmiastowy fallback offline; miejsce zwalnia się dopiero po
+rzeczywistym zakończeniu żądania HTTP.
+
 Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
 LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
 kartę wymagającą zatwierdzenia. Oryginalną komendę do audytu dostarcza serwer.

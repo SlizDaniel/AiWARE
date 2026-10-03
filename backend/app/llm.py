@@ -8,10 +8,16 @@ import asyncio
 import json
 import math
 import os
+import threading
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+MAX_RESPONSE_BYTES = 1024 * 1024
+# Shared across provider instances: cancelled awaiters must not spawn unlimited
+# HTTP workers while earlier requests are still running.
+_REQUEST_SLOTS = threading.BoundedSemaphore(2)
 
 
 class LLMProviderError(RuntimeError):
@@ -84,7 +90,11 @@ class OpenAICompatibleProvider:
             "temperature": 0,
         }
         try:
-            response = await asyncio.to_thread(self._post_json, payload)
+            # Socket timeouts alone do not bound a server that trickles bytes.
+            # Stop awaiting the provider after the entire request budget expires.
+            response = await asyncio.wait_for(
+                asyncio.to_thread(self._bounded_post_json, payload), timeout=self.timeout
+            )
         except LLMProviderError:
             raise
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -120,6 +130,15 @@ class OpenAICompatibleProvider:
             raise LLMProviderError("LLM returned neither a tool call nor a question")
         return Interpretation(clarification=clarification[:1000])
 
+    def _bounded_post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not _REQUEST_SLOTS.acquire(blocking=False):
+            raise LLMProviderError("LLM request capacity is exhausted")
+        try:
+            return self._post_json(payload)
+        finally:
+            # Release only when HTTP actually ends, not when its awaiter times out.
+            _REQUEST_SLOTS.release()
+
     def _post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = Request(
             f"{self.base_url}/chat/completions",
@@ -132,7 +151,10 @@ class OpenAICompatibleProvider:
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
-                decoded = json.loads(response.read().decode("utf-8"))
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise LLMProviderError("LLM response exceeds the size limit")
+                decoded = json.loads(body.decode("utf-8"))
         except HTTPError as exc:
             # Do not include provider response bodies, which can contain sensitive data.
             raise LLMProviderError(f"LLM endpoint returned HTTP {exc.code}") from exc
