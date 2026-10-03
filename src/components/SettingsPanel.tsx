@@ -252,9 +252,17 @@ function SettingsForm({
             onChange={(event) => change('voice_mode', event.target.value as SettingsValues['voice_mode'])}
           >
             <option value="push_to_talk">Mikrofon po naciśnięciu przycisku</option>
+            <option value="wake_word">Nasłuch na prefix („{saved.prefix || 'Magu'}, …”) — ręce wolne</option>
             <option value="text">Tylko tekst — mikrofon wyłączony</option>
           </select>
-          <span className={hint}>Nagranie jest uruchamiane wyłącznie przez użytkownika.</span>
+          <span className={hint}>
+            {form.voice_mode === 'wake_word'
+              ? 'Każdy użytkownik sam włącza nasłuch przyciskiem w panelu komend. Komenda po prefiksie wysyła się po pauzie; kartę zmiany zatwierdza „tak”, odrzuca „nie”. '
+              : form.voice_mode === 'push_to_talk'
+                ? 'Mikrofon włącza się tylko po kliknięciu „Mów”; tekst trzeba wysłać samemu. '
+                : 'Mikrofon nigdy się nie włącza. '}
+            Rozpoznawanie na żywo działa w przeglądarce — w Chrome i Edge dźwięk trafia do usługi rozpoznawania mowy Google. Firefox nagrywa komendę i wysyła ją do transkrypcji na serwerze.
+          </span>
         </label>
 
         <label className={fieldLabel}>

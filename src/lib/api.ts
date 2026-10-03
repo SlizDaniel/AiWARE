@@ -123,7 +123,7 @@ export type Health = {
 }
 
 export type DataAdapter = 'database' | 'file_import'
-export type VoiceMode = 'push_to_talk' | 'text'
+export type VoiceMode = 'push_to_talk' | 'wake_word' | 'text'
 
 /** Wartości zapisywane przez PATCH /api/settings (każde pole opcjonalne w zmianie). */
 export type SettingsValues = {

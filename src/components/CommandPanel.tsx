@@ -14,8 +14,13 @@ import {
   type ReorderDraft,
   type Zone,
 } from '@/lib/api'
+import { createRecognition, fullTranscript, type SpeechRecognitionLike } from '@/lib/speech'
 import ProcedureLocation from './ProcedureLocation'
+import { useWakeListener, type WakeEvent } from './useWakeListener'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
+
+/** Karta zmiany przyjmuje głosowe „tak”/„nie” tylko przez tyle od pokazania. */
+const VOICE_DECISION_MS = 30_000
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
@@ -32,6 +37,13 @@ type Props = {
   canChangeMode: boolean
   /** Odczyt odpowiedzi głosem (no-op, gdy TTS wyłączony). */
   onSpeak?: (text: string) => void
+}
+
+type VoiceActions = {
+  runCommand: (command: string) => Promise<void>
+  confirm: () => Promise<void>
+  reject: () => void
+  busy: boolean
 }
 
 type State =
@@ -63,14 +75,21 @@ export default function CommandPanel({
   const [transcribing, setTranscribing] = useState(false)
   const [voiceNote, setVoiceNote] = useState('')
   const [voiceFallback, setVoiceFallback] = useState(false)
+  const [dictating, setDictating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const dictationRef = useRef<SpeechRecognitionLike | null>(null)
+  const proposalShownAtRef = useRef(0)
+  const stateRef = useRef<State>(null)
+  // Najnowsze akcje panelu dla callbacków rozpoznawania mowy (żyją dłużej niż jeden render).
+  const latestRef = useRef<VoiceActions>({ runCommand: async () => {}, confirm: async () => {}, reject: () => {}, busy: false })
 
-  // nagranie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu
+  // nagranie / dyktowanie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu
   useEffect(() => {
     return () => {
       if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+      dictationRef.current?.abort()
     }
   }, [])
 
@@ -80,19 +99,50 @@ export default function CommandPanel({
   const mode: AgentMode = settings?.mode ?? 'llm'
   const demoMode = settings?.mode_status.demo_mode ?? false
   const modeWarning = modeError || settingsError || settings?.mode_status.warning
-  const voiceEnabled = Boolean(settings && settings.voice_mode === 'push_to_talk' && !demoMode)
+  const prefix = settings?.prefix || 'Magu'
+  // mikrofon nigdy nie działa w trybie tekstowym ani w demo
+  const voiceEnabled = Boolean(settings && settings.voice_mode !== 'text' && !demoMode)
+  const wakeMode = voiceEnabled && settings?.voice_mode === 'wake_word'
+
+  const wake = useWakeListener({
+    enabled: wakeMode,
+    prefix,
+    proposalPending: () =>
+      stateRef.current?.kind === 'proposal' && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS,
+    onEvent: (event: WakeEvent) => {
+      const actions = latestRef.current
+      if (event.type === 'interim') setText(event.text)
+      else if (event.type === 'armed') setText('')
+      else if (event.type === 'submit') {
+        setText(event.text)
+        if (!actions.busy) void actions.runCommand(event.text)
+      } else if (event.type === 'confirm') {
+        if (!actions.busy) void actions.confirm()
+      } else actions.reject()
+    },
+  })
+  const liveSpeech = wake.supported
+  // wake_word bez Web Speech (Firefox) → zwykły przycisk Mów z nagraniem
+  const wakeActive = wakeMode && liveSpeech
+  const pushToTalk = voiceEnabled && !wakeActive
   const voiceHelp = demoMode
     ? 'Demo offline — użyj pola tekstowego. Mikrofon z API jest wyłączony.'
     : !settings
       ? 'Czekam na konfigurację. Pole tekstowe pozostaje dostępne.'
-      : voiceEnabled
-        ? 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
-        : 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
+      : !voiceEnabled
+        ? 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
+        : wakeActive
+          ? `Włącz nasłuch i powiedz „${prefix}, …” — komenda wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „tak”, odrzucisz „nie”.`
+          : liveSpeech
+            ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco. Sprawdź go i kliknij Wyślij.'
+            : 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
 
-  // tryb głosu wyłączony w Ustawieniach (np. przez kierownika) → przerwij trwające nagranie
+  // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie i dyktowanie
   useEffect(() => {
-    if (!voiceEnabled && recorderRef.current?.state === 'recording') recorderRef.current.stop()
-  }, [voiceEnabled])
+    if (pushToTalk) return
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    dictationRef.current?.abort()
+  }, [pushToTalk])
 
   const changeMode = async (nextMode: AgentMode) => {
     setModeBusy(true)
@@ -107,8 +157,8 @@ export default function CommandPanel({
     }
   }
 
-  const submit = async () => {
-    const t = text.trim()
+  const runCommand = async (command: string) => {
+    const t = command.trim()
     if (!t || busy) return
     setBusy(true)
     setActionError('')
@@ -130,7 +180,10 @@ export default function CommandPanel({
           const message = `Strefa „${existing.name}” już istnieje. Chcesz ją otworzyć? Aby dodać inną, wpisz „strefa: inna nazwa”.`
           setState({ kind: 'clarify', message, target: { name: existing.name, location: existing.name } })
           onSpeak?.(message)
-        } else setState({ kind: 'proposal', proposal: res.proposal })
+        } else {
+          proposalShownAtRef.current = Date.now()
+          setState({ kind: 'proposal', proposal: res.proposal })
+        }
       } else if (res.type === 'answer') {
         const target = mapTargetFromAnswer(res.tool, res.data)
         const first = res.tool === 'recall_procedure' && Array.isArray(res.data.procedures) ? res.data.procedures[0] : null
@@ -184,6 +237,13 @@ export default function CommandPanel({
     setText('')
   }
 
+  const submit = () => runCommand(text)
+
+  useEffect(() => {
+    stateRef.current = state
+    latestRef.current = { runCommand, confirm, reject, busy }
+  })
+
   const showVoiceFallback = (message: string) => {
     setVoiceNote(message)
     setVoiceFallback(true)
@@ -212,7 +272,7 @@ export default function CommandPanel({
   }
 
   const startRecording = async () => {
-    if (busy || transcribing || recording || !voiceEnabled) return
+    if (busy || transcribing || recording || !pushToTalk) return
     setVoiceNote('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -234,12 +294,60 @@ export default function CommandPanel({
     }
   }
 
+  // Dyktowanie na żywo (Chrome/Edge): tekst pośredni od razu w polu, wynik końcowy go zastępuje.
+  // Koniec po kliknięciu albo po ciszy; użytkownik sprawdza tekst i sam klika „Wyślij”.
+  const startDictation = () => {
+    if (busy || dictating || !pushToTalk) return
+    const recognition = createRecognition({ continuous: false })
+    if (!recognition) {
+      void startRecording()
+      return
+    }
+    const base = text.trim()
+    recognition.onresult = (event) => {
+      const heard = fullTranscript(event.results)
+      setText(base && heard ? `${base} ${heard}` : base || heard)
+    }
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        showVoiceFallback('Brak dostępu do mikrofonu — zezwól na mikrofon dla tej strony albo wpisz komendę ręcznie.')
+      } else if (event.error === 'audio-capture') {
+        showVoiceFallback('Nie wykryto mikrofonu — wpisz komendę ręcznie.')
+      } else if (event.error === 'network') {
+        showVoiceFallback('Rozpoznawanie mowy wymaga połączenia z internetem — wpisz komendę ręcznie.')
+      } else if (event.error === 'no-speech') {
+        setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+      }
+    }
+    recognition.onend = () => {
+      if (dictationRef.current === recognition) dictationRef.current = null
+      setDictating(false)
+      inputRef.current?.focus()
+    }
+    try {
+      recognition.start()
+      dictationRef.current = recognition
+      setDictating(true)
+      setVoiceNote('')
+      setVoiceFallback(false)
+    } catch {
+      showVoiceFallback('Nie udało się włączyć rozpoznawania mowy — wpisz komendę ręcznie.')
+    }
+  }
+
+  const micBusy = recording || dictating
+
   const toggleRecording = () => {
+    if (dictating) {
+      dictationRef.current?.stop()
+      return
+    }
     if (recording) {
       recorderRef.current?.stop()
       return
     }
-    void startRecording()
+    if (liveSpeech) startDictation()
+    else void startRecording()
   }
 
   return (
@@ -280,22 +388,30 @@ export default function CommandPanel({
           void submit()
         }}
       >
-        <button
-          type="button"
-          onClick={toggleRecording}
-          disabled={busy || transcribing || (!voiceEnabled && !recording)}
-          aria-pressed={recording}
-          title={recording ? 'Zakończ nagrywanie' : voiceEnabled ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
-          className={
-            'flex shrink-0 items-center gap-2 px-4 py-3 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40 ' +
-            (recording
-              ? 'bg-[#8f3936] text-white hover:bg-[#7a302e]'
-              : 'border border-[#d8d6cf] bg-white text-[#454b46] hover:bg-[#f8f7f3]')
-          }
-        >
-          <span aria-hidden className={'inline-block size-3 rounded-full ' + (recording ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
-          {recording ? 'Nagrywam…' : transcribing ? 'Słyszę…' : 'Mów'}
-        </button>
+        {wakeActive ? (
+          <button
+            type="button"
+            onClick={wake.toggle}
+            aria-pressed={wake.on}
+            title={wake.on ? 'Wyłącz nasłuch mikrofonu' : `Włącz nasłuch na „${prefix}”`}
+            className={micButtonClass(wake.on)}
+          >
+            <span aria-hidden className={'inline-block size-3 rounded-full ' + (wake.on ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
+            {wake.on ? 'Nasłuch: wyłącz' : 'Nasłuch: włącz'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={toggleRecording}
+            disabled={busy || transcribing || (!pushToTalk && !micBusy)}
+            aria-pressed={micBusy}
+            title={micBusy ? 'Zakończ' : pushToTalk ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
+            className={micButtonClass(micBusy)}
+          >
+            <span aria-hidden className={'inline-block size-3 rounded-full ' + (micBusy ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
+            {dictating ? 'Słucham…' : recording ? 'Nagrywam…' : transcribing ? 'Słyszę…' : 'Mów'}
+          </button>
+        )}
         <label htmlFor="inventory-command" className="sr-only">Komenda magazynowa</label>
         <input
           id="inventory-command"
@@ -324,6 +440,38 @@ export default function CommandPanel({
         <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
           <span aria-hidden className="inline-block size-2 animate-pulse rounded-full bg-[#8f3936]" />
           Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.
+        </p>
+      )}
+      {dictating && (
+        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
+          <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#8f3936]" />
+          Słucham — tekst pojawia się w polu. Kończę po chwili ciszy albo po kliknięciu „Słucham…”.
+        </p>
+      )}
+      {wake.on && (
+        <p
+          className={'mt-3 flex items-center gap-2 text-sm font-semibold ' + (wake.phase === 'paused' ? 'text-[#646b64]' : 'text-[#8f3936]')}
+          role="status"
+        >
+          <span
+            aria-hidden
+            className={'inline-block size-2 shrink-0 rounded-full ' + (wake.phase === 'paused' ? 'bg-[#9a9e97]' : 'animate-pulse bg-[#8f3936]')}
+          />
+          {wake.phase === 'hearing'
+            ? 'Słucham…'
+            : wake.phase === 'paused'
+              ? 'Nasłuch wstrzymany, gdy Magazynier mówi.'
+              : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
+        </p>
+      )}
+      {wake.error && (
+        <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">
+          {wake.error}
+        </p>
+      )}
+      {voiceEnabled && !liveSpeech && (
+        <p className="mt-3 text-xs text-[#805c12]">
+          Dyktowanie na żywo i nasłuch na prefix działają w Chrome i Edge — tutaj nagranie trafia do transkrypcji na serwerze.
         </p>
       )}
       {voiceNote && (
@@ -377,6 +525,13 @@ export default function CommandPanel({
         </div>
       )}
     </section>
+  )
+}
+
+function micButtonClass(active: boolean): string {
+  return (
+    'flex shrink-0 items-center gap-2 px-4 py-3 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40 ' +
+    (active ? 'bg-[#8f3936] text-white hover:bg-[#7a302e]' : 'border border-[#d8d6cf] bg-white text-[#454b46] hover:bg-[#f8f7f3]')
   )
 }
 

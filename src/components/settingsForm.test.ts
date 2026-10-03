@@ -38,6 +38,7 @@ test('only changed fields are sent and the prefix is compared trimmed', () => {
     voice_mode: 'text',
     tts_enabled: true,
   })
+  expect(changedSettings({ ...saved, voice_mode: 'wake_word' }, saved)).toEqual({ voice_mode: 'wake_word' })
   expect(changedSettings({ ...saved, adapter: 'file_import', default_minimum: 3 }, saved)).toEqual({
     adapter: 'file_import',
     default_minimum: 3,
