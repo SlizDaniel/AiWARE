@@ -12,12 +12,24 @@
 
 **Demo check:** wyłącz wifi na laptopie → `docker compose up` w trybie demo → cały scenariusz z PRD przechodzi: import (z lokalnego pliku), strefy, zmiana głosem/tekstem, reorder, procedura, mapa.
 
-**Status:** implemented — infrastruktura i scenariusz API; pełna próba GUI offline po integracji kart 06/07/10
+**Status:** implemented — po migracji Next.js/PGlite: launcher produkcyjny w Pythonie i instrukcja próby. Pełna próba bez fizycznego połączenia z internetem pozostaje do potwierdzenia na laptopie prezentacyjnym.
 
 - [ ] całe demo działa z wyłączonym internetem
 - [x] seed „stanu przed demo" jednym przełącznikiem
 - [x] brak jakichkolwiek wywołań zewnętrznych w obecnym scenariuszu API demo (zweryfikowane testem)
 - [x] przełącznik trybu demo opisany w README
+
+## Aktualne uruchomienie po migracji Next.js
+
+`python scripts/start-demo.py --build --reset` przygotowuje build i bazę demo online.
+Kolejne próby: `python scripts/start-demo.py --reset`, port 3002, bez kompilacji
+i instalowania zależności. Osobna lokalna baza `data/pglite-demo`, chmurowe
+LLM/STT wyłączone, tekstowy fallback, brak logowania na laptopie.
+Brak buildu i zajęty port są wykrywane przed resetem; zwykła baza nie jest resetowana.
+Testy launchera: `python -m unittest discover -s scripts -p test_start_demo.py`.
+Pełna instrukcja: `docs/demo-offline.md`.
+
+## Historia implementacji legacy (nie dotyczy nowego launchera)
 
 `DEMO_MODE=1` wybiera izolowaną bazę i blokuje LLM także z ustawionym kluczem.
 `python -m app.demo --reset` resetuje oznaczoną bazę demo po zatrzymaniu backendu.

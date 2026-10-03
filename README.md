@@ -109,6 +109,26 @@ i są zapisane w bazie (`GET` / `PATCH /api/settings`):
 Lokalnie: `./data/pglite-demo`; na Vercelu ustaw `DEMO_DATABASE_URL` (inna baza niż `DATABASE_URL`).
 Reset próby: `npm run demo:reset` (zatrzymaj wcześniej `npm run dev`) albo `POST /api/demo/reset` (kierownik).
 
+### Lokalna prezentacja bez internetu (Next.js)
+
+Przygotowanie z internetem: zainstaluj Node.js i Python 3.10+, wykonaj `npm ci`,
+a następnie `python scripts/start-demo.py --build --reset`.
+Na Windows zamiast `python` możesz użyć `py`.
+
+Kolejne próby: `python scripts/start-demo.py --reset` → **http://127.0.0.1:3002**.
+Bez `--reset` zachowasz stan poprzedniej próby. Ctrl+C zatrzymuje uruchomiony serwer.
+Opcja `--port 3003` pozwala wybrać inny port. Zatrzymaj poprzedni serwer demo przed resetem.
+
+Launcher uruchamia przygotowany build przez `next start`, wiąże serwer tylko do
+lokalnego adresu i wymusza parser offline, tekstowy fallback mikrofonu oraz
+brak logowania na laptopie demo. Nadpisuje konfigurację chmurowej bazy i kluczy AI
+wyłącznie w procesach demo — nie edytuje `.env.local`. Używa `data/pglite-demo`;
+reset wymaga bazy oznaczonej jako demo. Brak buildu albo zajęty port zatrzymuje
+uruchomienie przed resetem. Bez `--build` launcher niczego nie instaluje ani nie kompiluje.
+
+Instrukcja próby: [docs/demo-offline.md](docs/demo-offline.md).
+Testy launchera: `python -m unittest discover -s scripts -p test_start_demo.py`.
+
 ## Skrypty
 
 ```bash
