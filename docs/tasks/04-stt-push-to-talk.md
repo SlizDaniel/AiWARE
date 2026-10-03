@@ -14,7 +14,7 @@
 
 **Status:** ready
 
-- [ ] push-to-talk działa z mikrofonu laptopa (i touch na telefonie)
-- [ ] transkrypcja widoczna PRZED wysłaniem do agenta (kontrola użytkownika — kryterium kategorii)
-- [ ] fallback tekstowy zawsze dostępny, wyraźnie w UI
-- [ ] błąd STT nie zabija sesji; po odzyskaniu sieci działa ponownie
+- [x] push-to-talk działa z mikrofonu laptopa (i touch na telefonie)
+- [x] transkrypcja widoczna PRZED wysłaniem do agenta (kontrola użytkownika — kryterium kategorii)
+- [x] fallback tekstowy zawsze dostępny, wyraźnie w UI
+- [x] błąd STT nie zabija sesji; po odzyskaniu sieci działa ponownie

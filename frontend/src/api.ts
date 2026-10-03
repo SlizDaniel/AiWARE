@@ -100,6 +100,18 @@ export function confirmProposal(id: string): Promise<{
   )
 }
 
+// Karta 04: audio z mikrofonu → transkrypcja (API zgodne z Whisper po stronie backendu).
+// Błąd STT (503) rzuca Error z polskim komunikatem — UI podświetla pole tekstowe.
+export async function transcribeAudio(blob: Blob): Promise<string> {
+  const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'mp4' : 'webm'
+  const response = await fetch(`/api/stt?filename=audio.${ext}`, {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'audio/webm' },
+    body: blob,
+  })
+  return json<{ text: string }>(response).then((d) => d.text)
+}
+
 export function fetchReorderDrafts(): Promise<ReorderDraft[]> {
   return fetch('/api/reorder-drafts')
     .then((r) => json<{ drafts: ReorderDraft[] }>(r))

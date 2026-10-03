@@ -7,6 +7,10 @@ services:
       MAGAZYNIER_DB: /data/magazyn.db
       # Klucz LLM — nieużywany w tracerze (karta 01); włączy go parser LLM (karta 02).
       LLM_API_KEY: ${LLM_API_KEY:-}
+      # STT zgodne z Whisper (karta 04) — bez klucza działa fallback: pole tekstowe.
+      STT_API_KEY: ${STT_API_KEY:-}
+      STT_BASE_URL: ${STT_BASE_URL:-}
+      STT_MODEL: ${STT_MODEL:-}
     volumes:
       - backend-data:/data
     healthcheck:

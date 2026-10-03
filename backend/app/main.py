@@ -2,6 +2,7 @@
 
 Kontrakt HTTP/WS (seam 3 z PRD):
   POST /api/command                   → proposal (karta zmiany) | answer | clarify | unknown
+  POST /api/stt                       → transkrypcja audio (karta 04); 503 = fallback tekstowy
   POST /api/proposals/{id}/confirm    → zapis przez narzędzie write + wpis w audycie + broadcast WS
   GET  /api/stock                     → stany magazynowe
   GET  /api/history                   → wpisy audytu (kto/kiedy/co)
@@ -18,6 +19,7 @@ Pytania (read) nie zapisują niczego.
 """
 import os
 import uuid
+import anyio
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -25,7 +27,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import db
+from app import db, stt
 from app.inventory import FIELDS, MAX_UPLOAD_BYTES, REQUIRED_FIELDS, ImportFileError, read_inventory_file, suggest_mapping, validate_and_map_rows
 from app.models import ItemRef
 from app.parser import parse_command
@@ -163,6 +165,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/procedures")
     def procedures() -> dict:
         return {"procedures": db.list_procedures(path)}
+
+    @app.post("/api/stt")
+    async def stt_transcribe(request: Request, filename: str = "audio.webm") -> dict:
+        """Karta 04: audio (MediaRecorder) → transkrypcja API zgodnego z Whisper.
+
+        Błąd/brak konfiguracji STT to JAWNY 503 — frontend wtedy podświetla pole
+        tekstowe jako fallback; aplikacja nigdy nie umiera, pipeline tekstowy działa.
+        """
+        data = await request.body()
+        if not data:
+            raise HTTPException(status_code=422, detail="Brak nagrania audio.")
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Nagranie jest za duże (limit 5 MB).")
+        try:
+            # httpx jest synchroniczny — w wątku, by nie blokować event loopa
+            # (WS i pole tekstowe muszą żyć nawet gdy API STT wisi do 15 s)
+            text = await anyio.to_thread.run_sync(stt.transcribe, data, filename)
+        except stt.STTUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {"text": text}
 
     @app.post("/api/command")
     async def command(body: CommandIn) -> dict:
