@@ -12,7 +12,7 @@
 
 **Demo check:** „zapamiętaj: szkło pakujemy w kartony Y, strefa C2" → zatwierdź → „jak pakujemy szkło?" → procedura na karcie → „pokaż na mapie" → strefa C2 podświetlona.
 
-**Status:** implemented — lista i wyszukiwarka Procedur, podgląd treści przed zatwierdzeniem oraz „Pokaż na mapie” z karty odpowiedzi i listy. Istniejący backend zachowuje confirm-before-write, recall i audyt. Backend 120/120, frontend typecheck/build i testy 9/9 przeszły. GUI-check pozostaje otwarty: narzędzie przeglądarki zwraca „No browser is available”.
+**Status:** implemented — lista i wyszukiwarka Procedur, podgląd treści przed zatwierdzeniem oraz „Pokaż na mapie” z karty odpowiedzi i listy. Backend zachowuje confirm-before-write, recall i audyt; temat i wyszukiwanie obsługują polskie wielkie litery z transkrypcji. Po scaleniu `origin/main` (`af5ae2a`) backend 123/123, frontend typecheck/build i testy 9/9 przeszły; review Standards/Spec bez uwag do kodu. Lint zgłasza ostrzeżenie `react(set-state-in-effect)` przy odświeżaniu danych w `App.tsx`. GUI-check pozostaje otwarty: narzędzie przeglądarki zwraca „No browser is available”.
 
 - [x] zapis procedury przez potwierdzoną kartę (spójnie z resztą)
 - [x] recall po pytaniu zwraca procedurę + lokalizację na mapie

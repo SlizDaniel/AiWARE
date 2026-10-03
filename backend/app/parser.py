@@ -77,7 +77,7 @@ def parse_command(text: str, items: list[ItemRef]) -> ParsedCommand | None:
         fragment = orig.group(1).strip()
         # temat = pierwszy token frazy („zapamiętaj: szkło pakujemy w…” → „szkło”),
         # treść = cała fraza; recall i tak szuka też po fragmencie treści
-        tokens = _TOKEN_RE.findall(fragment)
+        tokens = _TOKEN_RE.findall(fragment.lower())
         return (
             ParsedCommand(
                 tool="remember_procedure",

@@ -231,6 +231,25 @@ def test_procedure_update_requires_confirmation_and_recall_searches_content(clie
     assert answer["data"]["procedures"][0]["text"] == after[0]["text"]
 
 
+def test_procedure_from_uppercase_transcription_keeps_topic_and_is_recalled(client):
+    response = client.post(
+        "/api/command", json={"text": "Zapamiętaj: SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2"}
+    ).json()
+    assert response["type"] == "proposal"
+    proposal = response["proposal"]
+    assert proposal["args"]["topic"] == "szkło"
+    assert client.get("/api/procedures").json()["procedures"] == []
+    assert client.post(f"/api/proposals/{proposal['id']}/confirm").status_code == 200
+
+    answer = client.post("/api/command", json={"text": "jak pakujemy szkło?"}).json()
+    assert answer["type"] == "answer"
+    assert answer["data"]["procedures"][0]["text"] == "SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2"
+
+    fragment = client.post("/api/command", json={"text": "jak pakujemy przekładkami?"}).json()
+    assert fragment["type"] == "answer"
+    assert fragment["data"]["procedures"][0]["topic"] == "szkło"
+
+
 def test_draft_order_proposal_confirms_into_queue(client):
     # kontrakt dla karty 08: karta draft_order → confirm → szkic w Kolejce (nigdy auto-wysyłka)
     from app.main import PROPOSALS

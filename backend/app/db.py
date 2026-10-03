@@ -528,12 +528,14 @@ def list_procedures(db_path: str) -> list[dict]:
 
 def find_procedures(db_path: str, query: str) -> list[dict]:
     """Recall po fragmencie tematu LUB treści procedury."""
-    like = f"%{query.strip().lower()}%"
+    fragment = query.strip().casefold()
     with connect(db_path) as conn:
+        # SQLite lower() handles ASCII only; Polish uppercase text needs Unicode folding.
+        conn.create_function("casefold", 1, str.casefold, deterministic=True)
         rows = conn.execute(
             "SELECT id, topic, text FROM procedures "
-            "WHERE lower(topic) LIKE ? OR lower(text) LIKE ? ORDER BY id DESC",
-            (like, like),
+            "WHERE instr(casefold(topic), ?) > 0 OR instr(casefold(text), ?) > 0 ORDER BY id DESC",
+            (fragment, fragment),
         ).fetchall()
         return [dict(r) for r in rows]
 
