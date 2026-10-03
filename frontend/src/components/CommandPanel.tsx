@@ -239,7 +239,7 @@ export default function CommandPanel({ onApplied, zones, items, onShowZone, onSh
       </div>
 
       {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
-      <p className="mt-1 text-xs text-slate-400">Komenda tekstowa · głos (STT) w kolejnej karcie</p>
+      <p className="mt-1 text-xs text-slate-400">Wpisz komendę lub nagraj głos. Sprawdź transkrypcję przed wysłaniem.</p>
 
       <form
         className="mt-4 flex gap-3"
