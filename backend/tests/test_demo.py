@@ -40,7 +40,7 @@ def test_demo_seed_and_commands_never_use_external_network(tmp_path, monkeypatch
         preview = client.post("/api/import/preview?filename=demo-offline.xlsx", content=workbook.read_bytes()).json()
         mapping = {field: value["column"] for field, value in preview["mapping"].items()}
         assert client.post("/api/import/confirm", json={"import_id": preview["import_id"], "mapping": mapping}).status_code == 200
-        for text in ("strefa: kartony", "strefa: szkło", "strefa: folia"):
+        for text in ("strefa: kartony", "strefa: szkło", "strefa: folia stretch"):
             proposal = client.post("/api/command", json={"text": text}).json()["proposal"]
             assert client.post(f"/api/proposals/{proposal['id']}/confirm").status_code == 200
         assert len(client.get("/api/zones").json()["zones"]) == 3

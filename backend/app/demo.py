@@ -7,6 +7,12 @@ from app import db
 
 DEFAULT_DEMO_DB = Path(__file__).resolve().parents[1] / "magazyn-demo.db"
 PROCEDURE = "Szkło owijamy folią, wkładamy do kartonów z przekładkami; towar leży w Strefie B-2."
+# Rehearsal values stay fixed even if the regular seed changes elsewhere.
+DEMO_ITEMS = [
+    ("Kartony", 13, 12, "szt", "Strefa A-1"),
+    ("Szkło", 20, 8, "szt", "Strefa B-2"),
+    ("Folia stretch", 15, 6, "rolka", "Strefa C-1"),
+]
 
 
 def demo_db_path() -> str:
@@ -31,9 +37,7 @@ def init_demo_db(path: str, *, reset: bool = False) -> None:
         for table in ("audit_log", "reorder_drafts", "zones", "procedures", "items"):
             conn.execute(f"DELETE FROM {table}")
         conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('items', 'zones', 'procedures', 'audit_log', 'reorder_drafts')")
-        items = [(name, 13 if name == "Kartony" else qty, minimum, unit, location)
-                 for name, qty, minimum, unit, location in db.SEED_ITEMS]
-        conn.executemany("INSERT INTO items (name, quantity, minimum, unit, location) VALUES (?, ?, ?, ?, ?)", items)
+        conn.executemany("INSERT INTO items (name, quantity, minimum, unit, location) VALUES (?, ?, ?, ?, ?)", DEMO_ITEMS)
         conn.execute("INSERT INTO procedures (topic, text) VALUES (?, ?)", ("szkło", PROCEDURE))
         conn.execute("CREATE TABLE IF NOT EXISTS demo_metadata (version INTEGER NOT NULL)")
         conn.execute("DELETE FROM demo_metadata")

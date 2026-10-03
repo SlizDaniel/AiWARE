@@ -91,6 +91,34 @@ na kontrolowanych odpowiedziach API; próba z rzeczywistym modelem wymaga klucza
 
 ## Demo offline (karta 13)
 
+### Jedna komenda na laptopie prezentacyjnym
+
+PowerShell, z katalogu repo (Docker Desktop musi działać):
+
+```powershell
+# Przygotowanie obrazów, jeszcze z internetem:
+.\scripts\start-demo.ps1 -Build
+# Kolejne uruchomienie bez pobierania i budowania:
+.\scripts\start-demo.ps1
+# Nowa próba: zatrzymanie backendu, reset wyłącznie danych demo, start:
+.\scripts\start-demo.ps1 -Reset
+```
+
+Skrypt używa `docker-compose.demo.yml`, wymusza `DEMO_MODE=1` niezależnie od `.env`,
+przeznacza osobny wolumen **`demo-data`** na dane i udostępnia plik importu pod
+http://localhost:5173/demo-offline.xlsx. Pobierz go lokalnie i wybierz w importerze.
+Uruchomienie bez `-Build` używa `--no-build --pull never`; brak obrazu powoduje
+błąd, zamiast próbować pobierać go podczas prezentacji. Skrypt resetuje bazę dopiero
+po zatrzymaniu backendu. Nie wykonuje `down -v`.
+
+Odpowiednik bez skryptu:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --no-build --pull never
+```
+
+### Włączenie demo przez zmienną środowiskową
+
 W `.env` ustaw **`DEMO_MODE=1`**, następnie uruchom `docker compose up -d`.
 Przed odłączeniem internetu przygotuj obrazy przez `docker compose build` — pierwszy
 build pobiera zależności. Zbudowana aplikacja działa lokalnie bez kluczy LLM/STT.
@@ -118,7 +146,7 @@ zmiany; reset jest jawny i odmawia wyczyszczenia zwykłej, nieoznaczonej bazy.
 ```
 
 ```bash
-# Docker, z katalogu repo:
+# Docker używający wyłącznie bazowego docker-compose.yml, z katalogu repo:
 docker compose stop backend
 docker compose run --rm --no-deps backend python -m app.demo --reset
 docker compose up -d
@@ -129,7 +157,8 @@ Scenariusz próby:
 1. Importuj **`demo-offline.xlsx`** z repo, sprawdź mapowanie i zatwierdź.
    Ten wariant ma Kartony 13; oryginalny `demo-magazyn.xlsx` zachowuje 54,
    więc jedna paleta z niego nie przekroczy minimum 12.
-2. Wpisz `strefa: kartony`, `strefa: szkło`, `strefa: folia`; zatwierdź każdą kartę.
+2. Wpisz `strefa: kartony`, `strefa: szkło`, `strefa: folia stretch`; zatwierdź każdą kartę.
+   Pełna nazwa „folia stretch” pozwala mapie przypisać towar do tej strefy.
 3. `wzięliśmy paletę kartonów` → karta 13→11 → zatwierdź → audyt i szkic 50 szt.
 4. Otwórz Kolejkę i zatwierdź szkic; to nie wysyła zamówienia do ERP.
 5. `ile mamy szkła?`, `gdzie leży szkło?`, `Magu, jak pakujemy szkło?` → odpowiedzi.
@@ -143,6 +172,6 @@ integracji kart 06/07/10; tryb demo nie zastępuje tych funkcji.
 
 ## Sekcje UI
 
-Działają: **Stany**, **Historia**, **Kolejka zatwierdzeń** (+ panel komend z kartą zmiany:
-zapis, odpowiedź, doprecyzowanie). Placeholdery: Mapa (karta 07), Procedury (karta 10),
+Działają: **Stany**, **Historia**, **Kolejka zatwierdzeń**, **Mapa stref** (+ panel komend z kartą zmiany:
+zapis, odpowiedź, doprecyzowanie). Placeholdery: Procedury (karta 10),
 Ustawienia (karta 12). Undo w historii — karta 06. STT (głos) — karta 04.

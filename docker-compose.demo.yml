@@ -1,0 +1,15 @@
+# Use together with docker-compose.yml. Build images while online first.
+services:
+  backend:
+    environment:
+      DEMO_MODE: "1"
+      DEMO_DB: /data/magazyn-demo.db
+      LLM_API_KEY: ""
+    volumes:
+      - demo-data:/data
+  frontend:
+    volumes:
+      - ./demo-offline.xlsx:/usr/share/nginx/html/demo-offline.xlsx:ro
+
+volumes:
+  demo-data:

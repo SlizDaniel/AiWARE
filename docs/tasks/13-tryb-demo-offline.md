@@ -24,3 +24,11 @@
 `demo-offline.xlsx` ma Kartony 13/minimum 12, dzięki czemu pierwsza paleta tworzy reorder.
 Oryginalny plik Excela zespołu pozostaje bez zmian. Tekst jest fallbackiem STT;
 nowe integracje STT/LLM muszą respektować flagę demo przed wywołaniem API.
+
+Uruchomienie prezentacyjne: `scripts/start-demo.ps1` (wcześniej `-Build`, nowa próba `-Reset`).
+Konfiguracja `docker-compose.demo.yml` wymusza offline, osobny wolumen `demo-data`
+i lokalny download Excela. Bez `-Build` skrypt nie buduje ani nie pobiera obrazów.
+Mapa z karty 07 została zintegrowana z origin/main na branchu demo.
+GUI-check: komenda `strefa: kartony` → confirm → strefa widoczna na mapie;
+kliknięcie pokazuje Kartony 11 szt. Uruchomienie Dockera jest niezweryfikowane
+w tej sesji (brak CLI); składnia PowerShell i kolejność komend sprawdzone atrapą Docker.
