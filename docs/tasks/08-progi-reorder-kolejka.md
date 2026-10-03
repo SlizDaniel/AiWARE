@@ -20,3 +20,8 @@
 - [x] szkic czeka w Kolejce; zatwierdzenie/odrzucenie działa i jest w historii
 - [x] nigdy nie ma automatycznej wysyłki (atrapa ERP z czytelnym komunikatem)
 - [x] pozycje powyżej progu nie generują szumów
+
+Kolejka domyślnie pokazuje szkice oczekujące na decyzję. Filtry Oczekujące,
+Rozpatrzone i Wszystkie mają liczniki; zatwierdzone i odrzucone szkice pozostają
+dostępne w Rozpatrzonych. Filtrowanie działa po stronie UI na dotychczasowym
+kontrakcie API; decyzje nadal zapisują się w audycie i nie wysyłają zamówień.

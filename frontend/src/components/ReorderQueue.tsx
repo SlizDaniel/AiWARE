@@ -23,6 +23,11 @@ function formatDeliveryDate(value: string): string {
 export default function ReorderQueue({ drafts, state, error, onRetry, onChanged }: Props) {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'pending' | 'decided' | 'all'>('pending')
+  const pendingCount = drafts.filter((draft) => draft.status === 'pending').length
+  const visibleDrafts = drafts.filter((draft) =>
+    filter === 'all' || (filter === 'pending' ? draft.status === 'pending' : draft.status !== 'pending'),
+  )
 
   const decide = async (draft: ReorderDraft, decision: 'approve' | 'reject') => {
     if (busyId !== null) return
@@ -71,12 +76,39 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged 
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtr szkiców zamówień">
+        {([
+          ['pending', 'Oczekujące', pendingCount],
+          ['decided', 'Rozpatrzone', drafts.length - pendingCount],
+          ['all', 'Wszystkie', drafts.length],
+        ] as const).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={filter === value}
+            onClick={() => setFilter(value)}
+            className={
+              'border px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] ' +
+              (filter === value ? 'border-[#315b37] bg-[#315b37] text-white' : 'border-[#d8d6cf] bg-white text-[#646b64] hover:bg-[#f8f7f3]')
+            }
+          >
+            {label} ({count})
+          </button>
+        ))}
+      </div>
       {actionError && (
         <p role="alert" className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm text-[#8f3936]">
           Nie udało się zapisać decyzji: {actionError}. Spróbuj ponownie przyciskiem decyzji.
         </p>
       )}
-      {drafts.map((draft) => (
+      {visibleDrafts.length === 0 && (
+        <p role="status" className="border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-8 text-center text-sm text-[#70756f]">
+          {filter === 'pending'
+            ? 'Nie ma szkiców czekających na decyzję. Dotychczasowe decyzje znajdziesz w filtrze Rozpatrzone.'
+            : 'Nie ma jeszcze rozpatrzonych szkiców zamówień.'}
+        </p>
+      )}
+      {visibleDrafts.map((draft) => (
         <article key={draft.id} className="border border-[#e8e5de] bg-white p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
