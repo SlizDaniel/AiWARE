@@ -1,4 +1,4 @@
-# Dashboard kierownika — kontrakt backendu v1
+# Dashboard kierownika — kontrakt backendu v2
 
 Branch: `feature/manager-dashboard`. Backend jest gotowy do podłączenia nowej
 sekcji UI; nawigacja i komponent dashboardu pozostają zadaniem frontendu.
@@ -6,7 +6,7 @@ Typy odpowiedzi: `src/lib/dashboard.ts` (bez zależności od serwera).
 
 ## Dostęp i odświeżanie
 
-- Oba endpointy wymagają zalogowanego **kierownika**, sprawdzanego przez istniejące
+- Wszystkie endpointy wymagają zalogowanego **kierownika**, sprawdzanego przez istniejące
   `session('kierownik')`. Brak sesji: 401; pracownik: 403; błędna konfiguracja auth: 503.
 - Lokalnie z wyłączonym auth obowiązuje istniejące konto lokalnego kierownika.
 - Endpointy tylko odczytują dane magazynu. Nie uruchamiają Gemini ani STT.
@@ -17,7 +17,7 @@ Typy odpowiedzi: `src/lib/dashboard.ts` (bez zależności od serwera).
 
 ## 1. GET /api/dashboard
 
-Wspólne parametry okresu dla obu endpointów:
+Wspólne parametry okresu dla podsumowania, dziennika, CSV i trendu:
 
 | Parametr | Znaczenie |
 |---|---|
@@ -28,7 +28,8 @@ Wspólne parametry okresu dla obu endpointów:
 
 Nie łącz `period` z `from/to`. Daty są dniami kalendarzowymi, nie przesuwającym
 się oknem 24 godzin. Nieprawidłowy zakres zwraca 422 z `{ "detail": "..." }`.
-Każdy endpoint zwraca wyliczone `range: {from, to, timezone}`.
+Endpointy JSON z filtrem dni zwracają wyliczone `range: {from, to, timezone}`.
+Podsumowanie zmiany używa osobnych parametrów godzinowych opisanych niżej.
 
 ### Odpowiedź
 
@@ -131,3 +132,115 @@ warto wrócić na pierwszą stronę. Czas `ts` jest ISO UTC; formatowanie w UI w
 oba silniki: PGlite i postgres.js przez protokół Postgres. Testy obejmują daty,
 undo/import, filtry, paginację, 401/403 i brak zewnętrznych wywołań w demo.
 Dashboard nie wymaga migracji tabel ani nowych pakietów.
+
+## 3. GET /api/dashboard/activity/export — CSV
+
+Parametry: te same dni i filtry co `/activity`, **bez `page` i `page_size`**.
+Przykład: `/api/dashboard/activity/export?period=7d&status=undone&item_id=1`.
+Eksport obejmuje wszystkie pasujące wpisy, również poza aktualną stroną tabeli.
+
+Odpowiedź: `text/csv; charset=utf-8`, `Content-Disposition: attachment` z nazwą
+`dashboard-activity.csv`. UTF-8 BOM, separator średnik, CRLF, nagłówki po polsku.
+Kolumny: ID, Czas UTC, Autor UUID, Autor, Towar ID, Towar, Zdarzenie, Komenda,
+Szczegóły, Zmiana, Przed, Po, Cofa wpis, Cofnięty przez, Status.
+Cudzysłowy i znaki specjalne są escapowane, tekst mogący uruchomić formułę
+w arkuszu dostaje apostrof; ujemne wartości liczbowe pozostają liczbami.
+Pusty wynik daje plik z nagłówkami. Maksymalnie **5000 wpisów i 4 MiB**;
+przekroczenie zwraca odpowiednio 422 lub 413 z JSON `{detail}` — nigdy ucięty plik.
+Frontend powinien sprawdzić `response.ok` przed pobraniem `blob()` i pokazać błąd.
+
+```ts
+const params = new URLSearchParams({ period: '7d', status: 'all' })
+const response = await fetch(`/api/dashboard/activity/export?${params}`)
+if (!response.ok) throw new Error((await response.json()).detail)
+const url = URL.createObjectURL(await response.blob())
+const link = document.createElement('a')
+link.href = url
+link.download = 'dashboard-activity.csv'
+link.click()
+URL.revokeObjectURL(url)
+```
+
+## 4. GET /api/dashboard/shift — przekazanie zmiany
+
+Bez parametrów: ostatnie **8 godzin**, nie dzień kalendarzowy.
+Własny przedział: `start` i `end`, ISO z sekundami i `Z` lub offsetem,
+np. `2026-10-03T08:00:00+02:00`. Znak `+` zakoduj przez `URLSearchParams`.
+Przedział **[start, end)**, maksymalnie 48 godzin, `end` nie może być w przyszłości.
+Podanie tylko jednej granicy, brak strefy, nieistniejąca data lub użycie
+`period/from/to` daje 422. UI wybór lokalnej godziny powinien przeliczyć na ISO.
+
+```json
+{
+  "window":{"start":"2026-10-03T06:00:00.000Z","end":"2026-10-03T14:00:00.000Z","timezone":"Europe/Warsaw"},
+  "metrics":{"audit_events":5,"stock_changes":1,"withdrawals":0,"receipts":1,"undo_count":1,"import_events":1},
+  "authors":[{"actor_id":"22222222-2222-4222-8222-222222222222","actor":"Jan","stock_changes":1,"undo_count":1}],
+  "authors_truncated":false,
+  "procedures_saved":[{"audit_id":8,"topic":"Szkło","actor":"Anna","ts":"2026-10-03T12:30:00.000Z"}],
+  "procedures_truncated":false,
+  "current":{"total_items":3,"below_minimum":1,"pending_drafts":1,"missing_location":1},
+  "generated_at":"2026-10-03T14:01:00.000Z"
+}
+```
+
+`metrics` mają tę samą definicję co `period` w podsumowaniu dashboardu.
+`current` opisuje stan **teraz**, również przy oglądaniu starej zmiany.
+Autorzy grupowani po UUID, dla wpisów bez UUID po historycznej nazwie;
+nazwa dla UUID pochodzi z ostatniego wpisu w oknie. Maksymalnie 100 autorów,
+sortowanie po nazwie, oraz 10 najnowszych zapisów procedur; flagi `*_truncated`
+oznaczają dalsze rekordy. Lista autorów może zawierać osoby z samym importem
+lub procedurą (liczniki operacji i undo wynoszą wtedy zero).
+To podsumowanie zapisanych zdarzeń, nie lista obecności ani ocena produktywności.
+
+## 5. GET /api/dashboard/items/{id}/trend — historia zapasu
+
+Parametry dni jak w sekcji 1. ID to dodatni identyfikator z `/api/stock`;
+brak towaru daje 404, błędny ID lub zakres 422.
+
+```json
+{
+  "range":{"from":"2026-10-03","to":"2026-10-03","timezone":"Europe/Warsaw"},
+  "item":{"id":1,"name":"Kartony","unit":"szt","quantity":30,"minimum":12},
+  "opening_quantity":13,
+  "closing_quantity":30,
+  "points":[{"audit_id":2,"ts":"2026-10-03T09:00:00.000Z","event_type":"stock_change","before":13,"after":11,"delta":-2,"undo_of":null,"undone_by":null,"continuous":true}],
+  "quality":{"opening_known":true,"continuity_warnings":0,"current_matches_latest_audit":true,"unit_is_current":true}
+}
+```
+
+- Wykres schodkowy: `after` względem `ts`, sortowanie rosnąco czas + ID.
+  Punkty to `stock_change` i `inventory_import`, również zmiany zerowe,
+  cofnięte oryginały i ich undo: każde opisuje rzeczywisty stan w tamtym momencie.
+- `opening_quantity` to ostatni zapisany stan przed początkiem zakresu;
+  brak wcześniejszego audytu oznacza `null`, a nie bieżący stan ani zero.
+  `item_added` nie zapisuje stanów w obecnym audycie i nie jest punktem trendu.
+- `closing_quantity` to ostatni znany stan w zakresie (lub otwarcia, gdy brak
+  punktów); `null` przy braku danych lub końcu zakresu w przyszłym dniu.
+  Dla dzisiaj jest to stan według dotychczasowego audytu, nie prognoza końca dnia.
+- `continuous=false`: `before` różni się od poprzedniego znanego `after`.
+  UI przerwij linię/oznacz lukę. `continuity_warnings` liczy takie rozbieżności.
+  Pierwszy punkt bez otwarcia nie jest porównywany (`opening_known=false`).
+- `current_matches_latest_audit` porównuje bieżący zapas z ostatnim audytem
+  całej historii, nie tylko wybranego okresu; `null` oznacza brak audytu.
+- Nazwa, minimum i jednostka w `item` są **obecne**. `unit_is_current=true`
+  przypomina, że brak historycznego rejestru jednostek; nie zakładaj historycznej
+  wartości minimum ani przeliczenia dawnych jednostek na obecną.
+- Maksymalnie 2000 punktów; większy zakres daje 422 z prośbą o zawężenie,
+  zamiast uciętego wykresu. Pusty wynik: `points=[]`.
+
+## 6. Odznaki oczekujących szkiców zamówień
+
+Istniejące `attention.pending_drafts` z sekcji 1 otrzymują dodatkowe pola:
+
+| Pole | Reguła |
+|---|---|
+| `waiting_hours` | Wiek od `created_at`, minimum zero, zaokrąglony do 2 miejsc. |
+| `overdue` | `true` od 24 godzin oczekiwania. |
+| `waiting_priority` | `normal` poniżej 24 h, `warning` od 24 h, `critical` od 48 h. |
+
+Progi są liczone z dokładnego czasu, przed zaokrągleniem `waiting_hours`.
+Oznaczają oczekiwanie na decyzję, nie opóźnienie dostawy (`deliver_on`).
+Szkice nadal są sortowane od najstarszego, limit 10; `current.pending_drafts`
+zawiera pełną liczbę. Backend nie podejmuje decyzji ani nie wysyła zamówień.
+Odświeżaj również okresowo (np. co 60 s): odznaki i domyślne okno zmiany mogą
+zmienić się bez zapisu w bazie, więc samo `/api/version` nie wystarcza.

@@ -5,11 +5,21 @@ import { HttpError } from './http'
 import type { Db } from './sql'
 
 const DAY_MS = 86_400_000
-const ACTIVE_STOCK = "event_type = 'stock_change' AND undo_of IS NULL AND undone_by IS NULL AND delta <> 0"
-const IN_RANGE = 'ts >= ($1::date::timestamp AT TIME ZONE $3) AND ts < (($2::date + 1)::timestamp AT TIME ZONE $3)'
-const ISO_TS = (column: string) => `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+export const ACTIVE_STOCK = "event_type = 'stock_change' AND undo_of IS NULL AND undone_by IS NULL AND delta <> 0"
+export const IN_RANGE = 'ts >= ($1::date::timestamp AT TIME ZONE $3) AND ts < (($2::date + 1)::timestamp AT TIME ZONE $3)'
+export const ISO_TS = (column: string) => `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+export const PERIOD_METRICS = `count(*)::int AS audit_events,
+  count(*) FILTER (WHERE ${ACTIVE_STOCK})::int AS stock_changes,
+  count(*) FILTER (WHERE ${ACTIVE_STOCK} AND delta < 0)::int AS withdrawals,
+  count(*) FILTER (WHERE ${ACTIVE_STOCK} AND delta > 0)::int AS receipts,
+  count(*) FILTER (WHERE undo_of IS NOT NULL)::int AS undo_count,
+  count(*) FILTER (WHERE event_type = 'inventory_import')::int AS import_events`
+export const CURRENT_INVENTORY = `SELECT count(*)::int AS total_items,
+  count(*) FILTER (WHERE quantity < minimum)::int AS below_minimum,
+  count(*) FILTER (WHERE btrim(location) = '')::int AS missing_location,
+  (SELECT count(*)::int FROM reorder_drafts WHERE status = 'pending') AS pending_drafts FROM items`
 
-function dateValue(value: string): number {
+export function dateValue(value: string): number {
   const result = Date.parse(`${value}T00:00:00Z`)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(result) || new Date(result).toISOString().slice(0, 10) !== value || value < '1000-01-01') {
     throw new HttpError(422, 'Daty muszą mieć format YYYY-MM-DD i wskazywać istniejący dzień.')
@@ -40,18 +50,8 @@ export async function dashboardSummary(db: Db, range: DashboardRange): Promise<D
   const params = [range.from, range.to, range.timezone]
   return db.transaction(async (tx) => {
     await tx.exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
-    const [current] = await tx.query<DashboardResponse['current']>(`SELECT
-      count(*)::int AS total_items,
-      count(*) FILTER (WHERE quantity < minimum)::int AS below_minimum,
-      count(*) FILTER (WHERE btrim(location) = '')::int AS missing_location,
-      (SELECT count(*)::int FROM reorder_drafts WHERE status = 'pending') AS pending_drafts FROM items`)
-    const [period] = await tx.query<DashboardResponse['period']>(`SELECT count(*)::int AS audit_events,
-      count(*) FILTER (WHERE ${ACTIVE_STOCK})::int AS stock_changes,
-      count(*) FILTER (WHERE ${ACTIVE_STOCK} AND delta < 0)::int AS withdrawals,
-      count(*) FILTER (WHERE ${ACTIVE_STOCK} AND delta > 0)::int AS receipts,
-      count(*) FILTER (WHERE undo_of IS NOT NULL)::int AS undo_count,
-      count(*) FILTER (WHERE event_type = 'inventory_import')::int AS import_events
-      FROM audit_log WHERE ${IN_RANGE}`, params)
+    const [current] = await tx.query<DashboardResponse['current']>(CURRENT_INVENTORY)
+    const [period] = await tx.query<DashboardResponse['period']>(`SELECT ${PERIOD_METRICS} FROM audit_log WHERE ${IN_RANGE}`, params)
     const daily = await tx.query<DashboardResponse['daily'][number]>(`WITH events AS (
       SELECT to_char(ts AT TIME ZONE $3, 'YYYY-MM-DD') AS day,
         count(*) FILTER (WHERE ${ACTIVE_STOCK} AND delta < 0)::int AS withdrawals,
@@ -73,7 +73,10 @@ export async function dashboardSummary(db: Db, range: DashboardRange): Promise<D
       WHERE i.quantity < i.minimum ORDER BY CASE WHEN i.quantity <= 0 THEN 0 ELSE 1 END, i.id LIMIT 10`)
     const pending_drafts = await tx.query<DashboardResponse['attention']['pending_drafts'][number]>(`SELECT id, item_id, item_name, quantity, unit,
       to_char(deliver_on, 'YYYY-MM-DD') AS deliver_on, ${ISO_TS('created_at')} AS created_at,
-      round(greatest(0, extract(epoch FROM ($1::timestamptz - created_at)) / 3600), 2)::float8 AS waiting_hours
+      round(greatest(0, extract(epoch FROM ($1::timestamptz - created_at)) / 3600), 2)::float8 AS waiting_hours,
+      ($1::timestamptz - created_at >= interval '24 hours') AS overdue,
+      CASE WHEN $1::timestamptz - created_at >= interval '48 hours' THEN 'critical'
+           WHEN $1::timestamptz - created_at >= interval '24 hours' THEN 'warning' ELSE 'normal' END AS waiting_priority
       FROM reorder_drafts WHERE status = 'pending' ORDER BY created_at, id LIMIT 10`, [generated_at])
     const missing_location = await tx.query<DashboardResponse['attention']['missing_location'][number]>(
       "SELECT id AS item_id, name AS item_name FROM items WHERE btrim(location) = '' ORDER BY id LIMIT 10")
@@ -82,7 +85,7 @@ export async function dashboardSummary(db: Db, range: DashboardRange): Promise<D
   })
 }
 
-function positiveInt(value: string, name: string, max: number): number {
+export function positiveInt(value: string, name: string, max: number): number {
   const result = Number(value)
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(result) || result < 1 || result > max) throw new HttpError(422, `Nieprawidłowy parametr ${name}.`)
   return result
@@ -102,11 +105,10 @@ export function activityOptions(query: URLSearchParams) {
     page_size: positiveInt(query.get('page_size') ?? '25', 'page_size', 100) }
 }
 
-export async function dashboardActivity(db: Db, range: DashboardRange, options: ReturnType<typeof activityOptions>): Promise<DashboardActivityResponse> {
+export function activityWhere(range: DashboardRange, filters: DashboardActivityResponse['filters']) {
   const params: unknown[] = [range.from, range.to, range.timezone]
   const predicates = [IN_RANGE]
   const add = (predicate: string, value: unknown) => { params.push(value); predicates.push(predicate.replace('?', `$${params.length}`)) }
-  const { filters, page, page_size } = options
   if (filters.actor_id === 'unassigned') predicates.push('actor_id IS NULL')
   else if (filters.actor_id !== null) add('actor_id = ?::uuid', filters.actor_id)
   if (filters.event_type !== null) add('event_type = ?', filters.event_type)
@@ -116,12 +118,20 @@ export async function dashboardActivity(db: Db, range: DashboardRange, options: 
   if (filters.status === 'undo') predicates.push('undo_of IS NOT NULL')
   if (filters.status === 'undone') predicates.push('undone_by IS NOT NULL')
   const where = predicates.join(' AND ')
+  return { where, params }
+}
+
+export const ACTIVITY_COLUMNS = `id, ${ISO_TS('ts')} AS ts,
+  actor_id::text AS actor_id, actor, item_id, item_name, event_type, text, details, delta, before, after, undo_of, undone_by,
+  CASE WHEN undo_of IS NOT NULL THEN 'undo' WHEN undone_by IS NOT NULL THEN 'undone' ELSE 'active' END AS status`
+
+export async function dashboardActivity(db: Db, range: DashboardRange, options: ReturnType<typeof activityOptions>): Promise<DashboardActivityResponse> {
+  const { filters, page, page_size } = options
+  const { where, params } = activityWhere(range, filters)
   return db.transaction(async (tx) => {
     await tx.exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
     const [{ total }] = await tx.query<{ total: number }>(`SELECT count(*)::int AS total FROM audit_log WHERE ${where}`, params)
-    const entries = await tx.query<DashboardActivityResponse['entries'][number]>(`SELECT id, ${ISO_TS('ts')} AS ts,
-      actor_id::text AS actor_id, actor, item_id, item_name, event_type, text, details, delta, before, after, undo_of, undone_by,
-      CASE WHEN undo_of IS NOT NULL THEN 'undo' WHEN undone_by IS NOT NULL THEN 'undone' ELSE 'active' END AS status
+    const entries = await tx.query<DashboardActivityResponse['entries'][number]>(`SELECT ${ACTIVITY_COLUMNS}
       FROM audit_log WHERE ${where} ORDER BY audit_log.ts DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, page_size, (page - 1) * page_size])
     return { range, ...options, total, has_more: page * page_size < total, entries }

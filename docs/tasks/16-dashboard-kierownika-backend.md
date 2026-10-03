@@ -26,5 +26,18 @@ Widok dashboardu i jego GUI-check pozostają do wykonania przez frontend.
 - [x] Kontrakt i typy dostępne dla frontendu; brak nowych zależności i migracji.
 - [x] Testy, build i review; lokalne sprawdzenie endpointów.
 
+## Rozszerzenie v2 zamówione przez użytkownika
+
+- [x] CSV filtrowanego dziennika z limitami i ochroną przed formułami w arkuszu.
+- [x] Podsumowanie zmiany (domyślnie 8 h), autorzy, procedury, aktualne braki.
+- [x] Trend zapasu towaru z importami/undo, wykrywaniem luk i ograniczeniem punktów.
+- [x] Odznaki szkiców: 24 h warning/overdue, 48 h critical.
+- [x] Kontrakt v2 i typy dla frontendu, 56 testów dashboardu na obu adapterach.
+- [x] Pełny zestaw: 583 passed, 1 skipped; build/typecheck/lint passed.
+  Standards i Spec review bez uwag; produkcyjne lokalne HTTP 200 dla nowych
+  endpointów, dotychczasowy panel GUI ładuje stany i łączy się z backendem.
+  Pierwszy pełny przebieg trafił na zablokowany losowy port Windows w istniejącym
+  teście API; ponowiony pełny przebieg przeszedł bez zmian kodu testu.
+
 Poza zakresem tej karty: komponent dashboardu, logowanie odczytów/kliknięć,
-ocena pracowników, AI opisujące statystyki, eksport nowych raportów.
+ocena pracowników, AI opisujące statystyki.
