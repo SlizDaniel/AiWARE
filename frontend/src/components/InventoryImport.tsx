@@ -67,25 +67,27 @@ export default function InventoryImport({ onImported }: { onImported: () => void
   }
 
   return (
-    <section className="rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+    <section className="border border-[#e8e5de] bg-white">
       <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
         <div>
           <h2 className="text-lg font-bold">Import z Excela lub CSV</h2>
-          <p className="mt-1 text-sm text-slate-500">Podgląd i mapowanie kolumn przed zapisaniem stanów.</p>
+          <p className="mt-1 text-sm text-[#646b64]">Podgląd i mapowanie kolumn przed zapisaniem stanów.</p>
         </div>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700"
+          aria-expanded={open}
+          aria-controls="inventory-import-form"
+          className="bg-[#292d2b] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#454b46] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]"
         >
           {open ? 'Zamknij import' : 'Importuj plik'}
         </button>
       </div>
 
       {open && (
-        <div className="space-y-5 border-t border-slate-100 px-6 py-5">
+        <div id="inventory-import-form" className="space-y-5 border-t border-[#e8e5de] px-6 py-5">
           <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-slate-700">Wybierz plik magazynu</span>
+            <span className="mb-2 block text-sm font-semibold text-[#454b46]">Wybierz plik magazynu</span>
             <input
               type="file"
               accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -95,29 +97,29 @@ export default function InventoryImport({ onImported }: { onImported: () => void
                 event.currentTarget.value = ''
                 void selectFile(file)
               }}
-              className="block w-full cursor-pointer rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-4 file:cursor-pointer file:border-0 file:bg-slate-100 file:px-4 file:py-3 file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+              className="block w-full cursor-pointer border border-[#d8d6cf] bg-white text-sm text-[#646b64] file:mr-4 file:cursor-pointer file:border-0 file:bg-[#f5f4f0] file:px-4 file:py-3 file:font-semibold file:text-[#454b46] hover:file:bg-[#e8e5de] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]"
             />
-            <span className="mt-2 block text-xs text-slate-500">XLSX lub CSV · maksymalnie 5 MB</span>
+            <span className="mt-2 block text-xs text-[#70756f]">XLSX lub CSV · maksymalnie 5 MB</span>
           </label>
 
-          {busy && <p className="text-sm font-medium text-indigo-700">Przetwarzam plik…</p>}
-          {error && <p role="alert" className="rounded-lg bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</p>}
-          {message && <p role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{message}</p>}
+          {busy && <p role="status" className="text-sm font-medium text-[#315b37]">Przetwarzam plik…</p>}
+          {error && <p role="alert" className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm font-medium text-[#8f3936]">{error}</p>}
+          {message && <p role="status" className="border border-[#cbd8c9] bg-[#f6f8f4] px-4 py-3 text-sm font-medium text-[#315b37]">{message}</p>}
 
           {preview && mapping && (
             <>
               <div>
                 <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                   <h3 className="font-bold">Przypisz kolumny</h3>
-                  <span className="text-sm text-slate-500">{preview.row_count} wierszy danych · zapis dopiero po zatwierdzeniu</span>
+                  <span className="text-sm text-[#646b64]">{preview.row_count} wierszy danych · zapis dopiero po zatwierdzeniu</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {FIELDS.map((field) => (
                     <label key={field.id} className="block">
-                      <span className="mb-1 block text-sm font-medium text-slate-700">
+                      <span className="mb-1 block text-sm font-medium text-[#454b46]">
                         {field.label}{field.required ? ' · wymagane' : ' · opcjonalne'}
                         {preview.mapping[field.id].column !== null && (
-                          <span className="ml-2 text-xs font-normal text-slate-400">
+                          <span className="ml-2 text-xs font-normal text-[#70756f]">
                             sugestia {Math.round(preview.mapping[field.id].confidence * 100)}%
                           </span>
                         )}
@@ -128,7 +130,7 @@ export default function InventoryImport({ onImported }: { onImported: () => void
                           ...current,
                           [field.id]: event.target.value === '' ? null : Number(event.target.value),
                         }))}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                        className="w-full border border-[#d8d6cf] bg-white px-3 py-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]"
                       >
                         <option value="">Nie mapuj tej kolumny</option>
                         {preview.headers.map((header) => (
@@ -141,18 +143,18 @@ export default function InventoryImport({ onImported }: { onImported: () => void
               </div>
 
               {preview.warnings.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="border border-[#ead9a9] bg-[#fffaf0] px-4 py-3 text-sm text-[#805c12]">
                   <ul className="list-disc space-y-1 pl-5">{preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
                 </div>
               )}
 
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto border border-[#e8e5de]">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  <thead className="bg-[#f5f4f0] text-xs font-bold uppercase tracking-wide text-[#646b64]">
                     <tr>{preview.headers.map((header) => <th key={header.index} className="px-4 py-3">{header.label}</th>)}</tr>
                   </thead>
                   <tbody>{preview.preview.map((row, rowIndex) => (
-                    <tr key={rowIndex} className="border-t border-slate-100">
+                    <tr key={rowIndex} className="border-t border-[#e8e5de]">
                       {preview.headers.map((header) => <td key={header.index} className="whitespace-nowrap px-4 py-3">{row[header.index] || '—'}</td>)}
                     </tr>
                   ))}</tbody>
@@ -160,12 +162,12 @@ export default function InventoryImport({ onImported }: { onImported: () => void
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-500">Pozycje o tej samej nazwie zostaną zaktualizowane zamiast powielone.</p>
+                <p className="text-xs text-[#646b64]">Pozycje o tej samej nazwie zostaną zaktualizowane zamiast powielone.</p>
                 <button
                   type="button"
                   disabled={busy || mapping.name === null || mapping.quantity === null}
                   onClick={() => void confirm()}
-                  className="rounded-lg bg-emerald-600 px-6 py-3 font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="bg-[#315b37] px-6 py-3 font-bold text-white transition-colors hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Zatwierdź import
                 </button>

@@ -3,6 +3,9 @@ import { approveReorderDraft, rejectReorderDraft, type ReorderDraft } from '../a
 
 type Props = {
   drafts: ReorderDraft[]
+  state: 'loading' | 'ready' | 'error'
+  error: string
+  onRetry: () => void
   onChanged: (message: string) => void
 }
 
@@ -17,14 +20,14 @@ function formatDeliveryDate(value: string): string {
   return new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }).format(date)
 }
 
-export default function ReorderQueue({ drafts, onChanged }: Props) {
+export default function ReorderQueue({ drafts, state, error, onRetry, onChanged }: Props) {
   const [busyId, setBusyId] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const decide = async (draft: ReorderDraft, decision: 'approve' | 'reject') => {
     if (busyId !== null) return
     setBusyId(draft.id)
-    setError(null)
+    setActionError(null)
     try {
       if (decision === 'approve') {
         await approveReorderDraft(draft.id)
@@ -33,40 +36,62 @@ export default function ReorderQueue({ drafts, onChanged }: Props) {
         await rejectReorderDraft(draft.id)
         onChanged(`Odrzucono szkic zamówienia dla: ${draft.item_name}. Decyzja trafiła do Historii.`)
       }
-    } catch {
-      setError('Nie udało się zapisać decyzji. Odśwież kolejkę i spróbuj ponownie.')
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Nie udało się zapisać decyzji.')
     } finally {
       setBusyId(null)
     }
   }
 
-  if (drafts.length === 0) {
+  if (state === 'loading') {
+    return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram kolejkę zatwierdzeń…</div>
+  }
+
+  if (state === 'error') {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        Brak szkiców zamówień. Agent zaproponuje zamówienie, gdy stan spadnie poniżej minimum.
+      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
+        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać kolejki zatwierdzeń.</p>
+        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
+        >
+          Spróbuj ponownie
+        </button>
       </div>
     )
   }
 
+  if (drafts.length === 0) {
+    return <div className="border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-8 text-center text-sm text-[#70756f]">
+      Brak szkiców zamówień. Agent zaproponuje zamówienie, gdy stan spadnie poniżej minimum.
+    </div>
+  }
+
   return (
     <div className="space-y-3">
-      {error && <p role="alert" className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+      {actionError && (
+        <p role="alert" className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm text-[#8f3936]">
+          Nie udało się zapisać decyzji: {actionError}. Spróbuj ponownie przyciskiem decyzji.
+        </p>
+      )}
       {drafts.map((draft) => (
-        <article key={draft.id} className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <article key={draft.id} className="border border-[#e8e5de] bg-white p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-bold">{draft.item_name}</h3>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-[#646b64]">
                 Zamówić <strong>{draft.quantity} {draft.unit}</strong> · dostawa: {formatDeliveryDate(draft.deliver_on)}
               </p>
             </div>
             <span className={
-              'rounded-full px-3 py-1 text-xs font-bold ' +
+              'px-3 py-1 text-xs font-bold ' +
               (draft.status === 'pending'
-                ? 'bg-amber-100 text-amber-800'
+                ? 'bg-[#fbf3db] text-[#805c12]'
                 : draft.status === 'approved'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-100 text-slate-600')
+                  ? 'bg-[#edf3ec] text-[#315b37]'
+                  : 'bg-[#f0efe9] text-[#646b64]')
             }>
               {STATUS_LABEL[draft.status]}
             </span>
@@ -74,18 +99,20 @@ export default function ReorderQueue({ drafts, onChanged }: Props) {
           {draft.status === 'pending' && (
             <div className="mt-4 flex flex-wrap gap-3">
               <button
+                type="button"
                 onClick={() => void decide(draft, 'approve')}
                 disabled={busyId !== null}
-                className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="bg-[#315b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Zatwierdź szkic
+                {busyId === draft.id ? 'Zapisuję…' : 'Zatwierdź szkic'}
               </button>
               <button
+                type="button"
                 onClick={() => void decide(draft, 'reject')}
                 disabled={busyId !== null}
-                className="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                className="border border-[#d8d6cf] bg-white px-5 py-2.5 text-sm font-semibold text-[#646b64] hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Odrzuć
+                {busyId === draft.id ? 'Zapisuję…' : 'Odrzuć'}
               </button>
             </div>
           )}
