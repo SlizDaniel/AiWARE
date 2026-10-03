@@ -30,3 +30,7 @@ Równoczesne decyzje dla jednego szkica: wygrywa wyłącznie pierwsza zmiana sta
 `pending`. Druga nie dopisuje audytu i otrzymuje dotychczasowy HTTP 404 „szkic
 nie istnieje albo został już rozpatrzony”. Testy wymuszają równoczesny odczyt
 tego samego pending przed aktualizacją, także dla dwóch identycznych decyzji.
+
+Równoczesne `draft_order` dla tego samego towaru zwracają jeden istniejący
+szkic zamiast błędu unikalności SQLite. Tylko pierwszy zapis tworzy szkic i audyt;
+drugi ma `created=false`, ten sam ID i ilość zwycięskiego szkica, bez nadpisania.

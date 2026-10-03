@@ -413,28 +413,30 @@ def create_reorder_draft(db_path: str, *, item_id: int, quantity: int) -> dict:
     """Szkic zamówienia z narzędzia `draft_order` (karta 02) — ta sama kolejka
     co proaktywny reorder (karta 08). Idempotentny gdy dla pozycji wisi już pending."""
     with connect(db_path) as conn:
+        pending_query = (
+            "SELECT id, item_id, item_name, quantity, unit, deliver_on, status "
+            "FROM reorder_drafts WHERE item_id = ? AND status = 'pending'"
+        )
         item = conn.execute(
             "SELECT id, name, quantity, minimum, unit FROM items WHERE id = ?", (item_id,)
         ).fetchone()
         if item is None:
             return {}
-        pending = conn.execute(
-            "SELECT id FROM reorder_drafts WHERE item_id = ? AND status = 'pending'",
-            (item_id,),
-        ).fetchone()
+        pending = conn.execute(pending_query, (item_id,)).fetchone()
         if pending is not None:
-            existing = conn.execute(
-                "SELECT id, item_id, item_name, quantity, unit, deliver_on, status "
-                "FROM reorder_drafts WHERE id = ?",
-                (pending["id"],),
-            ).fetchone()
-            return {**dict(existing), "created": False}
+            return {**dict(pending), "created": False}
         deliver_on = _next_tuesday().isoformat()
         cur = conn.execute(
             "INSERT INTO reorder_drafts (item_id, item_name, quantity, unit, deliver_on) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(item_id) WHERE status = 'pending' DO NOTHING",
             (item_id, item["name"], quantity, item["unit"], deliver_on),
         )
+        if cur.rowcount == 0:
+            # A competing writer created the pending draft after our read.
+            # This write transaction keeps that row stable until we return it.
+            existing = conn.execute(pending_query, (item_id,)).fetchone()
+            return {**dict(existing), "created": False}
         _write_order_audit(
             conn,
             item_id=item_id,
