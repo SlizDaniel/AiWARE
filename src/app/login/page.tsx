@@ -1,14 +1,9 @@
 import type { Metadata } from 'next'
+import { safeNextPath } from '@/lib/safeRedirect'
 import LoginForm from './LoginForm'
 
 export const metadata: Metadata = {
   title: 'Logowanie — MAGAZYNIER',
-}
-
-/** Only same-origin relative paths; anything else falls back to '/'. */
-function safeNext(value: string | undefined): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return '/'
-  return value
 }
 
 export default async function LoginPage({
@@ -18,6 +13,6 @@ export default async function LoginPage({
 }) {
   const params = await searchParams
   const error = typeof params.error === 'string' ? params.error : null
-  const next = safeNext(typeof params.next === 'string' ? params.next : undefined)
+  const next = safeNextPath(typeof params.next === 'string' ? params.next : undefined)
   return <LoginForm callbackError={error} next={next} />
 }
