@@ -53,16 +53,16 @@ try {
   const tables = await db.query<{ tablename: string; rowsecurity: boolean }>(
     `SELECT tablename, rowsecurity FROM pg_tables
      WHERE schemaname = 'public' AND tablename = ANY($1::text[]) ORDER BY tablename`,
-    [['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'settings', 'app_meta', 'profiles']],
+    [['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'settings', 'app_meta', 'profiles', 'rate_limits']],
   )
   const missingRls = tables.filter((table) => !table.rowsecurity).map((table) => table.tablename)
-  console.log(`Tabele (${tables.length}/10): ${tables.map((table) => table.tablename).join(', ')}`)
+  console.log(`Tabele (${tables.length}/11): ${tables.map((table) => table.tablename).join(', ')}`)
   console.log(missingRls.length ? `UWAGA: RLS wyłączone dla: ${missingRls.join(', ')}` : 'RLS włączone na wszystkich tabelach.')
   const items = await listItems(db)
   const [{ count }] = await db.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM profiles')
   console.log(`Pozycje w magazynie: ${items.length} · konta (profile): ${count}`)
   console.log('Baza Supabase gotowa. Uruchom ponownie `npm run dev`, a na Vercelu ustaw tę samą DATABASE_URL.')
-  process.exit(tables.length === 10 && missingRls.length === 0 ? 0 : 1)
+  process.exit(tables.length === 11 && missingRls.length === 0 ? 0 : 1)
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error)
   console.error(`Błąd połączenia: ${message.replace(url, '<DATABASE_URL>')}`)

@@ -204,9 +204,25 @@ CREATE TABLE IF NOT EXISTS profiles (
   user_id      UUID PRIMARY KEY,
   email        TEXT NOT NULL DEFAULT '',
   display_name TEXT NOT NULL DEFAULT '',
-  role         TEXT NOT NULL DEFAULT 'pracownik' CHECK (role IN ('pracownik', 'kierownik')),
+  role         TEXT NOT NULL DEFAULT 'oczekujacy' CHECK (role IN ('pracownik', 'kierownik', 'oczekujacy')),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- v2: accounts waiting for approval (databases created by v1 have the old check).
+ALTER TABLE profiles ALTER COLUMN role SET DEFAULT 'oczekujacy';
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('pracownik', 'kierownik', 'oczekujacy'));
+
+-- v2: per-user request budgets for the paid AI endpoints.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key          TEXT PRIMARY KEY,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+  count        INTEGER NOT NULL DEFAULT 0
+);
+
+-- v2: dashboard range filters, the activity log order and per-item trends.
+CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC, id DESC);
+CREATE INDEX IF NOT EXISTS audit_log_item_ts_idx ON audit_log (item_id, ts);
 
 ALTER TABLE items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
@@ -218,10 +234,11 @@ ALTER TABLE pending_imports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_meta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 `
 
 /** Bump when SCHEMA_SQL changes so existing databases run the DDL again. */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 async function schemaIsCurrent(db: Db): Promise<boolean> {
   // to_regclass never raises, so this is safe inside a caller's transaction.
