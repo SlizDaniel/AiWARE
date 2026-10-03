@@ -6,6 +6,7 @@ an API vendor.
 """
 import asyncio
 import json
+import math
 import os
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -94,7 +95,13 @@ class OpenAICompatibleProvider:
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMProviderError("LLM response has an invalid shape") from exc
 
-        calls = message.get("tool_calls") or []
+        if not isinstance(message, dict):
+            raise LLMProviderError("LLM message must be an object")
+        calls = message.get("tool_calls")
+        if calls is None:
+            calls = []
+        if not isinstance(calls, list):
+            raise LLMProviderError("LLM tool_calls must be a list")
         if len(calls) > 1:
             raise LLMProviderError("LLM returned more than one tool call")
         if calls:
@@ -154,42 +161,70 @@ def _validate_tool_call(
     function_specs = [
         item.get("function", {}) for item in tools if isinstance(item, dict)
     ]
-    schema = next((f for f in function_specs if f.get("name") == name), None)
+    schema = next((f for f in function_specs if isinstance(f, dict) and f.get("name") == name), None)
     if schema is None:
         raise LLMProviderError("LLM selected an unregistered tool")
     if not isinstance(arguments, dict):
         raise LLMProviderError("Tool arguments must be a JSON object")
     parameters = schema.get("parameters", {})
-    if parameters.get("type") != "object":
+    if not isinstance(parameters, dict) or parameters.get("type") != "object":
         raise LLMProviderError("Tool schema must describe an object")
+    _validate_value(arguments, parameters, "arguments")
 
-    required = parameters.get("required", [])
-    properties = parameters.get("properties", {})
+
+def _validate_value(value: Any, schema: dict[str, Any], path: str) -> None:
+    """Validate the JSON Schema subset used by our tool registry, recursively."""
+    if not isinstance(schema, dict):
+        raise LLMProviderError("Tool schema is invalid")
+    expected = schema.get("type")
+    checks = {
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+        "number": isinstance(value, (int, float)) and not isinstance(value, bool),
+        "string": isinstance(value, str),
+        "boolean": isinstance(value, bool),
+        "object": isinstance(value, dict),
+        "array": isinstance(value, list),
+        "null": value is None,
+    }
+    if expected not in checks or not checks[expected]:
+        raise LLMProviderError(f"Invalid JSON type at {path}")
+    if "enum" in schema and value not in schema["enum"]:
+        raise LLMProviderError(f"Value outside enum at {path}")
+    if expected in {"integer", "number"}:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise LLMProviderError(f"Non-finite number at {path}")
+        if "minimum" in schema and value < schema["minimum"]:
+            raise LLMProviderError(f"Value below minimum at {path}")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise LLMProviderError(f"Value above maximum at {path}")
+    if expected == "string":
+        if len(value) < schema.get("minLength", 0):
+            raise LLMProviderError(f"Text too short at {path}")
+        if "maxLength" in schema and len(value) > schema["maxLength"]:
+            raise LLMProviderError(f"Text too long at {path}")
+    if expected == "array":
+        if len(value) < schema.get("minItems", 0):
+            raise LLMProviderError(f"List too short at {path}")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            raise LLMProviderError(f"List too long at {path}")
+        for index, item in enumerate(value):
+            _validate_value(item, schema.get("items", {}), f"{path}[{index}]")
+    if expected != "object":
+        return
+
+    required = schema.get("required", [])
+    properties = schema.get("properties", {})
     if not isinstance(required, list) or not isinstance(properties, dict):
         raise LLMProviderError("Tool schema is invalid")
-    if any(key not in arguments for key in required):
+    if any(key not in value for key in required):
         raise LLMProviderError("Tool arguments are missing required fields")
-    if parameters.get("additionalProperties") is False and any(
-        key not in properties for key in arguments
+    if schema.get("additionalProperties") is False and any(
+        key not in properties for key in value
     ):
         raise LLMProviderError("Tool arguments contain unexpected fields")
 
-    for key, value in arguments.items():
+    for key, child in value.items():
         prop = properties.get(key)
         if prop is None:
             continue
-        expected = prop.get("type")
-        if expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
-            raise LLMProviderError(f"Tool argument {key} must be an integer")
-        if expected == "number" and (
-            not isinstance(value, (int, float)) or isinstance(value, bool)
-        ):
-            raise LLMProviderError(f"Tool argument {key} must be numeric")
-        if expected == "string" and not isinstance(value, str):
-            raise LLMProviderError(f"Tool argument {key} must be text")
-        if expected == "boolean" and not isinstance(value, bool):
-            raise LLMProviderError(f"Tool argument {key} must be boolean")
-        if expected == "object" and not isinstance(value, dict):
-            raise LLMProviderError(f"Tool argument {key} must be an object")
-        if expected == "array" and not isinstance(value, list):
-            raise LLMProviderError(f"Tool argument {key} must be a list")
+        _validate_value(child, prop, f"{path}.{key}")
