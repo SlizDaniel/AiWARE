@@ -1,19 +1,30 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { describeError } from '@/lib/dashboardApi'
+import { LoadError, RollingNumber, Skeleton } from '../ui/feedback'
+import { StateShape, stateTextClass, type StateKind } from '../ui/StateMark'
+import { buttonClass, fieldClass, panelClass } from '../ui/styles'
 
-export const cardClass = 'min-w-0 border border-[#e8e5de] bg-white p-5 sm:p-6'
-export const labelClass = 'text-[11px] font-semibold uppercase tracking-[0.1em] text-[#70756f]'
-export const secondaryButton =
-  'border border-[#d8d6cf] bg-white px-3 py-2 text-sm font-semibold text-[#454b46] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40'
-export const inputClass =
-  'mt-1 block w-full min-w-0 border border-[#d8d6cf] bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-[#292d2b] focus-visible:border-[#536b56] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]'
+// Słownik dashboardu oparty na wspólnych prymitywach (tokeny, panel, pola, przyciski).
+export const cardClass = panelClass
+export const labelClass = 'label-caps'
+export const secondaryButton = buttonClass('secondary', 'sm')
+/** Pole pod etykietą `Field` (odstęp od etykiety w klasie). */
+export const inputClass = `${fieldClass} mt-1.5`
 
+/**
+ * Blok dashboardu: jeden panel, nagłówek `text-lg` + jednozdaniowy opis. Panel jest kontenerem
+ * (`@container`), więc układ w środku zależy od szerokości panelu, nie okna.
+ * `flush` — treść bez wewnętrznych marginesów (tabela, pasek odczytów od krawędzi do krawędzi).
+ * `fill` — treść rozciąga się na całą wysokość panelu (wykres obok wyższego sąsiada w siatce).
+ */
 export function Card({
   title,
   subtitle,
   actions,
   children,
   busy = false,
+  flush = false,
+  fill = false,
   className = '',
 }: {
   title: string
@@ -21,32 +32,50 @@ export function Card({
   actions?: ReactNode
   children: ReactNode
   busy?: boolean
+  flush?: boolean
+  fill?: boolean
   className?: string
 }) {
+  const headingId = useId()
+  const body = fill ? 'flex flex-1 flex-col gap-5 px-6 pb-6 pt-5' : 'space-y-5 px-6 pb-6 pt-5'
   return (
-    <section className={`${cardClass} ${className}`} aria-busy={busy}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-bold">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-[#646b64]">{subtitle}</p>}
+    <section className={`${panelClass} @container ${fill ? 'flex flex-col' : ''} ${className}`} aria-busy={busy} aria-labelledby={headingId}>
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-6 pt-6">
+        <div className="min-w-0 max-w-[68ch]">
+          <h2 id={headingId} className="text-lg font-semibold leading-snug text-ink">
+            {title}
+          </h2>
+          {subtitle && <p className="mt-1 text-sm text-ink-2">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-      </div>
-      {children}
+      </header>
+      {flush ? children : <div className={body}>{children}</div>}
     </section>
   )
 }
 
-export function Loading({ text = 'Pobieram dane…' }: { text?: string }) {
+/** Etykieta nad polem formularza (pole dostaje `inputClass`). */
+export function Field({ label, children, className = '' }: { label: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <p className="mt-4 text-sm text-[#646b64]" role="status">
-      {text}
-    </p>
+    <label className={`block min-w-0 ${className}`}>
+      <span className="label-caps block">{label}</span>
+      {children}
+    </label>
   )
 }
 
+export function Loading({ text = 'Pobieram dane…', rows = 3 }: { text?: string; rows?: number }) {
+  return <Skeleton rows={rows} label={text} />
+}
+
+/** Cicha notka pustego stanu wewnątrz bloku (bez ramki — blok jest już panelem). */
 export function EmptyNote({ children }: { children: ReactNode }) {
-  return <p className="mt-4 border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-4 text-sm text-[#70756f]">{children}</p>
+  return (
+    <p className="flex items-start gap-2.5 rounded-md bg-ground px-4 py-3.5 text-sm text-ink-2">
+      <StateShape kind="idle" className="mt-[5px]" />
+      <span className="min-w-0">{children}</span>
+    </p>
+  )
 }
 
 /** Błąd bloku z przyciskiem Ponów. `kept` — obok zostają ostatnie poprawne dane. */
@@ -62,27 +91,90 @@ export function BlockError({
   kept?: boolean
 }) {
   return (
-    <div className="mt-4 border border-[#edc8c5] bg-[#fff7f6] p-4 text-sm text-[#8f3936]" role="alert">
-      <p className="font-semibold">{describeError(error, fallback)}</p>
-      {kept && <p className="mt-1">Poniżej ostatnie poprawnie pobrane dane.</p>}
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-3 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
-      >
-        Ponów
-      </button>
+    <LoadError
+      title={describeError(error, fallback)}
+      detail={kept ? 'Poniżej ostatnie poprawnie pobrane dane.' : undefined}
+      onRetry={onRetry}
+      retryLabel="Ponów"
+    />
+  )
+}
+
+export type ReadoutItem = {
+  label: string
+  value: number
+  note?: ReactNode
+  /** kolor i kształt tylko dla odchylenia albo decyzji; `null` = stan normalny (grafit) */
+  kind?: StateKind | null
+}
+
+/**
+ * Pasek odczytów (jak wiersz wartości na ekranie przeglądowym): duże liczby tabelaryczne
+ * rozdzielone pionowymi liniami, podpis pod spodem. Od krawędzi do krawędzi panelu.
+ */
+export function ReadoutRow({ items, className = '' }: { items: ReadoutItem[]; className?: string }) {
+  return (
+    <dl className={`grid grid-cols-2 @xl:grid-cols-4 ${className}`}>
+      {items.map((item, index) => {
+        const kind = item.kind ?? null
+        const rule =
+          (index % 2 === 1 ? ' border-l' : '') +
+          (index === 2 ? ' border-t @xl:border-t-0 @xl:border-l' : '') +
+          (index === 3 ? ' border-t @xl:border-t-0' : '')
+        return (
+          <div key={item.label} className={`flex min-w-0 flex-col border-line py-5 pl-6 pr-4${rule}`}>
+            <dt className="label-caps order-2 mt-2.5">{item.label}</dt>
+            <dd className={`order-1 flex items-center gap-2 text-[28px] font-semibold leading-none tabular-nums ${kind ? stateTextClass(kind) : 'text-ink'}`}>
+              {kind && <StateShape kind={kind} size={12} />}
+              <RollingNumber value={item.value} />
+            </dd>
+            {item.note && <dd className="order-3 mt-1 text-xs text-mute">{item.note}</dd>}
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
+
+// --- wykresy -----------------------------------------------------------------------------
+
+/** Podziałka osi od `min` do `max` w krokach całkowitych (najwyżej `maxParts` przedziałów). */
+export function axisTicks(min: number, max: number, maxParts = 5): number[] {
+  if (min < 0) return [min, 0, max]
+  const span = max - min
+  for (const parts of [4, 5, 2]) {
+    if (parts > maxParts) continue
+    const step = span / parts
+    if (step > 0 && Number.isInteger(step)) return Array.from({ length: parts + 1 }, (_, index) => min + index * step)
+  }
+  return [min, max]
+}
+
+export function tickLabel(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+/** Dymek wykresu (hover / fokus klawiatury). Dane są też w tabeli dla czytnika — dymek tylko dla oka. */
+export function ChartTooltip({ x, y, width, children }: { x: number; y: number; width: number; children: ReactNode }) {
+  const flip = x > width / 2
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute z-10 w-max max-w-64 rounded-md bg-sheet px-3 py-2.5 text-xs text-ink shadow-raise ring-1 ring-line"
+      style={{ left: x, top: y, transform: `translateX(${flip ? 'calc(-100% - 14px)' : '14px'})` }}
+    >
+      {children}
     </div>
   )
 }
 
-export function Tile({ label, value, note, tone = 'neutral' }: { label: string; value: ReactNode; note?: ReactNode; tone?: 'neutral' | 'warn' | 'bad' | 'good' }) {
-  const valueColor = tone === 'bad' ? 'text-[#8f3936]' : tone === 'warn' ? 'text-[#805c12]' : tone === 'good' ? 'text-[#315b37]' : 'text-[#292d2b]'
+/** Wiersz dymka: znacznik serii, wartość (mocno), nazwa serii (słabiej). */
+export function TooltipRow({ swatch, value, label }: { swatch: ReactNode; value: ReactNode; label: string }) {
   return (
-    <div className="min-w-0 border border-[#e8e5de] bg-[#fbfaf7] p-4">
-      <dt className={labelClass}>{label}</dt>
-      <dd className={`mt-2 text-2xl font-bold tabular-nums sm:text-3xl ${valueColor}`}>{value}</dd>
-      {note && <dd className="mt-1 text-xs text-[#70756f]">{note}</dd>}
+    <div className="mt-1 flex items-center gap-2">
+      <span className="flex w-3 justify-center">{swatch}</span>
+      <span className="min-w-[2ch] text-right font-semibold tabular-nums text-ink">{value}</span>
+      <span className="text-ink-2">{label}</span>
     </div>
   )
 }

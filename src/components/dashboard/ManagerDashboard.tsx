@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchUsers, type HistoryEntry, type Item, type UserAccount } from '@/lib/api'
 import type { DashboardResponse } from '@/lib/dashboard'
-import { customRangeError, fetchDashboard, formatDateTime, type PeriodSelection, type PresetPeriod } from '@/lib/dashboardApi'
+import { customRangeError, fetchDashboard, type PeriodSelection, type PresetPeriod } from '@/lib/dashboardApi'
 import type { SectionId } from '@/lib/sections'
+import { Notice } from '../ui/feedback'
+import { RefreshIcon } from '../ui/icons'
+import { buttonClass, panelClass, segmentClass, segmentGroupClass } from '../ui/styles'
 import DashboardActivityLog from './DashboardActivity'
 import DashboardAttention from './DashboardAttention'
 import { ActivityCharts, SummaryTiles } from './DashboardSummary'
 import ShiftSummary from './ShiftSummary'
 import StockTrend from './StockTrend'
-import { BlockError, cardClass, inputClass, labelClass, Loading, secondaryButton } from './ui'
+import { BlockError, Field, inputClass, Loading } from './ui'
 import { useRemote } from './useRemote'
 
 /** Co tyle odświeżamy dashboard także bez zapisu w bazie (odznaki szkiców, okno „ostatnie 8 h”). */
@@ -29,9 +32,14 @@ type Props = {
   onUndo: (entry: HistoryEntry) => Promise<void>
 }
 
-const segment = (active: boolean) =>
-  'border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] ' +
-  (active ? 'border-[#315b37] bg-[#315b37] text-white' : 'border-[#d8d6cf] bg-white text-[#646b64] hover:bg-[#f8f7f3]')
+/** Godzina pobrania w strefie magazynu (HH:MM). */
+function clock(ms: number, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('pl-PL', { timeZone, hour: '2-digit', minute: '2-digit' }).format(new Date(ms))
+  } catch {
+    return new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' }).format(new Date(ms))
+  }
+}
 
 /** Dashboard kierownika (renderowany wyłącznie dla roli kierownik). */
 export default function ManagerDashboard({ updateTick, items, onNavigate, onForbidden, onUndo }: Props) {
@@ -82,71 +90,67 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
 
   const data = summary.data
   return (
-    <div className="space-y-5">
-      {/* A: okres, odświeżanie, czas pobrania */}
-      <section className={cardClass} aria-label="Okres i odświeżanie">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex" role="group" aria-label="Okres">
-              {PRESETS.map((preset, index) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  aria-pressed={period.kind === 'preset' && period.period === preset.id}
-                  onClick={() => choosePreset(preset.id)}
-                  className={segment(period.kind === 'preset' && period.period === preset.id) + (index ? ' -ml-px' : '')}
-                >
+    <div className="@container space-y-6">
+      {/* A: okres, odświeżanie, czas pobrania — cienki pasek nad wszystkim, czego dotyczy */}
+      <section className="space-y-4" aria-label="Okres i odświeżanie">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className={segmentGroupClass} role="group" aria-label="Okres">
+            {PRESETS.map((preset) => {
+              const active = period.kind === 'preset' && period.period === preset.id
+              return (
+                <button key={preset.id} type="button" aria-pressed={active} onClick={() => choosePreset(preset.id)} className={segmentClass(active)}>
                   {preset.label}
                 </button>
-              ))}
-              <button
-                type="button"
-                aria-pressed={period.kind === 'custom'}
-                aria-expanded={customOpen}
-                onClick={() => setCustomOpen((open) => !open)}
-                className={segment(period.kind === 'custom') + ' -ml-px'}
-              >
-                Własny
-              </button>
-            </div>
+              )
+            })}
+            <button
+              type="button"
+              aria-pressed={period.kind === 'custom'}
+              aria-expanded={customOpen}
+              onClick={() => setCustomOpen((open) => !open)}
+              className={segmentClass(period.kind === 'custom')}
+            >
+              Własny
+            </button>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs text-[#70756f]" aria-live="polite">
-              {summary.loading
-                ? 'Odświeżam…'
-                : summary.fetchedAt
-                  ? `Pobrano ${formatDateTime(new Date(summary.fetchedAt).toISOString(), timezone, true)}`
-                  : ''}
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] tabular-nums text-mute" aria-live="polite">
+              {summary.loading ? 'Odświeżam…' : summary.fetchedAt ? `Pobrano ${clock(summary.fetchedAt, timezone)}` : ''}
             </p>
-            <button type="button" onClick={() => setManualTick((value) => value + 1)} disabled={summary.loading} className={secondaryButton}>
+            <button
+              type="button"
+              onClick={() => setManualTick((value) => value + 1)}
+              disabled={summary.loading}
+              className={buttonClass('ghost', 'sm')}
+            >
+              <RefreshIcon size={16} />
               Odśwież
             </button>
           </div>
         </div>
+
         {customOpen && (
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+            className={`${panelClass} grid gap-4 px-6 py-5 @2xl:grid-cols-[minmax(0,14rem)_minmax(0,14rem)_auto] @2xl:items-end`}
             onSubmit={(event) => {
               event.preventDefault()
               applyCustom()
             }}
           >
-            <label className={labelClass}>
-              Od (dzień)
+            <Field label="Od (dzień)">
               <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} className={inputClass} required />
-            </label>
-            <label className={labelClass}>
-              Do (dzień, włącznie)
+            </Field>
+            <Field label="Do (dzień, włącznie)">
               <input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} className={inputClass} required />
-            </label>
-            <button type="submit" className={secondaryButton}>
+            </Field>
+            <button type="submit" className={buttonClass('primary', 'md') + ' @2xl:justify-self-start'}>
               Zastosuj
             </button>
-            <p className="text-xs text-[#70756f] sm:col-span-3">Dni kalendarzowe w strefie magazynu {timezone}; najwyżej 366 dni.</p>
+            <p className="text-xs text-mute @2xl:col-span-3">Dni kalendarzowe w strefie magazynu {timezone}; najwyżej 366 dni.</p>
             {customError && (
-              <p className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm text-[#8f3936] sm:col-span-3" role="alert">
+              <Notice tone="alarm" role="alert" className="@2xl:col-span-3">
                 {customError}
-              </p>
+              </Notice>
             )}
           </form>
         )}
@@ -156,12 +160,12 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
         <BlockError error={summary.error} fallback="Nie udało się pobrać podsumowania dashboardu." onRetry={summary.retry} kept={Boolean(data)} />
       )}
       {!data && summary.loading && (
-        <section className={cardClass}>
+        <div className={`${panelClass} p-6`}>
           <Loading text="Pobieram podsumowanie…" />
-        </section>
+        </div>
       )}
       {data && (
-        <div className={'space-y-5 ' + (summary.loading && summary.stale ? 'opacity-60' : '')}>
+        <div className={'space-y-6 transition-opacity duration-200 ' + (summary.loading && summary.stale ? 'opacity-60' : '')}>
           <SummaryTiles data={data} />
           <ActivityCharts data={data} onShowTrend={showTrend} />
           <DashboardAttention data={data} onNavigate={onNavigate} />
@@ -179,9 +183,9 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
         onUndo={onUndo}
       />
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid items-start gap-6 @4xl:grid-cols-2">
         <ShiftSummary refreshToken={refreshToken} timezone={timezone} onForbidden={onForbidden} />
-        <div ref={trendRef} className="min-w-0 scroll-mt-4">
+        <div ref={trendRef} className="min-w-0 scroll-mt-6">
           <StockTrend
             items={items}
             itemId={trendItemId}
