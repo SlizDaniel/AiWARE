@@ -419,6 +419,21 @@ describe('GeminiProvider — request shape', () => {
     expect(body.systemInstruction.parts[0].text).toContain('brak dodatkowych danych')
   })
 
+  it('instructs the model about quantities, ambiguity and unsupported operations', async () => {
+    const fetchMock = respondWith(geminiResponse([{ text: 'Ile kartonów pobrano?' }]))
+    await provider().interpret('wzięliśmy kartony', TOOLS, '{"items":[]}')
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body))
+    const instructions = body.systemInstruction.parts[0].text
+    expect(instructions).toContain('delta ujemna')
+    expect(instructions).toContain('delta dodatnia')
+    expect(instructions).toContain('Nie zgaduj ilości')
+    expect(instructions).toContain('Nie wybieraj najbliższego towaru')
+    expect(instructions).toContain('przeniesienie towaru')
+    expect(instructions).toContain('Nie wykonuj części polecenia')
+    expect(instructions).toContain('get_stock')
+    expect(instructions).toContain('recall_procedure')
+  })
+
   it('accepts a models/ prefix and rejects unsafe model names', async () => {
     const fetchMock = respondWith(geminiResponse([{ text: 'Ile?' }]))
     await provider('models/gemini-3.8-flash').interpret('komenda', TOOLS)

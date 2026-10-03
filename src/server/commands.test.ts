@@ -14,6 +14,7 @@ import {
   saveProposal,
 } from './db'
 import { HttpError } from './http'
+import { GeminiRequestError } from './llm'
 import { MOCK_WARNING, setAgentMode, updateAppSettings } from './settings'
 import { createPgliteDb, type Db } from './sql'
 import { TOOL_REGISTRY } from './tools'
@@ -461,17 +462,42 @@ function respond(name: string, args: Record<string, unknown>): FakeProvider {
 }
 
 describe('LLM registry contract (test_llm_registry.py)', () => {
+  it('explains rate limiting while preserving the offline demo path', async () => {
+    const response = await command('wzięliśmy paletę kartonów', fakeProvider(new GeminiRequestError('secret provider body', 'http', 429)))
+    expect(response.type).toBe('proposal')
+    expect(response.warning).toContain('limit zapytań')
+    expect(response.warning).toContain('parsera offline')
+    expect(response.warning).not.toContain('secret')
+    expect(await listAudit(db)).toEqual([])
+  })
+
+  it.each([
+    [new GeminiRequestError('secret', 'timeout'), 'wyznaczonym czasie'],
+    [new GeminiRequestError('secret', 'network'), 'połączyć'],
+    [new GeminiRequestError('secret', 'http', 403), 'klucz API'],
+    [new GeminiRequestError('secret', 'http', 400, 'API_KEY_INVALID'), 'klucz API'],
+    [new GeminiRequestError('secret', 'http', 404), 'model jest niedostępny'],
+    [new GeminiRequestError('secret', 'http', 503), 'chwilowo niedostępny'],
+  ])('explains provider failure without echoing its message: %s', async (error, expected) => {
+    const response = await command('wzięliśmy paletę kartonów', fakeProvider(error))
+    expect(response.type).toBe('proposal')
+    expect(response.warning).toContain(expected)
+    expect(response.warning).not.toContain('secret')
+  })
+
   it('passes every registry tool and the inventory context to the provider', async () => {
     const provider = respond('get_stock', { item_id: 1 })
     await command('naturalne pytanie', provider)
     const [call] = provider.calls
     expect(new Set(call.tools.map((tool) => tool.function.name))).toEqual(new Set(Object.keys(TOOL_REGISTRY)))
-    expect(call.context).toBe(
-      'W tym demo jedna paleta = 2 jednostki towaru. ' +
-        'id=3, nazwa=Folia stretch, ilość=15 rolka, minimum=6, lokalizacja=Strefa C-1, ' +
-        'id=1, nazwa=Kartony, ilość=54 szt, minimum=12, lokalizacja=Strefa A-1, ' +
-        'id=2, nazwa=Szkło, ilość=20 szt, minimum=8, lokalizacja=Strefa B-2',
-    )
+    expect(JSON.parse(call.context)).toEqual({
+      units_per_pallet: 2,
+      items: [
+        { id: 3, name: 'Folia stretch', quantity: 15, unit: 'rolka', minimum: 6, location: 'Strefa C-1' },
+        { id: 1, name: 'Kartony', quantity: 54, unit: 'szt', minimum: 12, location: 'Strefa A-1' },
+        { id: 2, name: 'Szkło', quantity: 20, unit: 'szt', minimum: 8, location: 'Strefa B-2' },
+      ],
+    })
   })
 
   it.each(['get_stock', 'get_location', 'check_reorder', 'recall_procedure'])(
