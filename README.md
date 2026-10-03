@@ -90,6 +90,9 @@ standardowy wątek HTTP kończy się osobno (nie jest siłowo zatrzymywany).
 W jednym procesie mogą trwać najwyżej dwa wywołania LLM. Zajęte oba miejsca
 oznaczają natychmiastowy fallback offline; miejsce zwalnia się dopiero po
 rzeczywistym zakończeniu żądania HTTP.
+JSON odpowiedzi i argumentów funkcji z powtórzonymi kluczami jest odrzucany
+(agent nie wybiera po cichu ostatniej wartości). Nadmierne zagnieżdżenie JSON
+również uruchamia fallback offline zamiast błędu serwera.
 
 Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
 LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
