@@ -168,6 +168,26 @@ Odpowiednik bez skryptu:
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --no-build --pull never
 ```
 
+### Jedna komenda bez Dockera
+
+Po przygotowaniu `.venv` backendu i `node_modules` frontendu zgodnie z instrukcją
+deweloperską uruchom z katalogu repo:
+
+```powershell
+.\backend\.venv\Scripts\python.exe .\scripts\start-demo-local.py
+# Po zatrzymaniu poprzedniej próby przez Ctrl+C:
+.\backend\.venv\Scripts\python.exe .\scripts\start-demo-local.py --reset
+```
+
+Demo otwórz pod http://127.0.0.1:5174. Backend pracuje na porcie 8001;
+konfiguracja proxy dla tego uruchomienia jest w `frontend/vite.demo.config.ts`.
+Importuj lokalny `demo-offline.xlsx` z głównego katalogu repo. Wpisuj komendy
+tekstowo — ten tryb blokuje chmurowe LLM i STT, także gdy masz klucze w otoczeniu.
+Skrypt nie pobiera zależności i korzysta z osobnej bazy `backend/magazyn-demo-local.db`.
+Zajęty port powoduje błąd przed resetem danych. Ctrl+C zatrzymuje oba serwery demo;
+restart bez `--reset` zachowuje wynik poprzedniej próby.
+Pełny scenariusz prezentacyjny nadal wymaga integracji kart 06/07/10.
+
 ### Włączenie demo przez zmienną środowiskową
 
 W `.env` ustaw **`DEMO_MODE=1`**, następnie uruchom `docker compose up -d`.

@@ -32,3 +32,9 @@ Mapa z karty 07 została zintegrowana z origin/main na branchu demo.
 GUI-check: komenda `strefa: kartony` → confirm → strefa widoczna na mapie;
 kliknięcie pokazuje Kartony 11 szt. Uruchomienie Dockera jest niezweryfikowane
 w tej sesji (brak CLI); składnia PowerShell i kolejność komend sprawdzone atrapą Docker.
+
+Lokalny launcher bez Dockera: `scripts/start-demo-local.py` uruchamia backend 8001
+i frontend 5174 z osobną bazą `backend/magazyn-demo-local.db`; `--reset` rozpoczyna
+nową próbę, Ctrl+C zatrzymuje serwery. Wymaga wcześniej przygotowanych zależności,
+nie pobiera niczego i wymusza brak chmurowego LLM/STT. Nie zastępuje próby Dockera
+ani brakujących funkcji kolegów z kart 06/07/10.
