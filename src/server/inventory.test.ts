@@ -15,6 +15,7 @@ import {
   exportInventoryXlsx,
   readInventoryFile,
   suggestMapping,
+  unguardFormula,
   validateAndMapRows,
   type InventoryExportItem,
 } from './inventory'
@@ -621,5 +622,30 @@ describe('integer range guard', () => {
     expect(() =>
       validateAndMapRows(['Nazwa', 'Ilość'], [['Kartony', '2147483648']], { name: 0, quantity: 1, minimum: null, location: null, unit: null }),
     ).toThrow('Wiersz 2: ilość i minimum nie mogą przekraczać 2147483647.')
+  })
+})
+
+describe('CSV formula injection guard', () => {
+  it('neutralises formula-like text on export and restores it on import', () => {
+    const items = [
+      { name: '=SUM(A1:A9)', quantity: 1, minimum: 0, unit: 'szt', location: '+A1' },
+      { name: '-folia', quantity: 2, minimum: 1, unit: '@szt', location: 'Strefa A-1' },
+    ]
+    const csv = strFromU8(exportInventoryCsv(items))
+    expect(csv).toContain("'=SUM(A1:A9)")
+    expect(csv).toContain("'+A1")
+    expect(csv).toContain("'-folia")
+    expect(csv).not.toMatch(/(^|;)[=+@-]/m)
+    const { headers, rows } = readInventoryFile('magazyn.csv', exportInventoryCsv(items))
+    const mapped = validateAndMapRows(headers, rows, { name: 0, quantity: 1, minimum: 2, location: 3, unit: 4 })
+    expect(mapped.map((item) => [item.name, item.location, item.unit])).toEqual([
+      ['=SUM(A1:A9)', '+A1', 'szt'],
+      ['-folia', 'Strefa A-1', '@szt'],
+    ])
+  })
+
+  it('leaves ordinary apostrophes alone', () => {
+    expect(unguardFormula("'Kartony")).toBe("'Kartony")
+    expect(unguardFormula("'=1+1")).toBe('=1+1')
   })
 })

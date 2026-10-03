@@ -852,7 +852,7 @@ export function validateAndMapRows(
     const rowNumber = offset + 2
     const valueFor = (field: ImportField): string => {
       const index = columnOf(field)
-      return index !== null && index < row.length ? pyStrip(row[index]) : ''
+      return index !== null && index < row.length ? unguardFormula(pyStrip(row[index])) : ''
     }
     const name = valueFor('name')
     const quantityText = valueFor('quantity')
@@ -897,9 +897,20 @@ function exportValues(item: InventoryExportItem): (string | number)[] {
   return EXPORT_COLUMNS.map(([, field]) => (item[field] as string | number | null | undefined) ?? '')
 }
 
+// Excel/LibreOffice evaluate text cells starting with these as formulas (CSV injection).
+const FORMULA_START = /^[=+\-@\t\r]/
+
+/** Reverses csvField's formula guard: "'=SUM(A1)" read back from our CSV export → "=SUM(A1)". */
+export function unguardFormula(text: string): string {
+  return text.startsWith("'") && FORMULA_START.test(text.slice(1)) ? text.slice(1) : text
+}
+
 function csvField(value: string | number): string {
-  const text = String(value)
-  return /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+  // A leading apostrophe makes spreadsheets show the text literally; import strips it again.
+  // Guarded cells are always quoted so the importer's sniffer reads `"`, not `'`, as the quote character.
+  const guarded = typeof value === 'string' && FORMULA_START.test(value)
+  const text = guarded ? `'${value}` : String(value)
+  return guarded || /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
 /** Excel-friendly UTF-8 Polish CSV: BOM, `;` separator, CRLF line endings. */
