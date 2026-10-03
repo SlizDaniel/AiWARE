@@ -56,6 +56,7 @@ export type CommandResponse =
 
 export type AgentMode = 'llm' | 'offline' | 'mock'
 export type AgentModeStatus = {
+  demo_mode: boolean
   mode: AgentMode
   effective_mode: AgentMode
   llm_available: boolean

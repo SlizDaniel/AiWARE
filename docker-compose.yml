@@ -5,6 +5,8 @@ services:
       - "8000:8000"
     environment:
       MAGAZYNIER_DB: /data/magazyn.db
+      DEMO_MODE: ${DEMO_MODE:-0}
+      DEMO_DB: /data/magazyn-demo.db
       # Ustawienia LLM; brak klucza automatycznie przełącza komendy na parser offline.
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODE: ${LLM_MODE:-llm}

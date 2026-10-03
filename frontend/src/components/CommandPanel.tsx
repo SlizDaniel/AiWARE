@@ -30,12 +30,14 @@ export default function CommandPanel({ onApplied }: Props) {
   const [responseWarning, setResponseWarning] = useState<string | null>(null)
   const [mode, setMode] = useState<AgentMode>('llm')
   const [modeWarning, setModeWarning] = useState<string | null>(null)
+  const [demoMode, setDemoMode] = useState(false)
 
   useEffect(() => {
     void fetchAgentMode()
       .then((status) => {
         setMode(status.mode)
         setModeWarning(status.warning)
+        setDemoMode(status.demo_mode)
       })
       .catch(() => setModeWarning('Nie udało się pobrać trybu agenta.'))
   }, [])
@@ -106,6 +108,7 @@ export default function CommandPanel({ onApplied }: Props) {
             onChange={(event) => void changeMode(event.target.value as AgentMode)}
             className="border border-[#d8d6cf] bg-white px-2 py-1"
             aria-label="Tryb agenta"
+            disabled={demoMode}
           >
             <option value="llm">LLM</option>
             <option value="offline">Offline</option>

@@ -80,14 +80,66 @@ z JSON-em `{"mode":"llm"}`, `{"mode":"offline"}` lub `{"mode":"mock"}`.
 
 Warstwa providerów przyjmuje standardowe schematy funkcji OpenAI i waliduje odpowiedź przed
 przekazaniem wywołania dalej. Błędna odpowiedź lub błąd sieci wraca do parsera offline;
-zmiana stanu nadal wymaga zatwierdzenia karty. Tryb `mock` używa obecnie parsera offline;
-pełny seedowany scenariusz demo należy do karty 13.
+zmiana stanu nadal wymaga zatwierdzenia karty. Selektor `mock` używa parsera offline;
+pełne demo z osobną bazą włącza `DEMO_MODE=1` przy starcie backendu.
 
 Parser offline i LLM korzystają z tego samego rejestru narzędzi z karty 02.
 LLM otrzymuje schematy z rejestru; odczyty zwracają odpowiedź, a zapisy tworzą
 kartę wymagającą zatwierdzenia. Oryginalną komendę do audytu dostarcza serwer.
 Tryb offline nie wymaga zewnętrznych API. Integracja chmurowa została sprawdzona
 na kontrolowanych odpowiedziach API; próba z rzeczywistym modelem wymaga klucza.
+
+## Demo offline (karta 13)
+
+W `.env` ustaw **`DEMO_MODE=1`**, następnie uruchom `docker compose up -d`.
+Przed odłączeniem internetu przygotuj obrazy przez `docker compose build` — pierwszy
+build pobiera zależności. Zbudowana aplikacja działa lokalnie bez kluczy LLM/STT.
+Demo wymusza parser offline, nawet z ustawionym kluczem LLM, i blokuje zmianę trybu
+przez API oraz selektor. Wpisuj komendy w istniejące pole tekstowe (fallback STT).
+
+W PowerShell bez Dockera (z katalogu `backend`, przy zainstalowanych zależnościach):
+
+```powershell
+$env:DEMO_MODE = '1'
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+Demo używa `backend/magazyn-demo.db` (Docker: `/data/magazyn-demo.db`),
+nie zwykłego `magazyn.db`. Opcjonalny `DEMO_DB` wskazuje osobny plik lokalny.
+Nowa baza zawiera Kartony 13/minimum 12, Szkło 20/8, Folię 15/6 i procedurę
+pakowania szkła. Strefy, historia i kolejka są początkowo puste. Restart zachowuje
+zmiany; reset jest jawny i odmawia wyczyszczenia zwykłej, nieoznaczonej bazy.
+
+**Nowa próba — zatrzymaj backend przed resetem:**
+
+```powershell
+# Lokalnie, z backend (ten sam DEMO_DB co przy uruchomieniu):
+.\.venv\Scripts\python.exe -m app.demo --reset
+```
+
+```bash
+# Docker, z katalogu repo:
+docker compose stop backend
+docker compose run --rm --no-deps backend python -m app.demo --reset
+docker compose up -d
+```
+
+Scenariusz próby:
+
+1. Importuj **`demo-offline.xlsx`** z repo, sprawdź mapowanie i zatwierdź.
+   Ten wariant ma Kartony 13; oryginalny `demo-magazyn.xlsx` zachowuje 54,
+   więc jedna paleta z niego nie przekroczy minimum 12.
+2. Wpisz `strefa: kartony`, `strefa: szkło`, `strefa: folia`; zatwierdź każdą kartę.
+3. `wzięliśmy paletę kartonów` → karta 13→11 → zatwierdź → audyt i szkic 50 szt.
+4. Otwórz Kolejkę i zatwierdź szkic; to nie wysyła zamówienia do ERP.
+5. `ile mamy szkła?`, `gdzie leży szkło?`, `Magu, jak pakujemy szkło?` → odpowiedzi.
+6. Możesz dopisać wiedzę: `zapamiętaj: szkło pakujemy z przekładkami` → zatwierdź.
+
+Test `backend/tests/test_demo.py` sprawdza HTTP: import, strefy, stan, audyt,
+reorder, lokalizację, procedurę, restart i bezpieczny reset. Blokuje HTTP do sieci
+i połączenia socket poza loopback (loopback jest potrzebny pętli asyncio na Windows).
+Pełny wizualny scenariusz z mapą, jej podświetleniem i undo wymaga jeszcze
+integracji kart 06/07/10; tryb demo nie zastępuje tych funkcji.
 
 ## Sekcje UI
 

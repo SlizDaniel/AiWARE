@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import db
+from app.demo import demo_db_path, init_demo_db
 from app.agent_contract import normalize_call, tool_schemas
 from app.llm import LLMProviderError, provider_from_env
 
@@ -64,15 +65,21 @@ class ImportConfirm(BaseModel):
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    path = str(db_path or os.environ.get("MAGAZYNIER_DB") or DEFAULT_DB_PATH)
+    demo_mode = os.environ.get("DEMO_MODE", "0").strip().lower() in {"1", "true", "yes", "on"}
+    path = str(db_path or (demo_db_path() if demo_mode else os.environ.get("MAGAZYNIER_DB") or DEFAULT_DB_PATH))
 
     requested_mode = os.environ.get("LLM_MODE", "llm").lower()
     if requested_mode not in {"llm", "offline", "mock"}:
         requested_mode = "llm"
+    if demo_mode:
+        requested_mode = "mock"
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        db.init_db(path)
+        if demo_mode:
+            init_demo_db(path)
+        else:
+            db.init_db(path)
         yield
 
     app = FastAPI(title="MAGAZYNIER", version="0.2.0", lifespan=lifespan)
@@ -88,7 +95,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"status": "ok", "mode": "offline-parser"}
+        return {"status": "ok", "mode": get_agent_mode()["effective_mode"], "demo_mode": demo_mode}
 
     @app.get("/api/agent-mode")
     def get_agent_mode() -> dict:
@@ -99,19 +106,21 @@ def create_app(db_path: str | None = None) -> FastAPI:
             effective_mode = "offline"
             warning = "Brak LLM_API_KEY — agent działa w trybie offline."
         elif requested_mode == "mock":
-            # Karta 13 rozszerzy mock o pełną, seedowaną ścieżkę demo.
             effective_mode = "offline"
-            warning = "Tryb mock używa na razie parsera offline."
+            warning = "Demo offline — osobna baza, komendy tekstowe, bez zewnętrznych API." if demo_mode else "Mock: parser offline. Seed demo włączysz przez DEMO_MODE=1 przy starcie."
         return {
             "mode": requested_mode,
             "effective_mode": effective_mode,
             "llm_available": key_present,
             "warning": warning,
+            "demo_mode": demo_mode,
         }
 
     @app.put("/api/agent-mode")
     def set_agent_mode(body: AgentModeIn) -> dict:
         nonlocal requested_mode
+        if demo_mode and body.mode != "mock":
+            raise HTTPException(status_code=409, detail="Demo offline jest zablokowane na czas tej sesji. Wyłącz DEMO_MODE i uruchom backend ponownie.")
         requested_mode = body.mode
         return get_agent_mode()
 
@@ -235,7 +244,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             if requested == "llm":
                 warning = "Brak LLM_API_KEY — użyto parsera offline."
             elif requested == "mock":
-                warning = "Tryb mock używa na razie parsera offline."
+                warning = get_agent_mode()["warning"]
 
         response = await dispatch_command(body, parsed)
         if warning:
