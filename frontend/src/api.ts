@@ -48,8 +48,16 @@ export type Proposal = {
 }
 
 export type CommandResponse =
-  | { type: 'proposal'; proposal: Proposal }
-  | { type: 'unknown'; text: string }
+  | { type: 'proposal'; proposal: Proposal; warning?: string }
+  | { type: 'unknown'; text: string; message?: string; warning?: string }
+
+export type AgentMode = 'llm' | 'offline' | 'mock'
+export type AgentModeStatus = {
+  mode: AgentMode
+  effective_mode: AgentMode | 'offline'
+  llm_available: boolean
+  warning: string | null
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
@@ -70,6 +78,18 @@ export function sendCommand(text: string): Promise<CommandResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   }).then((r) => json<CommandResponse>(r))
+}
+
+export function fetchAgentMode(): Promise<AgentModeStatus> {
+  return fetch('/api/agent-mode').then((r) => json<AgentModeStatus>(r))
+}
+
+export function updateAgentMode(mode: AgentMode): Promise<AgentModeStatus> {
+  return fetch('/api/agent-mode', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  }).then((r) => json<AgentModeStatus>(r))
 }
 
 export function confirmProposal(id: string): Promise<{

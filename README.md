@@ -58,10 +58,18 @@ frontend/   React + Vite + Tailwind (6 sekcji: Mapa, Stany, Kolejka, Historia, P
 docs/       PRD i karty tasków (single source of truth)
 ```
 
-## Konfiguracja
+## Tryb agenta
 
-`.env.example` — placeholder `LLM_API_KEY` (nieużywany w tracerze; parser LLM dołączy w karcie 02).
-Tracer działa w 100% offline — żadna zewnętrzna zależność nie jest potrzebna do dema.
+Skopiuj `.env.example` do `.env`. Ustaw `LLM_API_KEY`, aby włączyć chmurowe function calling;
+`LLM_BASE_URL` i `LLM_MODEL` pozwalają wskazać zgodny endpoint i model. Bez klucza aplikacja
+automatycznie używa parsera offline i pokazuje ostrzeżenie. Tryb można zmienić bez restartu
+przez selektor w panelu komend albo API: `GET /api/agent-mode` i `PUT /api/agent-mode`
+z JSON-em `{"mode":"llm"}`, `{"mode":"offline"}` lub `{"mode":"mock"}`.
+
+Warstwa providerów przyjmuje standardowe schematy funkcji OpenAI i waliduje odpowiedź przed
+przekazaniem wywołania dalej. Błędna odpowiedź lub błąd sieci wraca do parsera offline;
+zmiana stanu nadal wymaga zatwierdzenia karty. Tryb `mock` używa obecnie parsera offline;
+pełny seedowany scenariusz demo należy do karty 13.
 
 ## Sekcje UI
 

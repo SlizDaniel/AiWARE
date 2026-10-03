@@ -1,17 +1,47 @@
-import { useState } from 'react'
-import { confirmProposal, sendCommand, type Proposal, type ReorderDraft } from '../api'
+import { useEffect, useState } from 'react'
+import {
+  confirmProposal,
+  fetchAgentMode,
+  sendCommand,
+  updateAgentMode,
+  type AgentMode,
+  type Proposal,
+  type ReorderDraft,
+} from '../api'
 
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
 }
 
-type Unknown = { kind: 'unknown'; text: string }
-type State = { kind: 'proposal'; proposal: Proposal } | Unknown | null
+type Unknown = { kind: 'unknown'; text: string; message?: string; warning?: string }
+type State = { kind: 'proposal'; proposal: Proposal; warning?: string } | Unknown | null
 
 export default function CommandPanel({ onApplied }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<AgentMode>('llm')
+  const [modeWarning, setModeWarning] = useState<string | null>(null)
+
+  useEffect(() => {
+    void fetchAgentMode()
+      .then((status) => {
+        setMode(status.mode)
+        setModeWarning(status.warning)
+      })
+      .catch(() => setModeWarning('Nie udało się pobrać trybu agenta.'))
+  }, [])
+
+  const changeMode = async (nextMode: AgentMode) => {
+    setMode(nextMode)
+    try {
+      const status = await updateAgentMode(nextMode)
+      setMode(status.mode)
+      setModeWarning(status.warning)
+    } catch {
+      setModeWarning('Nie udało się zmienić trybu agenta.')
+    }
+  }
 
   const submit = async () => {
     const t = text.trim()
@@ -19,10 +49,10 @@ export default function CommandPanel({ onApplied }: Props) {
     setBusy(true)
     try {
       const res = await sendCommand(t)
-      if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal })
-      else setState({ kind: 'unknown', text: res.text })
+      if (res.type === 'proposal') setState({ kind: 'proposal', proposal: res.proposal, warning: res.warning })
+      else setState({ kind: 'unknown', text: res.text, message: res.message, warning: res.warning })
     } catch {
-      setState({ kind: 'unknown', text: t })
+      setState({ kind: 'unknown', text: t, message: 'Nie udało się połączyć z backendem.' })
     } finally {
       setBusy(false)
     }
@@ -50,10 +80,23 @@ export default function CommandPanel({ onApplied }: Props) {
     <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-          tryb tekstowy · głos (STT) w kolejnej karcie
-        </span>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          Tryb agenta
+          <select
+            value={mode}
+            onChange={(event) => void changeMode(event.target.value as AgentMode)}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1"
+            aria-label="Tryb agenta"
+          >
+            <option value="llm">LLM</option>
+            <option value="offline">Offline</option>
+            <option value="mock">Mock</option>
+          </select>
+        </label>
       </div>
+
+      {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
+      <p className="mt-1 text-xs text-slate-400">Komenda tekstowa · głos (STT) w kolejnej karcie</p>
 
       <form
         className="mt-4 flex gap-3"
@@ -82,13 +125,13 @@ export default function CommandPanel({ onApplied }: Props) {
       )}
       {state?.kind === 'unknown' && (
         <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-5">
-          <div className="font-semibold text-amber-900">Nie rozumiem tej komendy</div>
-          <p className="mt-1 text-sm text-amber-800">
-            W tym tracerze rozumiem na seedowanych pozycjach:{' '}
-            <span className="font-mono">„wzięliśmy paletę X”</span> oraz{' '}
-            <span className="font-mono">„doszła paleta X”</span>, gdzie X to np. kartony, szkło, folia.
-          </p>
+          <div className="font-semibold text-amber-900">Potrzebuję doprecyzowania</div>
+          <p className="mt-1 text-sm text-amber-800">{state.message ?? `Nie rozpoznano polecenia: „${state.text}”.`}</p>
+          {state.warning && <p className="mt-2 text-sm text-amber-700">{state.warning}</p>}
         </div>
+      )}
+      {state?.kind === 'proposal' && state.warning && (
+        <p className="mt-3 text-sm text-amber-700">{state.warning}</p>
       )}
     </section>
   )
