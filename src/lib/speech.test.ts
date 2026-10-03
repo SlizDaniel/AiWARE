@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  abortRecognition,
   changedResults,
   commandFromServerText,
   createRecognition,
@@ -16,12 +17,36 @@ import {
   ttsSpeaking,
   voiceDecision,
   type SpeechRecognitionEventLike,
+  type SpeechRecognitionLike,
 } from './speech'
 
 function results(...items: [string, boolean][]) {
   const list = items.map(([transcript, isFinal]) => Object.assign([{ transcript, confidence: 0.9 }], { isFinal }))
   return list as unknown as SpeechRecognitionEventLike['results']
 }
+
+describe('granica między komendą a decyzją o karcie', () => {
+  test('zamyka starą sesję i odcina jej kolejne wyniki', () => {
+    const oldCommand = vi.fn()
+    const recognition: SpeechRecognitionLike = {
+      lang: 'pl-PL', continuous: true, interimResults: true, maxAlternatives: 1,
+      onresult: oldCommand, onerror: vi.fn(), onend: vi.fn(), onstart: vi.fn(), onspeechstart: vi.fn(),
+      start: vi.fn(), stop: vi.fn(), abort: vi.fn(),
+    }
+    abortRecognition(recognition)
+    expect(recognition.abort).toHaveBeenCalledOnce()
+    recognition.onresult?.({ resultIndex: 0, results: results(['Magu wzięliśmy paletę kartonów zatwierdź', true]) })
+    expect(oldCommand).not.toHaveBeenCalled()
+    expect([recognition.onresult, recognition.onerror, recognition.onend, recognition.onstart, recognition.onspeechstart]).toEqual([null, null, null, null, null])
+    expect(decideWakeAction({ transcript: 'zatwierdź', prefix: 'Magu', isFinal: true, armed: false, proposalPending: true, proposalFresh: true })).toEqual({ type: 'confirm' })
+  })
+
+  test('pełna komenda z dopiskiem zatwierdź nie jest zgodą na zapis', () => {
+    expect(voiceDecision('wzięliśmy paletę kartonów zatwierdź', 'Magu')).toBeNull()
+    expect(voiceDecision('zatwierdź', 'Magu')).toBe('confirm')
+    expect(voiceDecision('Magu, odrzuć', 'Magu')).toBe('reject')
+  })
+})
 
 describe('normalizeSpeech', () => {
   test('lowercases, strips Polish diacritics and punctuation', () => {

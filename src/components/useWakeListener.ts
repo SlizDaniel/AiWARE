@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { transcribeAudio } from '@/lib/api'
 import { createOrderedQueue } from '@/lib/orderedQueue'
 import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
+import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
+import { createSpeechCommandBuffer } from '@/lib/speechCommandBuffer'
 import {
+  abortRecognition,
   commandFromServerText,
   createRecognition,
   decideWakeAction,
@@ -81,6 +84,8 @@ type Options = {
    * tekst przeglądarki, bez nagrywania PCM i bez wysyłania dźwięku.
    */
   refine: boolean
+  /** Agent kończy poprzednią komendę — nie przechwytuj kolejnej wypowiedzi. */
+  paused: boolean
   /** karta zmiany czeka (`pending`) i jest świeża (`fresh` — decyzja także bez prefiksu) */
   cardStatus: () => CardStatus
   onEvent: (event: WakeEvent) => void
@@ -92,7 +97,7 @@ type Options = {
  * z prefiksem idzie do STT na serwerze (dokładniejszy tekst komendy). Decyzje o karcie
  * zmiany („zatwierdź”/„odrzuć”) rozpoznaje sama przeglądarka. Wstrzymany, gdy mówi TTS.
  */
-export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardStatus, onEvent }: Options) {
+export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused, cardStatus, onEvent }: Options) {
   const supported = useSpeechRecognitionSupported()
   // na serwerze i przy hydratacji „wyłączony” — mikrofon rusza dopiero w przeglądarce
   const userOff = useSyncExternalStore(subscribeOff, readOff, () => true)
@@ -111,12 +116,15 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
   const armedUntilRef = useRef(0)
   const blockedUntilRef = useRef(0)
   const networkErrorsRef = useRef(0)
-  const optionsRef = useRef({ prefix, cardStatus, onEvent, refine: refineEnabled })
+  const cuePlayedRef = useRef(false)
+  const hearingCueRef = useRef(false)
+  const optionsRef = useRef({ prefix, cardStatus, onEvent, refine: refineEnabled, paused })
   const refineQueueRef = useRef(createOrderedQueue<string>())
   const pendingRefinesRef = useRef(0)
+  const commandBufferRef = useRef<ReturnType<typeof createSpeechCommandBuffer> | null>(null)
 
   useEffect(() => {
-    optionsRef.current = { prefix, cardStatus, onEvent, refine: refineEnabled }
+    optionsRef.current = { prefix, cardStatus, onEvent, refine: refineEnabled, paused }
   })
 
   const recorder = useCallback(() => {
@@ -134,23 +142,18 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     const recognition = recognitionRef.current
     recognitionRef.current = null
     if (!recognition) return
-    recognition.onresult = null
-    recognition.onerror = null
-    recognition.onend = null
-    recognition.onspeechstart = null
-    try {
-      recognition.abort()
-    } catch {
-      /* już zatrzymany */
-    }
+    abortRecognition(recognition)
   }, [clearTentative])
 
   /** Koniec nasłuchu: rozpoznawanie, nagrywanie i mikrofon zwolnione, trwające STT porzucone. */
   const stopAll = useCallback(() => {
+    commandBufferRef.current?.clear()
     sessionRef.current++
     refineQueueRef.current.cancel()
     pendingRefinesRef.current = 0
     armedUntilRef.current = 0
+    cuePlayedRef.current = false
+    hearingCueRef.current = false
     stopRecognition()
   }, [stopRecognition])
 
@@ -161,6 +164,12 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     },
     [stopAll],
   )
+
+  // Nie czekaj na nadzorcę: stara sesja może jeszcze dopisać słowa do tego samego wyniku.
+  const resetForReply = useCallback(() => {
+    stopAll()
+    setPhase('starting')
+  }, [stopAll])
 
   // Fraza z prefiksem: najpierw tekst przeglądarki w polu, potem STT serwera z nagrania.
   // Transkrypcje biegną równolegle, ale komendy wychodzą w kolejności wypowiedzenia (kolejka);
@@ -198,6 +207,21 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     })
   }, [])
 
+  const commandBuffer = useCallback(() => {
+    commandBufferRef.current ??= createSpeechCommandBuffer((text, startMs) => {
+      armedUntilRef.current = 0
+      hearingCueRef.current = false
+      if (optionsRef.current.refine) {
+        const now = recorderRef.current?.now() ?? 0
+        refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), text)
+      } else {
+        setPhase('listening')
+        optionsRef.current.onEvent({ type: 'submit', text })
+      }
+    })
+    return commandBufferRef.current
+  }, [refine])
+
   const handle = useCallback(
     (transcript: string, isFinal: boolean, startMs: number | null, index: number) => {
       const { prefix: currentPrefix, cardStatus: card, onEvent: emit } = optionsRef.current
@@ -207,7 +231,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
         clearTentative()
         return
       }
-      const armed = Date.now() < armedUntilRef.current
+      const armed = Date.now() < armedUntilRef.current || Boolean(commandBufferRef.current?.pending)
       const status = card()
       const action = decideWakeAction({
         transcript,
@@ -217,6 +241,10 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
         proposalPending: status.pending,
         proposalFresh: status.fresh,
       })
+      if (action.type === 'armed' || action.type === 'interim' || action.type === 'submit') {
+        if (!hearingCueRef.current) playListeningCue()
+        hearingCueRef.current = true
+      } else if (action.type === 'confirm' || action.type === 'reject') hearingCueRef.current = false
       if (action.type === 'tentative') {
         const current = tentativeRef.current
         if (current && current.index === index && current.text === transcript) return
@@ -225,6 +253,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
           tentativeRef.current = null
           if (!optionsRef.current.cardStatus().pending) return
           decidedIndexRef.current = index
+          commandBufferRef.current?.clear()
           armedUntilRef.current = 0
           setPhase('listening')
           optionsRef.current.onEvent({ type: action.decision })
@@ -237,28 +266,26 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
         if (isFinal && !armed) setPhase('listening')
         return
       }
-      if (action.type === 'armed') armedUntilRef.current = Date.now() + ARMED_MS
+      if (action.type === 'submit' || (action.type === 'interim' && (action.text || commandBufferRef.current?.pending))) {
+        const text = commandBuffer().update(index, action.text, isFinal, startMs)
+        setPhase('hearing')
+        emit({ type: 'interim', text })
+        return
+      }
+      if (action.type === 'armed') {
+        commandBufferRef.current?.clear()
+        armedUntilRef.current = Date.now() + ARMED_MS
+      }
       else if (action.type !== 'interim') armedUntilRef.current = 0
-      if (action.type === 'submit' && !optionsRef.current.refine) {
-        // tekst przeglądarki jest ostateczny — komenda od razu, bez nagrania i serwera
-        setPhase('listening')
-        emit(action)
-        return
-      }
-      if (action.type === 'submit') {
-        emit({ type: 'interim', text: action.text })
-        const now = recorderRef.current?.now() ?? 0
-        refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), action.text)
-        return
-      }
+      if (action.type === 'confirm' || action.type === 'reject') commandBufferRef.current?.clear()
       setPhase(action.type === 'interim' || action.type === 'armed' ? 'hearing' : 'listening')
       emit(action)
     },
-    [clearTentative, refine],
+    [clearTentative, commandBuffer],
   )
 
   const startRecognition = useCallback(() => {
-    if (recognitionRef.current) return
+    if (recognitionRef.current || optionsRef.current.paused || pendingRefinesRef.current > 0) return
     const recognition = createRecognition({ continuous: true })
     if (!recognition) return
     // nowa sesja przeglądarki numeruje wyniki od zera
@@ -266,10 +293,17 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     speechStartRef.current = null
     decidedIndexRef.current = -1
     clearTentative()
+    recognition.onstart = () => {
+      if (recognitionRef.current !== recognition) return
+      if (!cuePlayedRef.current) playListeningCue()
+      cuePlayedRef.current = true
+      setPhase((current) => (current === 'hearing' || current === 'refining' ? current : 'listening'))
+    }
     recognition.onspeechstart = () => {
       speechStartRef.current = recorderRef.current?.now() ?? null
     }
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition || optionsRef.current.paused) return
       networkErrorsRef.current = 0
       const starts = utteranceStartRef.current
       const entries = resultEntries(event)
@@ -279,7 +313,11 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
         starts.set(entry.index, speechStartRef.current ?? recorderRef.current?.now() ?? 0)
         speechStartRef.current = null
       }
-      for (const entry of entries) if (entry.isFinal) handle(entry.transcript, true, starts.get(entry.index) ?? null, entry.index)
+      for (const entry of entries) {
+        if (recognitionRef.current !== recognition) return
+        if (entry.isFinal) handle(entry.transcript, true, starts.get(entry.index) ?? null, entry.index)
+      }
+      if (recognitionRef.current !== recognition) return
       const interim = entries.filter((entry) => !entry.isFinal)
       if (interim.length) {
         handle(
@@ -307,12 +345,16 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
       // no-speech / aborted → nadzorca wznowi nasłuch
     }
     recognition.onend = () => {
-      if (recognitionRef.current === recognition) recognitionRef.current = null
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null
+        commandBufferRef.current?.flush()
+        commandBufferRef.current?.clear()
+        if (pendingRefinesRef.current === 0) setPhase(Date.now() < armedUntilRef.current ? 'hearing' : 'listening')
+      }
     }
     try {
       recognition.start()
       recognitionRef.current = recognition
-      setPhase((current) => (current === 'hearing' || current === 'refining' ? current : 'listening'))
     } catch {
       blockedUntilRef.current = Date.now() + 1000
     }
@@ -320,6 +362,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
 
   /** Start w obsłudze kliknięcia — część przeglądarek wymaga gestu (mikrofon, AudioContext). */
   const startNow = useCallback(() => {
+    unlockListeningCue()
     networkErrorsRef.current = 0
     blockedUntilRef.current = 0
     if (optionsRef.current.refine) {
@@ -354,13 +397,21 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     }
     const tick = () => {
       setAudioSuspended(recorderRef.current?.suspended ?? false)
-      if (ttsSpeaking()) {
+      if (optionsRef.current.paused || ttsSpeaking()) {
+        commandBufferRef.current?.clear()
+        cuePlayedRef.current = false
         if (recognitionRef.current) stopRecognition()
         setPhase('paused')
         return
       }
-      if (armedUntilRef.current && Date.now() > armedUntilRef.current) {
+      if (pendingRefinesRef.current > 0) {
+        cuePlayedRef.current = false
+        if (recognitionRef.current) stopRecognition()
+        return
+      }
+      if (armedUntilRef.current && Date.now() > armedUntilRef.current && !commandBufferRef.current?.pending) {
         armedUntilRef.current = 0
+        hearingCueRef.current = false
         setPhase('listening')
       }
       if (!recognitionRef.current && Date.now() >= blockedUntilRef.current) startRecognition()
@@ -404,5 +455,6 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, cardSt
     turnOff,
     turnOn,
     retry,
+    resetForReply,
   }
 }
