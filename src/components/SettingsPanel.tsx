@@ -282,7 +282,7 @@ function SettingsForm({
             />
             <span>
               <span className="font-semibold text-[#454b46]">Czytaj odpowiedzi głosem</span>
-              <span className={hint}>Maks. 2 zdania, polski głos przeglądarki. Domyślnie wyłączone — ekran przede wszystkim.</span>
+              <span className={hint}>Maks. 2 zdania, polski głos przeglądarki. Domyślnie wyłączone. Brak polskiego głosu lub tryb demo offline oznacza ciszę.</span>
             </span>
           </label>
         </div>
@@ -316,7 +316,8 @@ function SettingsForm({
         <button
           type="button"
           onClick={() => speak('Zapisane. Kartony: 52. Propozycję zamówienia masz w kolejce.')}
-          className="border border-[#d8d6cf] bg-white px-3 py-2 text-sm font-semibold text-[#454b46] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]"
+          disabled={demoMode}
+          className="border border-[#d8d6cf] bg-white px-3 py-2 text-sm font-semibold text-[#454b46] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Odsłuchaj próbkę głosu
         </button>

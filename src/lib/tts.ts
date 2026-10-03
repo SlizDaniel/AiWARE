@@ -4,9 +4,9 @@
 export const MAX_SPOKEN_SENTENCES = 2
 export const MAX_SPOKEN_CHARS = 220
 
-// Granica zdania: . ! ? … zakończone spacją, po której NIE idzie mała litera
-// (dzięki temu „54 szt. kartonów” czy „np. szkło” nie dzielą zdania).
-const SENTENCE_BOUNDARY = /(?<=[.!?…])\s+(?!\p{Ll})/u
+// Początek kolejnego zdania nie musi mieć wielkiej litery. Typowe skróty
+// magazynowe („54 szt. kartonów”, „np. szkło”) nie kończą zdania.
+const SENTENCE_BOUNDARY = /(?<=[!?…])\s+|(?<=\.)\s+(?=\p{Lu})|(?<=\.)(?<!\b(?:szt|np|tj|tzn|itp|itd|m\.in)\.)\s+/u
 
 function normalizeForSpeech(text: string): string {
   return text
@@ -40,10 +40,19 @@ type VoiceLike = Pick<SpeechSynthesisVoice, 'lang' | 'localService' | 'default'>
 
 /** Polski głos: najpierw pl-PL, potem dowolny pl-*, lokalne przed sieciowymi. */
 export function pickPolishVoice<V extends VoiceLike>(voices: readonly V[]): V | null {
-  const polish = voices.filter((voice) => voice.lang.replace('_', '-').toLowerCase().startsWith('pl'))
+  const polish = voices.filter((voice) => /^pl(?:-|$)/i.test(voice.lang.replace('_', '-')))
   const score = (voice: V) =>
     (voice.lang.replace('_', '-').toLowerCase() === 'pl-pl' ? 2 : 0) + (voice.localService ? 1 : 0)
   return [...polish].sort((a, b) => score(b) - score(a))[0] ?? null
+}
+
+/** Przerywa wypowiedź po wyłączeniu TTS lub opuszczeniu aplikacji. */
+export function stopSpeaking(): void {
+  try {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+  } catch {
+    /* Brak silnika głosu nie wpływa na aplikację. */
+  }
 }
 
 /** Czyta krótki komunikat po polsku. Brak wsparcia lub błąd → cicho nic nie robi. */
@@ -54,10 +63,11 @@ export function speak(text: string): void {
     const line = truncateForSpeech(text)
     if (!line) return
     const synth = window.speechSynthesis
+    const voice = pickPolishVoice(synth.getVoices())
+    if (!voice) return
     const utterance = new SpeechSynthesisUtterance(line)
     utterance.lang = 'pl-PL'
-    const voice = pickPolishVoice(synth.getVoices())
-    if (voice) utterance.voice = voice
+    utterance.voice = voice
     utterance.onerror = () => {
       /* cisza zamiast błędu */
     }

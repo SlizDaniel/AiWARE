@@ -99,7 +99,8 @@ i są zapisane w bazie (`GET` / `PATCH /api/settings`):
 - **Źródło danych:** wbudowana baza albo import z pliku (otwiera panel importu w Stanach).
 - **Domyślne minimum** nowych pozycji (import bez kolumny minimum, karta „Nowa pozycja”); istniejące progi zostają.
 - **Tryb głosu:** mikrofon po naciśnięciu albo tylko tekst (wtedy `/api/stt` zwraca 503, a mikrofon jest wyłączony).
-- **Odczyt głosem** (TTS przeglądarki) i **domyślna ilość** w szkicu zamówienia.
+- **Odczyt głosem:** domyślnie wyłączony; po włączeniu i zapisaniu ustawień czyta odpowiedzi i potwierdzenia zmian (maks. 2 zdania, 220 znaków plus ewentualny wielokropek). Wymaga polskiego głosu udostępnionego przez przeglądarkę/system. Brak głosu, błąd syntezy lub `DEMO_MODE=1` oznacza ciszę; tekst nadal jest widoczny. Wyłączenie i zapisanie ustawienia przerywa trwającą wypowiedź. Przycisk „Odsłuchaj próbkę głosu” pozwala sprawdzić głos przed włączeniem; w demo offline jest wyłączony.
+- **Domyślna ilość** w szkicu zamówienia.
 - **Użycie AI:** gotowy tekst do sekcji „ujawnienie AI” w zgłoszeniu (modele i dostawcy z konfiguracji serwera).
 
 ## Demo offline
