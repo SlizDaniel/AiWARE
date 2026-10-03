@@ -5,7 +5,7 @@ import posixpath
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 10_000
@@ -21,6 +21,15 @@ ALIASES = {
 NS_MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 NS_PACKAGE_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+NS_MAIN_URI = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+EXPORT_COLUMNS = (
+    ("Nazwa asortymentu", "name"),
+    ("Ilość", "quantity"),
+    ("Stan minimalny", "minimum"),
+    ("Lokalizacja", "location"),
+    ("Jednostka", "unit"),
+)
 
 
 class ImportFileError(ValueError):
@@ -219,3 +228,93 @@ def validate_and_map_rows(
     if not items:
         raise ImportFileError("Nie znaleziono pozycji do zaimportowania.")
     return items
+
+
+def _export_values(item: dict) -> list[str | int]:
+    values: list[str | int] = []
+    for _, field in EXPORT_COLUMNS:
+        value = item.get(field, "")
+        values.append("" if value is None else value)
+    return values
+
+
+def export_inventory_csv(items: list[dict]) -> bytes:
+    """Write inventory rows as an Excel-friendly, UTF-8 Polish CSV."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
+    writer.writerow([header for header, _ in EXPORT_COLUMNS])
+    for item in items:
+        writer.writerow(_export_values(item))
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
+def _column_name(index: int) -> str:
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def export_inventory_xlsx(items: list[dict]) -> bytes:
+    """Write a minimal XLSX workbook that the inventory importer can read."""
+    ET.register_namespace("", NS_MAIN_URI)
+    worksheet = ET.Element(f"{NS_MAIN}worksheet")
+    sheet_data = ET.SubElement(worksheet, f"{NS_MAIN}sheetData")
+
+    rows = [[header for header, _ in EXPORT_COLUMNS]]
+    for item in items:
+        rows.append(_export_values(item))
+    for row_number, values in enumerate(rows, start=1):
+        row = ET.SubElement(sheet_data, f"{NS_MAIN}row", {"r": str(row_number)})
+        for column_index, value in enumerate(values, start=1):
+            cell = ET.SubElement(row, f"{NS_MAIN}c", {"r": f"{_column_name(column_index)}{row_number}"})
+            if isinstance(value, int) and not isinstance(value, bool):
+                ET.SubElement(cell, f"{NS_MAIN}v").text = str(value)
+            else:
+                cell.set("t", "inlineStr")
+                inline = ET.SubElement(cell, f"{NS_MAIN}is")
+                text = ET.SubElement(inline, f"{NS_MAIN}t")
+                text.text = str(value)
+
+    sheet_xml = ET.tostring(worksheet, encoding="utf-8", xml_declaration=True)
+    workbook_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Stany" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    )
+    workbook_relationships = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+        'Target="worksheets/sheet1.xml"/></Relationships>'
+    )
+    package_relationships = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/></Relationships>'
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>'
+    )
+
+    with io.BytesIO() as output:
+        with ZipFile(output, "w", ZIP_DEFLATED) as workbook:
+            workbook.writestr("[Content_Types].xml", content_types)
+            workbook.writestr("_rels/.rels", package_relationships)
+            workbook.writestr("xl/workbook.xml", workbook_xml)
+            workbook.writestr("xl/_rels/workbook.xml.rels", workbook_relationships)
+            workbook.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        return output.getvalue()

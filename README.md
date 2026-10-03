@@ -28,6 +28,8 @@ docker compose up --build
 
 W sekcji **Stany** wybierz **Importuj plik**, wskaż plik `.xlsx` albo `.csv`, sprawdź podgląd i przypisanie kolumn, popraw je w razie potrzeby i kliknij **Zatwierdź import**. Samo wczytanie pliku niczego nie zapisuje. Powtórny import aktualizuje pozycje o tej samej nazwie zamiast tworzyć duplikaty.
 
+Aktualne stany, minima, lokalizacje i jednostki pobierzesz z sekcji **Stany** przyciskami **Eksportuj CSV** lub **Eksportuj XLSX**. Oba formaty można ponownie zaimportować bez utraty danych ani tworzenia duplikatów.
+
 Mapowanie kolumn działa offline na podstawie polskich i angielskich nagłówków; propozycje LLM wymagają podłączenia providera z karty 03.
 
 Parser tracerowy jest deterministyczny (offline): rozpoznaje **6 komend demo**
