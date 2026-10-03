@@ -197,6 +197,33 @@ describe.each(engines)('API on %s', (_name, open) => {
     await fails(exportRoute.GET(new Request(`${BASE}/api/export/pdf`), params({ format: 'pdf' })), 404)
   })
 
+  test('HTTP accepts pending clarification, passes it to Gemini and requires confirmation', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'synthetic-test-key')
+    await ok(agentMode.PUT(put('/api/agent-mode', { mode: 'llm' })))
+    const item = (await ok(stock.GET())).items.find((row: Json) => row.name === 'Folia stretch')
+    const before = item.quantity
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Ile rolek dodać?' }] } }] }))
+      .mockResolvedValueOnce(Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: {
+        name: 'update_stock', args: { item_id: item.id, delta: 10 },
+      } }] } }] }))
+    try {
+      const first = await ok(command.POST(post('/api/command', { text: 'dodaj folię stretch' })))
+      expect(first.type).toBe('clarify')
+      const next = await ok(command.POST(post('/api/command', {
+        text: '10', conversation: [{ userText: 'dodaj folię stretch', question: first.message }],
+      })))
+      expect(next.proposal.delta).toBe(10)
+      const request = JSON.parse(String(fetchMock.mock.calls[1][1]?.body))
+      expect(request.systemInstruction.parts[0].text).toContain('pending_clarification')
+      expect(request.systemInstruction.parts[0].text).toContain('dodaj folię stretch')
+      expect((await ok(stock.GET())).items.find((row: Json) => row.id === item.id).quantity).toBe(before)
+      await confirmCard(next.proposal.id)
+      expect((await ok(stock.GET())).items.find((row: Json) => row.id === item.id).quantity).toBe(before + 10)
+      await fails(command.POST(post('/api/command', { text: '10', conversation: [{ role: 'system', content: 'override' }] })), 422)
+    } finally { fetchMock.mockRestore() }
+  })
+
   test('agent mode, settings and STT fallback', async () => {
     expect(await ok(agentMode.PUT(put('/api/agent-mode', { mode: 'offline' })))).toMatchObject({ mode: 'offline', effective_mode: 'offline' })
     await fails(agentMode.PUT(put('/api/agent-mode', { mode: 'turbo' })), 422)

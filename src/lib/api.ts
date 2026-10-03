@@ -1,6 +1,7 @@
 // Klient API backendu MAGAZYNIER (kontrakt: karta zmiany / confirm / audyt).
 // Błędy mają kształt {"detail": "..."}; 401 → /login (tylko gdy logowanie jest włączone),
 // 403 → komunikat serwera trafia do nasłuchujących (AppShell pokazuje go w toaście).
+import type { ClarificationTurn } from './commandConversation'
 
 export type Item = {
   id: number
@@ -312,8 +313,8 @@ export function undoHistoryEntry(id: number): Promise<UndoResult> {
   return fetch(`/api/history/${id}/undo`, { method: 'POST' }).then((r) => json<UndoResult>(r))
 }
 
-export function sendCommand(text: string): Promise<CommandResponse> {
-  return fetch('/api/command', sendJson('POST', { text })).then((r) => json<CommandResponse>(r))
+export function sendCommand(text: string, conversation: ClarificationTurn[] = []): Promise<CommandResponse> {
+  return fetch('/api/command', sendJson('POST', { text, conversation })).then((r) => json<CommandResponse>(r))
 }
 
 export function fetchAgentMode(): Promise<AgentModeStatus> {

@@ -69,6 +69,31 @@ async function expectHttpError(promise: Promise<unknown>, status: number, detail
 }
 
 describe('offline command pipeline (test_api.py)', () => {
+  it('a quantity reply continues the unresolved command and still requires confirmation', async () => {
+    const provider: LLMProvider = {
+      async interpret(text, _tools, context) {
+        if (text === 'dodaj folię stretch') return { toolCall: null, clarification: 'Ile rolek dodać?' }
+        const pending = JSON.parse(context).pending_clarification
+        expect(pending).toEqual([{ userText: 'dodaj folię stretch', question: 'Ile rolek dodać?' }])
+        expect(text).toBe('10')
+        const item = (await listItems(db)).find((row) => row.name === 'Folia stretch')!
+        return { toolCall: { name: 'update_stock', arguments: { item_id: item.id, delta: 10 } }, clarification: null }
+      },
+    }
+    const first = await runCommand(db, 'dodaj folię stretch', { provider, actor: WORKER })
+    expect(first.type).toBe('clarify')
+    const next = await runCommand(db, '10', {
+      provider, actor: WORKER,
+      conversation: [{ userText: 'dodaj folię stretch', question: 'Ile rolek dodać?' }],
+    })
+    expect(next.type).toBe('proposal')
+    expect(await stock('Folia stretch')).toBe(15)
+    if (next.type !== 'proposal') throw new Error('Expected a change card')
+    expect(next.proposal.delta).toBe(10)
+    expect(next.proposal.text).toBe('dodaj folię stretch → 10')
+    await confirmProposal(db, next.proposal.id, WORKER)
+    expect(await stock('Folia stretch')).toBe(25)
+  })
   it('seed has at least three items and Kartony 54 / min 12', async () => {
     const items = await listItems(db)
     expect(items.length).toBeGreaterThanOrEqual(3)

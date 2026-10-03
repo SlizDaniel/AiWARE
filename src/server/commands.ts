@@ -13,6 +13,7 @@ import { commandText, getAgentModeStatus, getAppSettings } from './settings'
 import type { Db } from './sql'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
 import type { ItemRef, LLMProvider } from './types'
+import { parseCommandConversation, type ClarificationTurn } from '@/lib/commandConversation'
 
 export const HINTS = [
   'wzięliśmy paletę X',
@@ -65,7 +66,7 @@ export type CommandResponse = (
 
 export type ConfirmPayload = { applied: true } & Record<string, unknown>
 
-type RunOptions = { provider: LLMProvider | null; actor?: Actor }
+type RunOptions = { provider: LLMProvider | null; actor?: Actor; conversation?: ClarificationTurn[] }
 
 // The prompt carries only the items the command can be about; small warehouses go in whole.
 export const MAX_CONTEXT_ITEMS = 40
@@ -113,16 +114,18 @@ export function contextItems(rows: Item[], command: string): Item[] {
   return scored.slice(0, MAX_CONTEXT_ITEMS).map((entry) => entry.row)
 }
 
-function inventoryContext(rows: Item[]): string {
+function inventoryContext(rows: Item[], conversation: ClarificationTurn[]): string {
   // JSON keeps commas/quotes in names from looking like another item or field.
   return JSON.stringify({
     units_per_pallet: SZT_NA_PALETE,
+    ...(conversation.length ? { pending_clarification: conversation } : {}),
     items: rows.map(({ id, name, quantity, unit, minimum, location }) => ({ id, name, quantity, unit, minimum, location })),
   })
 }
 
 /** POST /api/command: text → proposal | answer | clarify | unknown (+ optional warning). */
 export async function runCommand(db: Db, text: string, options: RunOptions): Promise<CommandResponse> {
+  const conversation = parseCommandConversation(options.conversation)
   const actor = options.actor ?? DEFAULT_ACTOR
   const status = await getAgentModeStatus(db)
   // The wake word („Magu, …") is not part of the command itself; a retired one blocks it (card 12).
@@ -138,7 +141,8 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   let parsed: ParsedCommand | null
 
   if (status.mode === 'llm' && options.provider !== null) {
-    const context = inventoryContext(contextItems(rows, command))
+    const relatedText = [...conversation.map((turn) => turn.userText), command].join(' ')
+    const context = inventoryContext(contextItems(rows, relatedText), conversation)
     try {
       const interpretation = await options.provider.interpret(command, toolSchemas(), context)
       if (interpretation.toolCall === null) {
@@ -156,7 +160,8 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
     else if (status.mode === 'mock') warning = status.warning
   }
 
-  const response = await dispatchCommand(db, text, parsed, actor, defaultMinimum)
+  const sourceText = [...conversation.map((turn) => turn.userText), text].join(' → ')
+  const response = await dispatchCommand(db, sourceText, parsed, actor, defaultMinimum)
   if (warning) response.warning = warning
   return response
 }

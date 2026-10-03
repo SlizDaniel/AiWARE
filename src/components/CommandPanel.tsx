@@ -18,6 +18,7 @@ import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
 import { createRecognition, fullTranscript, type SpeechRecognitionLike } from '@/lib/speech'
 import ProcedureLocation from './ProcedureLocation'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
+import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/commandConversation'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
 /** Bez prefiksu („zatwierdź”) karta zmiany przyjmuje decyzję głosem tylko przez tyle od pokazania. */
@@ -89,6 +90,7 @@ export default function CommandPanel({
 }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
+  const conversationRef = useRef(createCommandConversation())
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [listening, setListening] = useState(false)
@@ -198,7 +200,8 @@ export default function CommandPanel({
     setBusy(true)
     setActionError('')
     try {
-      const res = await sendCommand(t)
+      const res = await sendCommand(t, conversationRef.current.context())
+      if (res.type !== 'clarify') conversationRef.current.clear()
       setResponseWarning(res.warning ?? null)
       if (res.type === 'proposal') {
         const name = res.proposal.args?.name
@@ -228,8 +231,10 @@ export default function CommandPanel({
         onSpeak?.(res.text)
         if (res.tool === 'get_location' && target) onShowLocation(target)
       } else if (res.type === 'clarify') {
-        setState({ kind: 'clarify', message: res.message })
-        onSpeak?.(res.message)
+        const message = conversationRef.current.remember(t, res.message) ? res.message : CONVERSATION_LIMIT_MESSAGE
+        setState({ kind: 'clarify', message })
+        setText('')
+        onSpeak?.(message)
       } else setState({ kind: 'unknown', text: res.text, hints: res.hints })
     } catch (error) {
       setState({
@@ -583,6 +588,8 @@ export default function CommandPanel({
         <div className="mt-5 border border-[#ead9a9] bg-[#fffaf0] p-5">
           <div className="font-semibold text-[#805c12]">Doprecyzujmy</div>
           <p className="mt-1 text-sm text-[#805c12]">{state.message}</p>
+          {conversationRef.current.context().length > 0 && <p className="mt-2 text-xs text-[#805c12]">Dotyczy: {conversationRef.current.context()[0].userText}. Wpisz odpowiedź w polu komendy.</p>}
+          <button type="button" disabled={busy} onClick={() => { conversationRef.current.clear(); setState(null); setText(''); inputRef.current?.focus() }} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12]">Nowa komenda</button>
           {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12]">Otwórz istniejącą strefę</button>}
         </div>
       )}

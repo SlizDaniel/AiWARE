@@ -38,9 +38,10 @@ dowodzą, że Gemini zawsze je zastosuje. Do pomiaru jakości trzeba uruchomić
 Pythonowy check z kluczem oraz ocenić pytania w GUI. W tej sesji lokalny check
 zatrzymał się na braku klucza, bez wysyłania zapytań do chmury.
 
-Nie dodajemy historii rozmowy ani nowych narzędzi. Po pytaniu podaj pełną
-komendę, np. „wzięliśmy cztery sztuki kartonów”, zamiast samego „cztery”.
-Fallback pozostaje istniejącym parserem z jego ograniczonym zakresem.
+Pierwotny zakres tej karty nie obejmował historii rozmowy. Na późniejsze
+polecenie użytkownika dodano bufor doprecyzowań opisany w
+`command-clarification-context.md`. Fallback pozostaje istniejącym parserem
+z jego ograniczonym zakresem i wymaga pełnej komendy.
 
 Frontend korzysta z istniejącego pola `warning`; API i komponenty kolegi nie
 wymagają zmian. Nowe poprawki powstają na `fix/llm-command-interpretation`.
