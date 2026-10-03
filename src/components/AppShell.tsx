@@ -11,10 +11,12 @@ import ReorderQueue from './ReorderQueue'
 import { confirmationMessage } from './reorderMessages'
 import { PendingApprovalScreen, StartupScreen } from './SessionScreens'
 import SettingsPanel from './SettingsPanel'
-import Sidebar from './Sidebar'
+import Sidebar, { type NavBadge } from './Sidebar'
 import StatusBanner from './StatusBanner'
 import StockTable from './StockTable'
 import WarehouseMap from './WarehouseMap'
+import { StateShape } from './ui/StateMark'
+import { countDeviations } from './ui/stockLevel'
 import {
   fetchHealth,
   fetchHistory,
@@ -254,9 +256,20 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   }, [onReloadMe])
 
   const heading = SECTION_TITLES[visibleSection]
+  const deviations = countDeviations(stock.data)
+  const pendingDrafts = queue.data.filter((draft) => draft.status === 'pending').length
+  const lowTotal = deviations.empty + deviations.below
+  const badges: Partial<Record<SectionId, NavBadge>> = {
+    stany: {
+      count: lowTotal,
+      kind: deviations.empty > 0 ? 'alarm' : 'warn',
+      label: `${lowTotal} poniżej minimum`,
+    },
+    kolejka: { count: pendingDrafts, kind: 'decision', label: `${pendingDrafts} czeka na decyzję` },
+  }
 
   return (
-    <div className="min-h-screen bg-[#f5f4f0] text-[#292d2b] lg:flex lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen bg-ground text-ink lg:flex lg:h-screen lg:overflow-hidden">
       <Sidebar
         current={visibleSection}
         onNavigate={setSection}
@@ -264,28 +277,34 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
         user={me?.user ?? null}
         authMode={authMode}
         canManage={canManage}
+        badges={badges}
       />
 
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <header className="border-b border-[#e8e5de] bg-[#fbfaf7] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
-          <div className="mx-auto flex max-w-[1440px] items-end justify-between gap-4">
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#646b64]">Magazyn · panel operacyjny</p>
-              <h1 className="text-2xl font-bold tracking-tight sm:text-[28px]">{heading.title}</h1>
-              <p className="mt-1 text-sm text-[#70756f]">{heading.subtitle}</p>
+      <main className="min-w-0 flex-1 lg:overflow-y-auto xl:grid xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[auto_1fr] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <header className="px-5 pb-6 pt-7 sm:px-8 xl:col-start-1 xl:row-start-1 xl:pt-9 2xl:px-12">
+          <div className="mx-auto flex max-w-[1180px] flex-wrap items-end justify-between gap-x-8 gap-y-4">
+            <div className="min-w-0">
+              <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.015em] text-ink sm:text-[32px]">{heading.title}</h1>
+              <p className="mt-1.5 text-[15px] text-ink-2">{heading.subtitle}</p>
             </div>
-            <div className="hidden items-center gap-2 text-xs font-medium text-[#646b64] sm:flex" aria-live="polite">
-              <span className={'h-2 w-2 rounded-full ' + (connected ? 'bg-[#527b58]' : 'bg-[#a45d52]')} aria-hidden="true" />
-              {connected ? 'Połączono' : 'Brak połączenia'}
+            <div className="flex flex-wrap items-center gap-2">
+              <StateChips
+                empty={deviations.empty}
+                below={deviations.below}
+                pendingDrafts={pendingDrafts}
+                ready={stock.state === 'ready'}
+                localMode={authMode === 'disabled'}
+                onNavigate={setSection}
+              />
+              {visibleSection === 'stany' && <InventoryExport />}
             </div>
           </div>
         </header>
 
-        <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
-          <StatusBanner storage={health?.storage ?? null} authMode={authMode} />
-          {visibleSection === 'stany' && canManage && (
-            <InventoryImport onImported={refresh} initialOpen={openImport || settings.data?.adapter === 'file_import'} />
-          )}
+        <aside
+          aria-label="Agent głosowy"
+          className="mx-4 mb-6 rounded-lg border border-line bg-sheet sm:mx-8 xl:sticky xl:top-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:m-0 xl:h-screen xl:overflow-y-auto xl:rounded-none xl:border-0 xl:border-l"
+        >
           <CommandPanel
             onApplied={onApplied}
             zones={zones.data}
@@ -307,124 +326,179 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
             canChangeMode={canManage}
             onSpeak={say}
           />
+        </aside>
 
-          {visibleSection === 'mapa' && (
-            <WarehouseMap
-              zones={zones.data}
-              items={stock.data}
-              locationTarget={mapTarget}
-              selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones.data)?.id ?? null : null)}
-              onSelectZone={setMapSelectionId}
-              state={zones.state}
-              error={zones.error}
-              onRetry={() => void reloadZones()}
-              itemsState={stock.state}
-              onRetryItems={() => void reloadStock()}
-              onZoneAdded={(name, created) => {
-                showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
-                refresh()
-              }}
-            />
-          )}
+        <div className="min-w-0 px-4 pb-16 sm:px-8 xl:col-start-1 xl:row-start-2 2xl:px-12">
+          <div className="mx-auto max-w-[1180px] space-y-6">
+            <StatusBanner storage={health?.storage ?? null} authMode={authMode} />
+            {visibleSection === 'stany' && canManage && (
+              <InventoryImport onImported={refresh} initialOpen={openImport || settings.data?.adapter === 'file_import'} />
+            )}
 
-          {(visibleSection === 'stany' || visibleSection === 'historia' || visibleSection === 'kolejka') && (
-            <section>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-bold">
-                  {visibleSection === 'stany' ? 'Pozycje' : visibleSection === 'historia' ? 'Wpisy w audycie' : 'Szkice zamówień'}
-                </h2>
-                {visibleSection === 'stany' && <InventoryExport />}
-              </div>
-              {visibleSection === 'stany' ? (
-                <StockTable
-                  items={stock.data}
-                  state={stock.state}
-                  error={stock.error}
-                  onRetry={() => void reloadStock()}
-                  canManage={canManage}
-                  onSave={async (id, changes) => {
-                    const item = await updateStockItem(id, changes)
-                    showToast(`Zapisano produkt: ${item.name}`)
-                    refresh()
-                  }}
-                />
-              ) : visibleSection === 'historia' ? (
-                <HistoryList
-                  entries={history.data}
-                  state={history.state}
-                  error={history.error}
-                  onRetry={() => void reloadHistory()}
-                  canUndo={canManage}
-                  onUndo={onUndo}
-                  onOpenFullLog={canManage ? () => setSection('dashboard') : undefined}
-                />
-              ) : (
-                <ReorderQueue
-                  drafts={queue.data}
-                  state={queue.state}
-                  error={queue.error}
-                  onRetry={() => void reloadQueue()}
-                  onChanged={onQueueChanged}
-                  canDecide={canManage}
-                />
-              )}
-            </section>
-          )}
+            {visibleSection === 'mapa' && (
+              <WarehouseMap
+                zones={zones.data}
+                items={stock.data}
+                locationTarget={mapTarget}
+                selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones.data)?.id ?? null : null)}
+                onSelectZone={setMapSelectionId}
+                state={zones.state}
+                error={zones.error}
+                onRetry={() => void reloadZones()}
+                itemsState={stock.state}
+                onRetryItems={() => void reloadStock()}
+                onZoneAdded={(name, created) => {
+                  showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
+                  refresh()
+                }}
+              />
+            )}
 
-          {visibleSection === 'procedury' && (
-            <ProcedureList
-              procedures={procedures.data}
-              state={procedures.state}
-              error={procedures.error}
-              onRetry={() => void reloadProcedures()}
-              zones={zones.data}
-              items={stock.data}
-              onShowZone={showZone}
-            />
-          )}
+            {visibleSection === 'stany' && (
+              <StockTable
+                items={stock.data}
+                state={stock.state}
+                error={stock.error}
+                onRetry={() => void reloadStock()}
+                canManage={canManage}
+                onSave={async (id, changes) => {
+                  const item = await updateStockItem(id, changes)
+                  showToast(`Zapisano produkt: ${item.name}`)
+                  refresh()
+                }}
+              />
+            )}
 
-          {visibleSection === 'dashboard' && canManage && (
-            <ManagerDashboard
-              updateTick={updateTick}
-              items={stock.data}
-              onNavigate={setSection}
-              onForbidden={onDashboardForbidden}
-              onUndo={onUndo}
-            />
-          )}
+            {visibleSection === 'historia' && (
+              <HistoryList
+                entries={history.data}
+                state={history.state}
+                error={history.error}
+                onRetry={() => void reloadHistory()}
+                canUndo={canManage}
+                onUndo={onUndo}
+                onOpenFullLog={canManage ? () => setSection('dashboard') : undefined}
+              />
+            )}
 
-          {visibleSection === 'ustawienia' && (
-            <SettingsPanel
-              canManage={canManage}
-              me={me}
-              health={health}
-              healthError={healthError}
-              settings={settings.data}
-              settingsState={settings.state}
-              settingsError={settings.error}
-              onRetrySettings={() => void reloadSettings()}
-              onSettingsSaved={setSettings}
-              onOpenImport={() => {
-                setOpenImport(true)
-                setSection('stany')
-              }}
-              onToast={(message) => showToast(message)}
-            />
-          )}
+            {visibleSection === 'kolejka' && (
+              <ReorderQueue
+                drafts={queue.data}
+                state={queue.state}
+                error={queue.error}
+                onRetry={() => void reloadQueue()}
+                onChanged={onQueueChanged}
+                canDecide={canManage}
+              />
+            )}
+
+            {visibleSection === 'procedury' && (
+              <ProcedureList
+                procedures={procedures.data}
+                state={procedures.state}
+                error={procedures.error}
+                onRetry={() => void reloadProcedures()}
+                zones={zones.data}
+                items={stock.data}
+                onShowZone={showZone}
+              />
+            )}
+
+            {visibleSection === 'dashboard' && canManage && (
+              <ManagerDashboard
+                updateTick={updateTick}
+                items={stock.data}
+                onNavigate={setSection}
+                onForbidden={onDashboardForbidden}
+                onUndo={onUndo}
+              />
+            )}
+
+            {visibleSection === 'ustawienia' && (
+              <SettingsPanel
+                canManage={canManage}
+                me={me}
+                health={health}
+                healthError={healthError}
+                settings={settings.data}
+                settingsState={settings.state}
+                settingsError={settings.error}
+                onRetrySettings={() => void reloadSettings()}
+                onSettingsSaved={setSettings}
+                onOpenImport={() => {
+                  setOpenImport(true)
+                  setSection('stany')
+                }}
+                onToast={(message) => showToast(message)}
+              />
+            )}
+          </div>
         </div>
       </main>
 
       {toast && (
         <div
-          className={
-            'fixed bottom-4 left-4 right-4 rounded-md border px-4 py-3 text-sm font-semibold sm:left-auto sm:right-6 sm:w-auto sm:max-w-md ' +
-            (toast.tone === 'error' ? 'border-[#edc8c5] bg-[#fff7f6] text-[#8f3936]' : 'border-[#cbd8c9] bg-[#edf3ec] text-[#315b37]')
-          }
+          key={toast.message}
+          className="fixed inset-x-4 bottom-5 z-30 flex animate-arrive items-start gap-3 rounded-lg bg-ink px-4 py-3 text-sm font-medium text-sheet shadow-raise sm:inset-x-auto sm:left-8 sm:max-w-md lg:left-[calc(15rem+2rem)]"
           role={toast.tone === 'error' ? 'alert' : 'status'}
         >
+          <StateShape kind={toast.tone === 'error' ? 'alarm' : 'ok'} className="mt-[5px]" />
           {toast.message}
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Podsumowanie odchyleń w nagłówku (jak pasek alarmów na ekranie operatorskim): tylko to, co odbiega
+ * od normy albo czeka na człowieka. Kliknięcie prowadzi do sekcji, w której to się załatwia.
+ */
+function StateChips({
+  empty,
+  below,
+  pendingDrafts,
+  ready,
+  localMode,
+  onNavigate,
+}: {
+  empty: number
+  below: number
+  pendingDrafts: number
+  ready: boolean
+  localMode: boolean
+  onNavigate: (section: SectionId) => void
+}) {
+  const chip =
+    'inline-flex h-8 items-center gap-2 rounded-full bg-sheet px-3 text-[13px] font-semibold ring-1 ring-line transition-shadow hover:ring-line-strong'
+  const calm = ready && empty === 0 && below === 0 && pendingDrafts === 0
+  return (
+    <>
+      {empty > 0 && (
+        <button type="button" onClick={() => onNavigate('stany')} className={`${chip} text-alarm-ink`}>
+          <StateShape kind="alarm" />
+          <span className="tabular-nums">{empty}</span> {empty === 1 ? 'brak towaru' : 'braki towaru'}
+        </button>
+      )}
+      {below > 0 && (
+        <button type="button" onClick={() => onNavigate('stany')} className={`${chip} text-warn-ink`}>
+          <StateShape kind="warn" />
+          <span className="tabular-nums">{below}</span> poniżej minimum
+        </button>
+      )}
+      {pendingDrafts > 0 && (
+        <button type="button" onClick={() => onNavigate('kolejka')} className={`${chip} text-act-ink`}>
+          <StateShape kind="decision" />
+          <span className="tabular-nums">{pendingDrafts}</span> {pendingDrafts === 1 ? 'szkic czeka' : 'szkice czekają'}
+        </button>
+      )}
+      {calm && (
+        <span className="inline-flex h-8 items-center gap-2 px-1 text-[13px] font-medium text-ink-2">
+          <StateShape kind="idle" />
+          Bez odchyleń
+        </span>
+      )}
+      {localMode && <span className="inline-flex h-8 items-center px-1 text-xs text-mute">Tryb lokalny bez logowania</span>}
+    </>
   )
 }

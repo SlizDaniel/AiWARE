@@ -19,6 +19,12 @@ import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
 import { abortRecognition, createRecognition, fullTranscript, voiceDecision, type SpeechRecognitionLike } from '@/lib/speech'
 import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
 import ProcedureLocation from './ProcedureLocation'
+import { CheckIcon, MicIcon, MicOffIcon, PinIcon, SendIcon } from './ui/icons'
+import { Notice } from './ui/feedback'
+import RangeIndicator from './ui/RangeIndicator'
+import { StateMark, StateShape } from './ui/StateMark'
+import { STOCK_LEVEL, stockLevel } from './ui/stockLevel'
+import { buttonClass, fieldClass } from './ui/styles'
 import { useWakeListener, type WakeEvent } from './useWakeListener'
 import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/commandConversation'
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
@@ -487,39 +493,154 @@ export default function CommandPanel({
     void finishPushToTalk()
   }
 
+  const hearing = micLive || wake.phase === 'hearing'
+  const recognizing = transcribing || wake.phase === 'refining'
+  const pending = state?.kind === 'proposal'
+  const pendingItem = state?.kind === 'proposal' ? items.find((item) => item.id === state.proposal.item_id) ?? null : null
+  const bufferStatus = busy
+    ? 'Agent przetwarza komendę'
+    : micStarting
+      ? 'Włączam mikrofon…'
+      : recognizing
+        ? 'Rozpoznaję — sprawdzam transkrypcję'
+        : hearing
+          ? 'Słucham — podgląd wypowiedzi'
+          : text.trim()
+            ? 'Komenda gotowa'
+            : pending
+              ? 'Czekam na decyzję'
+              : 'Czekam na komendę'
+  const bufferText = busy
+    ? processingCommand || 'Zatwierdzam zmianę…'
+    : text ||
+      (micLive
+        ? liveSpeech
+          ? 'Mów teraz — tekst pojawi się tutaj.'
+          : 'Nagrywam. Transkrypcja pojawi się po zakończeniu.'
+        : pending
+          ? 'Powiedz „zatwierdź” albo „odrzuć”.'
+          : 'Twoja wypowiedź pojawi się tutaj.')
+
   return (
-    <section className="border border-[#e8e5de] bg-white p-5 sm:p-6">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {showModeControl && (
-            <label className="flex items-center gap-2 text-sm text-[#70756f]">
-              Tryb agenta
-              <select
-                value={mode}
-                onChange={(event) => void changeMode(event.target.value as AgentMode)}
-                className="border border-[#d8d6cf] bg-white px-2 py-1 disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label="Tryb agenta"
-                disabled={demoMode || modeBusy || !settings || !canChangeMode}
-                title={!canChangeMode && !demoMode ? 'Tryb agenta zmienia kierownik' : undefined}
-              >
-                <option value="llm">LLM</option>
-                <option value="offline">Offline</option>
-                <option value="mock">Mock</option>
-              </select>
-            </label>
-          )}
-          <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">
-            tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia
-          </span>
-        </div>
+    <section className="flex flex-col gap-5 p-5 sm:p-6 xl:min-h-full xl:pt-9">
+      <div>
+        <h2 className="text-lg font-semibold leading-snug text-ink">Powiedz Magazynierowi, co robisz</h2>
+        <p className="mt-1 text-[13px] text-ink-2">Tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia</p>
+        {showModeControl && (
+          <label className="mt-3 flex items-center gap-3">
+            <span className="label-caps whitespace-nowrap">Tryb agenta</span>
+            <select
+              value={mode}
+              onChange={(event) => void changeMode(event.target.value as AgentMode)}
+              className="h-8 rounded-md border border-line-strong bg-sheet px-2 text-[13px] text-ink transition-colors hover:border-ink-2/60 disabled:cursor-not-allowed disabled:bg-ground disabled:text-mute"
+              aria-label="Tryb agenta"
+              disabled={demoMode || modeBusy || !settings || !canChangeMode}
+              title={!canChangeMode && !demoMode ? 'Tryb agenta zmienia kierownik' : undefined}
+            >
+              <option value="llm">LLM</option>
+              <option value="offline">Offline</option>
+              <option value="mock">Mock</option>
+            </select>
+          </label>
+        )}
       </div>
 
-      {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
-      <p className="mt-1 text-xs text-slate-400">{voiceHelp}</p>
+      {modeWarning && <Notice tone="warn">{modeWarning}</Notice>}
+
+      {/* jedna decyzja naraz: oczekująca karta zmiany stoi na górze kolumny, zawsze w zasięgu wzroku */}
+      {state?.kind === 'proposal' && (
+        <ChangeCard
+          key={state.proposal.id}
+          proposal={state.proposal}
+          item={pendingItem}
+          voiceHint={wakeActive}
+          busy={busy}
+          error={actionError}
+          onConfirm={confirm}
+          onReject={reject}
+        />
+      )}
+
+      {wake.on && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg px-3.5 py-2.5 ring-1 ring-line">
+          <p className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-ink" role="status">
+            <span
+              aria-hidden
+              className={'inline-block size-2.5 shrink-0 rounded-full ' + (wake.phase === 'paused' ? 'bg-band' : 'animate-breathe bg-act')}
+            />
+            {wake.phase === 'hearing'
+              ? 'Słucham…'
+              : wake.phase === 'refining'
+                ? 'Poprawiam transkrypcję…'
+                : wake.phase === 'paused'
+                  ? 'Nasłuch wstrzymany na czas odpowiedzi agenta.'
+                  : wake.phase === 'starting'
+                    ? 'Włączam mikrofon…'
+                    : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
+          </p>
+          <button type="button" onClick={wake.turnOff} className={buttonClass('ghost', 'sm')}>
+            <MicOffIcon size={16} />
+            Wyłącz nasłuch
+          </button>
+          {wake.audioSuspended && (
+            <p className="basis-full text-xs text-ink-2">Kliknij gdziekolwiek, aby włączyć dokładniejsze rozpoznawanie.</p>
+          )}
+        </div>
+      )}
+      {wakeActive && !wake.on && !wake.error && wake.userOff && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg px-3.5 py-2.5 ring-1 ring-line">
+          <p className="flex items-center gap-2.5 text-sm text-ink-2" role="status">
+            <StateShape kind="idle" />
+            Nasłuch wyłączony w tej przeglądarce.
+          </p>
+          <button type="button" onClick={wake.turnOn} className={buttonClass('secondary', 'sm')}>
+            <MicIcon size={16} />
+            Włącz nasłuch
+          </button>
+        </div>
+      )}
+      {wakeActive && wake.error && (
+        <Notice
+          tone="alarm"
+          role="alert"
+          action={
+            <button type="button" onClick={wake.retry} className={buttonClass('danger', 'sm')}>
+              Spróbuj ponownie
+            </button>
+          }
+        >
+          {wake.error}
+        </Notice>
+      )}
+
+      <div
+        className={'rounded-lg p-4 transition-colors duration-200 ' + (hearing ? 'bg-act-soft' : 'bg-ground')}
+        aria-label="Bufor komendy"
+        aria-busy={busy || transcribing}
+      >
+        <p className={'label-caps flex items-center gap-2 ' + (hearing || busy ? 'text-act-ink' : '')} role="status">
+          <span
+            aria-hidden
+            className={
+              'inline-block size-2 shrink-0 rounded-full ' +
+              (busy || hearing || recognizing ? 'animate-breathe bg-act' : pending ? 'bg-act' : 'bg-band')
+            }
+          />
+          {bufferStatus}
+        </p>
+        <p
+          className={
+            'mt-2.5 min-h-14 whitespace-pre-wrap break-words text-xl font-medium leading-snug ' +
+            (busy || text ? 'text-ink' : 'text-mute')
+          }
+        >
+          {bufferText}
+        </p>
+        {hearing && <p className="mt-2 text-xs text-ink-2">To wstępny zapis mowy. Agent zinterpretuje komendę po zakończeniu wypowiedzi.</p>}
+      </div>
 
       <form
-        className="mt-4 flex flex-wrap gap-3 sm:flex-nowrap"
+        className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           void submit()
@@ -532,9 +653,9 @@ export default function CommandPanel({
             disabled={busy || transcribing || micStarting || !pushToTalk}
             aria-pressed={micLive}
             title={micLive ? 'Zakończ' : pushToTalk ? 'Nagraj komendę głosem' : 'Mikrofon wyłączony w Ustawieniach'}
-            className={micButtonClass(micLive)}
+            className={buttonClass(micLive ? 'action' : 'secondary') + ' h-11'}
           >
-            <span aria-hidden className={'inline-block size-3 rounded-full ' + (micLive ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
+            <MicIcon size={18} className={micLive ? 'animate-breathe' : ''} />
             {micStarting ? 'Włączam…' : micLive ? (liveSpeech ? 'Słucham…' : 'Nagrywam…') : transcribing ? 'Rozpoznaję…' : 'Mów'}
           </button>
         )}
@@ -547,156 +668,126 @@ export default function CommandPanel({
           readOnly={micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining'))}
           placeholder={state?.kind === 'proposal' ? '„zatwierdź” albo „odrzuć”' : `np. „${settings?.prefix ?? 'Magu'}, ile mamy kartonów?”`}
           className={
-            'order-first min-w-0 basis-full border px-4 py-3 text-base sm:order-none sm:flex-1 sm:basis-auto outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' +
-            (voiceFallback
-              ? 'border-[#d8a948] bg-[#fffaf0]'
-              : 'border-[#d8d6cf] focus-visible:border-[#536b56]')
+            fieldClass +
+            ' h-11 flex-1 text-[15px] ' +
+            (voiceFallback ? 'border-warn bg-warn-soft' : '')
           }
         />
         <button
           type="submit"
           disabled={busy || micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining')) || !text.trim()}
-          className="flex-1 bg-[#292d2b] px-6 py-3 font-semibold text-white sm:flex-none transition-colors hover:bg-[#454b46] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
+          className={buttonClass('primary') + ' h-11'}
         >
           {busy ? 'Przetwarzam…' : 'Wyślij'}
+          {!busy && <SendIcon size={16} />}
         </button>
       </form>
 
-      <div className="mt-3 min-h-24 border border-[#d8d6cf] bg-[#f6f8f4] p-4" aria-label="Bufor komendy" aria-busy={busy || transcribing}>
-        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#536b56]" role="status">
-          <span aria-hidden className={'size-2 rounded-full bg-[#536b56] ' + (busy || micLive || transcribing || wake.phase === 'hearing' ? 'animate-pulse' : '')} />
-          {busy ? 'Agent przetwarza komendę' : micStarting ? 'Włączam mikrofon…' : transcribing || wake.phase === 'refining' ? 'Rozpoznaję — sprawdzam transkrypcję' : micLive || wake.phase === 'hearing' ? 'Słucham — podgląd wypowiedzi' : text.trim() ? 'Komenda gotowa' : state?.kind === 'proposal' ? 'Czekam na decyzję' : 'Czekam na komendę'}
-        </p>
-        <p className="mt-2 whitespace-pre-wrap break-words text-base text-[#292d2b]">
-          {busy ? processingCommand || 'Zatwierdzam zmianę…' : text || (micLive ? liveSpeech ? 'Mów teraz — tekst pojawi się tutaj.' : 'Nagrywam. Transkrypcja pojawi się po zakończeniu.' : state?.kind === 'proposal' ? 'Powiedz „zatwierdź” albo „odrzuć”.' : 'Twoja wypowiedź pojawi się tutaj.')}
-        </p>
-        {(micLive || wake.phase === 'hearing') && <p className="mt-1 text-xs text-[#70756f]">To wstępny zapis mowy. Agent zinterpretuje komendę po zakończeniu wypowiedzi.</p>}
-      </div>
+      {!pending && <p className="-mt-2 text-xs leading-relaxed text-ink-2">{voiceHelp}</p>}
 
-      {responseWarning && <p className="mt-3 text-sm text-amber-700">{responseWarning}</p>}
+      {responseWarning && <Notice tone="warn">{responseWarning}</Notice>}
       {micLive && (
-        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
-          <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#8f3936]" />
+        <p className="flex items-center gap-2 text-sm font-medium text-act-ink" role="status">
+          <span aria-hidden className="inline-block size-2 shrink-0 animate-breathe rounded-full bg-act" />
           {liveSpeech
             ? 'Słucham — tekst pojawia się na bieżąco. Kliknij „Słucham…”, aby zakończyć (maks. 29 s).'
             : 'Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.'}
         </p>
       )}
       {transcribing && (
-        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#646b64]" role="status">
-          <span aria-hidden className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-[#9a9e97]" />
+        <p className="flex items-center gap-2 text-sm font-medium text-ink-2" role="status">
+          <span aria-hidden className="inline-block size-2 shrink-0 animate-breathe rounded-full bg-band" />
           {refiningLive ? 'Poprawiam transkrypcję…' : 'Rozpoznaję nagranie…'}
         </p>
       )}
-      {wake.on && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <p
-            className={'flex min-w-0 items-center gap-2 text-sm font-semibold ' + (wake.phase === 'paused' ? 'text-[#646b64]' : 'text-[#8f3936]')}
-            role="status"
-          >
-            <span
-              aria-hidden
-              className={'inline-block size-2 shrink-0 rounded-full ' + (wake.phase === 'paused' ? 'bg-[#9a9e97]' : 'animate-pulse bg-[#8f3936]')}
-            />
-            {wake.phase === 'hearing'
-              ? 'Słucham…'
-              : wake.phase === 'refining'
-                ? 'Poprawiam transkrypcję…'
-                : wake.phase === 'paused'
-                  ? 'Nasłuch wstrzymany na czas odpowiedzi agenta.'
-                  : wake.phase === 'starting'
-                    ? 'Włączam mikrofon…'
-                  : `Mikrofon nasłuchuje — zacznij od „${prefix}”.`}
-          </p>
-          <button type="button" onClick={wake.turnOff} className={smallButtonClass}>
-            Wyłącz nasłuch
-          </button>
-          {wake.audioSuspended && (
-            <p className="basis-full text-xs text-[#70756f]">Kliknij gdziekolwiek, aby włączyć dokładniejsze rozpoznawanie.</p>
-          )}
-        </div>
-      )}
-      {wakeActive && !wake.on && !wake.error && wake.userOff && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <p className="flex items-center gap-2 text-sm text-[#646b64]" role="status">
-            <span aria-hidden className="inline-block size-2 shrink-0 rounded-full bg-[#9a9e97]" />
-            Nasłuch wyłączony w tej przeglądarce.
-          </p>
-          <button type="button" onClick={wake.turnOn} className={smallButtonClass}>
-            Włącz nasłuch
-          </button>
-        </div>
-      )}
-      {wakeActive && wake.error && (
-        <div className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">
-          <p>{wake.error}</p>
-          <button
-            type="button"
-            onClick={wake.retry}
-            className="mt-3 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
-          >
-            Spróbuj ponownie
-          </button>
-        </div>
-      )}
       {voiceEnabled && !liveSpeech && (
-        <p className="mt-3 text-xs text-[#805c12]">
+        <p className="text-xs text-warn-ink">
           {wakeMode
             ? 'Nasłuch „ręce wolne” wymaga Chrome lub Edge — tutaj użyj przycisku Mów (nagranie trafia do transkrypcji na serwerze).'
             : 'Podgląd tekstu na żywo działa w Chrome i Edge — tutaj nagranie trafia do transkrypcji na serwerze.'}
         </p>
       )}
       {voiceNote && (
-        <p className="mt-3 border border-[#ead9a9] bg-[#fffaf0] p-3 text-sm text-[#805c12]" role="status">
+        <Notice tone="warn" role="status">
           {voiceNote} Pole tekstowe jest podświetlone — komenda głosowa nie jest jedyną drogą.
-        </p>
+        </Notice>
       )}
-      {state?.kind === 'proposal' && (
-        <ChangeCard proposal={state.proposal} busy={busy} error={actionError} onConfirm={confirm} onReject={reject} />
-      )}
+
       {state?.kind === 'answer' && (
-        <div className="mt-5 border border-[#cbd8c9] bg-[#f6f8f4] p-5">
+        <div className="animate-arrive rounded-lg bg-ground p-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-semibold text-[#315b37]">Odpowiedź</div>
-            <span className="border border-[#e8e5de] bg-white px-3 py-1 font-mono text-xs text-[#777b74]">{state.tool}</span>
+            <p className="label-caps">Odpowiedź</p>
+            <code className="rounded bg-sheet px-2 py-0.5 font-mono text-[11px] text-ink-2">{state.tool}</code>
           </div>
-          <p className="mt-2 whitespace-pre-wrap text-base text-[#454b46]">{state.text}</p>
+          <p className="mt-2.5 whitespace-pre-wrap text-base leading-relaxed text-ink">{state.text}</p>
           {state.procedure && <ProcedureLocation procedure={state.procedure} zones={zones} items={items} onShowZone={onShowZone} />}
-          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#cbd8c9] bg-white px-4 py-2 text-sm font-semibold text-[#315b37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">Pokaż na mapie</button>}
+          {state.target && (
+            <button type="button" onClick={() => onShowLocation(state.target!)} className={buttonClass('secondary', 'sm') + ' mt-4'}>
+              <PinIcon size={16} />
+              Pokaż na mapie
+            </button>
+          )}
         </div>
       )}
       {state?.kind === 'clarify' && (
-        <div className="mt-5 border border-[#ead9a9] bg-[#fffaf0] p-5">
-          <div className="font-semibold text-[#805c12]">Doprecyzujmy</div>
-          <p className="mt-1 text-sm text-[#805c12]">{state.message}</p>
-          {conversationRef.current.context().length > 0 && <p className="mt-2 text-xs text-[#805c12]">Dotyczy: {conversationRef.current.context()[0].userText}. Wpisz odpowiedź w polu komendy.</p>}
-          <button type="button" disabled={busy} onClick={() => { conversationRef.current.clear(); setState(null); setText(''); inputRef.current?.focus() }} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12]">Nowa komenda</button>
-          {state.target && <button type="button" onClick={() => onShowLocation(state.target!)} className="mt-3 border border-[#ead9a9] bg-white px-4 py-2 text-sm font-semibold text-[#805c12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#805c12]">Otwórz istniejącą strefę</button>}
+        <div className="animate-arrive rounded-lg bg-act-soft p-5 text-act-ink">
+          <StateMark kind="decision">Doprecyzujmy</StateMark>
+          <p className="mt-2 text-base text-ink">{state.message}</p>
+          {conversationRef.current.context().length > 0 && (
+            <p className="mt-2 text-xs">Dotyczy: {conversationRef.current.context()[0].userText}. Wpisz odpowiedź w polu komendy.</p>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                conversationRef.current.clear()
+                setState(null)
+                setText('')
+                inputRef.current?.focus()
+              }}
+              className={buttonClass('secondary', 'sm')}
+            >
+              Nowa komenda
+            </button>
+            {state.target && (
+              <button type="button" onClick={() => onShowLocation(state.target!)} className={buttonClass('secondary', 'sm')}>
+                <PinIcon size={16} />
+                Otwórz istniejącą strefę
+              </button>
+            )}
+          </div>
         </div>
       )}
       {state?.kind === 'unknown' && (
-        <div className="mt-5 border border-[#ead9a9] bg-[#fffaf0] p-5">
-          <div className="font-semibold text-[#805c12]">Nie rozumiem tej komendy</div>
-          <p className="mt-1 text-sm text-[#805c12]">{state.text}</p>
+        <div className="animate-arrive rounded-lg bg-warn-soft p-5 text-warn-ink">
+          <StateMark kind="warn">Nie rozumiem tej komendy</StateMark>
+          <p className="mt-2 text-sm text-ink">{state.text}</p>
           {state.hints && state.hints.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
-              {state.hints.map((hint) => <li key={hint} className="border border-[#ead9a9] bg-white px-3 py-1 font-mono text-xs text-[#805c12]">{hint}</li>)}
+              {state.hints.map((hint) => (
+                <li key={hint} className="rounded-full bg-sheet px-3 py-1 text-xs font-medium text-ink ring-1 ring-warn/30">
+                  {hint}
+                </li>
+              ))}
             </ul>
           )}
         </div>
       )}
       {state?.kind === 'error' && (
-        <div className="mt-5 border border-[#edc8c5] bg-[#fff7f6] p-5" role="alert">
-          <p className="font-semibold text-[#8f3936]">Nie udało się wysłać komendy.</p>
-          <p className="mt-1 text-sm text-[#8f3936]">{state.message}</p>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
-          >
-            Spróbuj ponownie
-          </button>
-        </div>
+        <Notice
+          tone="alarm"
+          role="alert"
+          title="Nie udało się wysłać komendy."
+          className="animate-arrive"
+          action={
+            <button type="button" onClick={() => void submit()} className={buttonClass('danger', 'sm')}>
+              Spróbuj ponownie
+            </button>
+          }
+        >
+          {state.message}
+        </Notice>
       )}
     </section>
   )
@@ -720,80 +811,98 @@ function detachRecognition(session: PushToTalkSession) {
   abortRecognition(recognition)
 }
 
-const smallButtonClass =
-  'shrink-0 border border-[#d8d6cf] bg-white px-3 py-1.5 text-xs font-semibold text-[#454b46] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]'
-
-function micButtonClass(active: boolean): string {
-  return (
-    'flex shrink-0 items-center gap-2 px-4 py-3 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40 ' +
-    (active ? 'bg-[#8f3936] text-white hover:bg-[#7a302e]' : 'border border-[#d8d6cf] bg-white text-[#454b46] hover:bg-[#f8f7f3]')
-  )
-}
-
+/**
+ * Karta zmiany — centrum każdej interakcji: co agent chce zapisać, skutek na wskaźniku zakresu
+ * i jedna decyzja człowieka. Do zatwierdzenia nic nie trafia do bazy.
+ */
 function ChangeCard({
   proposal,
+  item,
+  voiceHint,
   busy,
   error,
   onConfirm,
   onReject,
 }: {
   proposal: Proposal
+  item: Item | null
+  voiceHint: boolean
   busy: boolean
   error: string
   onConfirm: () => void
   onReject: () => void
 }) {
   return (
-    <div className="mt-5 border border-[#cbd8c9] bg-[#f6f8f4] p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-[#536b56]">
-          Karta zmiany — czeka na zatwierdzenie
-        </span>
-        <span className="border border-[#e8e5de] bg-white px-3 py-1 font-mono text-xs text-[#777b74]">
-          {proposal.tool}
-        </span>
+    <div className="animate-arrive rounded-lg bg-sheet p-5 shadow-raise ring-1 ring-act/45">
+      <div className="flex items-center justify-between gap-3">
+        <StateMark kind="decision">Karta zmiany · do zatwierdzenia</StateMark>
+        <code className="rounded bg-ground px-2 py-0.5 font-mono text-[11px] text-ink-2">{proposal.tool}</code>
       </div>
 
-      {proposal.tool === 'update_stock' ? <StockChange proposal={proposal} /> : <GenericChange proposal={proposal} />}
+      {proposal.tool === 'update_stock' ? <StockChange proposal={proposal} item={item} /> : <GenericChange proposal={proposal} />}
 
-      <p className="mt-3 text-sm text-[#646b64]">
-        Usłyszałem: <span className="font-semibold text-[#454b46]">„{proposal.text}”</span>. Nic nie
-        zostało zapisane — zatwierdź, aby wykonać zmianę i dodać wpis w historii.
+      <p className="mt-4 text-sm leading-relaxed text-ink-2">
+        Usłyszałem: <span className="font-medium text-ink">„{proposal.text}”</span>. Nic nie zostało zapisane — zatwierdź, aby
+        wykonać zmianę i dodać wpis w historii.
       </p>
 
-      {error && <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">Nie zapisano zmiany: {error}</p>}
+      {error && (
+        <Notice tone="alarm" role="alert" className="mt-3">
+          Nie zapisano zmiany: {error}
+        </Notice>
+      )}
 
-      <div className="mt-4 flex gap-3">
-        <button
-          onClick={onConfirm}
-          disabled={busy}
-          className="bg-[#315b37] px-8 py-3 text-base font-bold text-white transition-colors hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
-        >
+      <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
+        <button type="button" onClick={onConfirm} disabled={busy} className={buttonClass('action', 'lg')}>
+          <CheckIcon size={18} />
           {busy ? 'Zapisuję…' : 'Zatwierdź'}
         </button>
-        <button
-          onClick={onReject}
-          disabled={busy}
-          className="border border-[#d8d6cf] bg-white px-6 py-3 text-base font-semibold text-[#646b64] transition-colors hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <button type="button" onClick={onReject} disabled={busy} className={buttonClass('secondary', 'lg')}>
           Odrzuć
         </button>
       </div>
+      {voiceHint && <p className="mt-3 text-center text-xs text-ink-2">albo powiedz „zatwierdź” lub „odrzuć”</p>}
     </div>
   )
 }
 
-function StockChange({ proposal }: { proposal: Proposal }) {
+function StockChange({ proposal, item }: { proposal: Proposal; item: Item | null }) {
   const delta = proposal.delta ?? 0
+  const name = proposal.item_name ?? 'Pozycja'
+  const unit = proposal.unit ?? ''
+  const before = proposal.before
+  const after = proposal.after
+  const minimum = item?.minimum ?? 0
+  const level = typeof after === 'number' ? stockLevel(after, minimum) : 'ok'
+  const afterColor = level === 'empty' ? 'text-alarm-ink' : level === 'below' ? 'text-warn-ink' : 'text-ink'
+
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="text-3xl font-bold">{proposal.item_name ?? 'Pozycja'}</span>
-      <span className="text-3xl font-bold text-[#70756f]">{proposal.before ?? '—'}</span>
-      <span className="text-2xl font-bold text-[#777b74]">→</span>
-      <span className="text-3xl font-extrabold text-[#315b37]">{proposal.after ?? '—'}</span>
-      <span className={'px-3 py-1 text-sm font-bold ' + (delta < 0 ? 'bg-[#fdebec] text-[#8f3936]' : 'bg-[#edf3ec] text-[#315b37]')}>
-        {delta > 0 ? `+${delta}` : delta} {proposal.unit ?? ''}
-      </span>
+    <div className="mt-4">
+      <p className="text-xl font-semibold leading-tight text-ink">{name}</p>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 tabular-nums">
+        <span className="text-[28px] font-semibold leading-none text-mute">{before ?? '—'}</span>
+        <span className="text-xl leading-none text-mute" aria-hidden="true">→</span>
+        <span className={`text-[44px] font-semibold leading-none tracking-[-0.02em] ${afterColor}`}>{after ?? '—'}</span>
+        <span className="text-base text-ink-2">{unit}</span>
+        <span className="ml-auto rounded-full bg-ground px-2.5 py-1 text-sm font-semibold text-ink">
+          {delta > 0 ? `+${delta}` : delta} {unit}
+        </span>
+      </div>
+      {typeof before === 'number' && typeof after === 'number' && (
+        <>
+          <RangeIndicator value={before} after={after} minimum={minimum} unit={unit} label={name} size="lg" className="mt-5" />
+          {item && (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-ink-2">
+              <span className="whitespace-nowrap tabular-nums">minimum {minimum} {unit}</span>
+              {level !== 'ok' && (
+                <StateMark kind={STOCK_LEVEL[level].kind} className="whitespace-nowrap">
+                  {STOCK_LEVEL[level].label} po zmianie
+                </StateMark>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -801,9 +910,9 @@ function StockChange({ proposal }: { proposal: Proposal }) {
 function GenericChange({ proposal }: { proposal: Proposal }) {
   return (
     <>
-      <p className="mt-3 text-2xl font-bold text-[#315b37]">{proposal.summary}</p>
+      <p className="mt-4 text-xl font-semibold leading-snug text-ink">{proposal.summary}</p>
       {proposal.tool === 'remember_procedure' && typeof proposal.args?.text === 'string' && (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#454b46]">{proposal.args.text}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink-2">{proposal.args.text}</p>
       )}
     </>
   )
