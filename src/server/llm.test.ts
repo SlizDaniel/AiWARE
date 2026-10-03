@@ -335,6 +335,40 @@ describe('GeminiProvider — transport safety', () => {
   })
 })
 
+describe('GeminiProvider — transient overload', () => {
+  it('retries a 503 once within the budget and returns the second answer', async () => {
+    let calls = 0
+    stubFetch(() => {
+      calls += 1
+      return calls === 1 ? jsonResponse({}, { status: 503 }) : jsonResponse(geminiResponse([{ text: 'Ile palet?' }]))
+    })
+    await expect(provider().interpret('komenda', TOOLS)).resolves.toEqual({ toolCall: null, clarification: 'Ile palet?' })
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry 429 (quota) or 400 (bad request)', async () => {
+    for (const status of [429, 400]) {
+      let calls = 0
+      stubFetch(() => {
+        calls += 1
+        return jsonResponse({}, { status })
+      })
+      await expect(provider().interpret('komenda', TOOLS)).rejects.toThrow(new RegExp(`HTTP ${status}`))
+      expect(calls).toBe(1)
+    }
+  })
+
+  it('skips the retry when too little of the budget is left', async () => {
+    let calls = 0
+    stubFetch(() => {
+      calls += 1
+      return jsonResponse({}, { status: 503 })
+    })
+    await expect(provider('gemini-3.8-flash', 3_000).interpret('komenda', TOOLS)).rejects.toThrow(/HTTP 503/)
+    expect(calls).toBe(1)
+  })
+})
+
 describe('GeminiProvider — request shape', () => {
   it('sends a generateContent request with the key only in the header (Gemini 3)', async () => {
     const fetchMock = respondWith(geminiResponse([{ text: 'Ile?' }]))

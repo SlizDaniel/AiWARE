@@ -35,7 +35,7 @@ import {
   type Zone,
 } from '@/lib/api'
 import type { SectionId } from '@/lib/sections'
-import { speak } from '@/lib/tts'
+import { speak, stopSpeaking } from '@/lib/tts'
 import { subscribeUpdates } from '@/lib/updates'
 import { zoneForItem, type MapTarget } from './zoneItems'
 
@@ -161,7 +161,12 @@ export default function AppShell() {
   // Bez logowania (tryb lokalny) serwer traktuje każdego jak kierownika.
   const role: Role | null = me?.user?.role ?? (authMode === 'disabled' ? 'kierownik' : null)
   const canManage = role === 'kierownik'
-  const ttsEnabled = settings.data?.tts_enabled === true
+  const ttsEnabled = settings.data?.tts_enabled === true && !settings.data.mode_status.demo_mode
+
+  useEffect(() => {
+    if (!ttsEnabled) stopSpeaking()
+    return stopSpeaking
+  }, [ttsEnabled])
 
   const say = useCallback(
     (text: string) => {
