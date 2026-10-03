@@ -127,6 +127,16 @@ describe('speech upload', () => {
     expect(init.headers).toEqual({ 'Content-Type': 'audio/mp4' })
   })
 
+  test('a WAV recording uploads as audio/wav with a .wav filename', async () => {
+    const api = await loadApi()
+    fetchMock.mockResolvedValue(respond(200, { text: 'ile mamy kartonów' }))
+    await api.transcribeAudio(new Blob([new Uint8Array(44)], { type: 'audio/wav' }))
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/stt?filename=audio.wav')
+    expect(init.headers).toEqual({ 'Content-Type': 'audio/wav' })
+    expect(api.audioUploadInfo('audio/wave')).toEqual({ mime: 'audio/wav', ext: 'wav' })
+  })
+
   test('recordings over 4 MB are rejected before upload', async () => {
     const api = await loadApi()
     const big = new Blob([new Uint8Array(api.MAX_UPLOAD_BYTES + 1)], { type: 'audio/webm' })

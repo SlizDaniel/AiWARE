@@ -338,6 +338,7 @@ export function audioUploadInfo(type: string): { mime: string; ext: string } {
   const base = type.split(';')[0].trim().toLowerCase()
   if (base === 'video/webm') return { mime: 'audio/webm', ext: 'webm' }
   if (base === 'video/mp4') return { mime: 'audio/mp4', ext: 'mp4' }
+  if (base === 'audio/wave' || base === 'audio/vnd.wave') return { mime: 'audio/wav', ext: 'wav' }
   const ext = AUDIO_TYPES[base]
   return ext ? { mime: base, ext } : { mime: 'audio/webm', ext: 'webm' }
 }

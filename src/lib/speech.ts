@@ -35,6 +35,7 @@ export interface SpeechRecognitionLike {
   onresult: ((event: SpeechRecognitionEventLike) => void) | null
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
   onend: (() => void) | null
+  onspeechstart?: (() => void) | null
   start(): void
   stop(): void
   abort(): void
@@ -90,6 +91,17 @@ export function changedResults(event: SpeechRecognitionEventLike): { finals: str
     else interim.push(transcript)
   }
   return { finals, interim: interim.join(' ').replace(/\s+/g, ' ').trim() }
+}
+
+/** Wyniki zmienione w tym zdarzeniu z ich indeksami (do śledzenia początku wypowiedzi). */
+export function resultEntries(event: SpeechRecognitionEventLike): { index: number; transcript: string; isFinal: boolean }[] {
+  const entries: { index: number; transcript: string; isFinal: boolean }[] = []
+  for (let index = event.resultIndex; index < event.results.length; index++) {
+    const result = event.results[index]
+    const transcript = result?.[0]?.transcript?.trim() ?? ''
+    if (transcript) entries.push({ index, transcript, isFinal: Boolean(result.isFinal) })
+  }
+  return entries
 }
 
 /** Czy syntezator mowy właśnie mówi (nasłuch nie powinien słyszeć samego siebie). */
@@ -157,6 +169,44 @@ export function matchWakeWord(transcript: string, prefix: string): { matched: bo
     .replace(/^[\s,.:;!?—–-]+/, '')
     .trim()
   return { matched: true, rest }
+}
+
+/**
+ * Prefix w pierwszych `maxOffset + 1` słowach (nagranie z serwera może zacząć się
+ * końcówką poprzedniej frazy). `rest` to tekst po prefiksie.
+ */
+export function findWakeWord(transcript: string, prefix: string, maxOffset = 3): { matched: boolean; rest: string } {
+  const wanted = normalizeSpeech(prefix)
+  const words = transcript.trim().split(/\s+/).filter(Boolean)
+  if (!wanted) return { matched: false, rest: '' }
+  const limit = Math.min(maxOffset, words.length - 1)
+  for (let index = 0; index <= limit; index++) {
+    if (!wordMatchesPrefix(words[index], wanted)) continue
+    const rest = words
+      .slice(index + 1)
+      .join(' ')
+      .replace(/^[\s,.:;!?—–-]+/, '')
+      .trim()
+    return { matched: true, rest }
+  }
+  return { matched: false, rest: '' }
+}
+
+/**
+ * Komenda z transkrypcji serwera (dokładniejszej niż przeglądarka). Pusty wynik → tekst
+ * z przeglądarki; sam prefiks → czekamy na komendę jak po samym „Magu”.
+ */
+export function commandFromServerText(
+  serverText: string,
+  prefix: string,
+  browserText: string,
+): { type: 'submit'; text: string } | { type: 'armed' } {
+  const heard = serverText.replace(/\s+/g, ' ').trim()
+  const fallback = browserText.trim()
+  if (!normalizeSpeech(heard)) return fallback ? { type: 'submit', text: fallback } : { type: 'armed' }
+  const wake = findWakeWord(heard, prefix)
+  if (wake.matched) return normalizeSpeech(wake.rest) ? { type: 'submit', text: wake.rest } : { type: 'armed' }
+  return { type: 'submit', text: heard }
 }
 
 const CONFIRM_WORDS = new Set(['tak', 'zatwierdz', 'zatwierdzam', 'potwierdz', 'potwierdzam', 'ok', 'okej', 'dobrze'])

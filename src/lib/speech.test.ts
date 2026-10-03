@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   changedResults,
+  commandFromServerText,
   createRecognition,
   decideWakeAction,
+  findWakeWord,
   fullTranscript,
   isConfirmPhrase,
   isRejectPhrase,
   levenshtein,
   matchWakeWord,
   normalizeSpeech,
+  resultEntries,
   speechRecognitionSupported,
   ttsSpeaking,
   voiceDecision,
@@ -194,5 +197,43 @@ describe('browser support', () => {
       maxAlternatives: 1,
     })
     expect(ttsSpeaking()).toBe(true)
+  })
+})
+
+describe('server transcription after the wake word', () => {
+  test('findWakeWord tolerates the tail of a previous phrase before the prefix', () => {
+    expect(findWakeWord('tak. Magu, ile mamy kartonów?', 'Magu')).toEqual({ matched: true, rest: 'ile mamy kartonów?' })
+    expect(findWakeWord('Magu ile mamy', 'Magu').rest).toBe('ile mamy')
+    expect(findWakeWord('no więc dobrze ok Magu ile', 'Magu').matched).toBe(false)
+    expect(findWakeWord('ile mamy kartonów', 'Magu').matched).toBe(false)
+  })
+
+  test('server text replaces the browser text, without the prefix', () => {
+    expect(commandFromServerText('Magu, wzięliśmy paletę kartonów.', 'Magu', 'wzięli śmy palety kartony')).toEqual({
+      type: 'submit',
+      text: 'wzięliśmy paletę kartonów.',
+    })
+    // serwer nie usłyszał prefiksu — tekst idzie w całości (serwer i tak usuwa prefiks)
+    expect(commandFromServerText('Ile mamy taśmy?', 'Magu', 'ile mamy tasmy')).toEqual({ type: 'submit', text: 'Ile mamy taśmy?' })
+  })
+
+  test('empty or failed server text falls back to the browser text', () => {
+    expect(commandFromServerText('', 'Magu', 'ile mamy kartonów')).toEqual({ type: 'submit', text: 'ile mamy kartonów' })
+    expect(commandFromServerText(' … ', 'Magu', 'ile mamy kartonów')).toEqual({ type: 'submit', text: 'ile mamy kartonów' })
+  })
+
+  test('only the prefix in the server text keeps listening for the command', () => {
+    expect(commandFromServerText('Magu.', 'Magu', 'Magu ile')).toEqual({ type: 'armed' })
+    expect(commandFromServerText('', 'Magu', '')).toEqual({ type: 'armed' })
+  })
+})
+
+describe('resultEntries', () => {
+  test('keeps result indexes for utterance timing', () => {
+    const event = { resultIndex: 1, results: results(['stare', true], ['Magu ile', true], ['', false], ['gdzie', false]) }
+    expect(resultEntries(event)).toEqual([
+      { index: 1, transcript: 'Magu ile', isFinal: true },
+      { index: 3, transcript: 'gdzie', isFinal: false },
+    ])
   })
 })
