@@ -23,6 +23,13 @@
 
 The remaining unchecked natural-language criterion needs the live-cloud demo check.
 
+Aktualny stack Next.js/Gemini: rozszerzona próba w Pythonie to
+`python scripts/check-gemini.py` (13 scenariuszy, bez wykonywania narzędzi).
+Scenariusze, ocena intencji i raport są w Pythonie; adapter korzysta z produkcyjnego
+providera i walidatora TypeScript. Instrukcja: `docs/python-llm-readiness.md`.
+Pytania mają wynik REVIEW/kod 3, a nie automatyczny PASS. Próba rzeczywistej
+chmury i end-to-end GUI pozostają do wykonania; nie oznaczamy kryterium jako zamknięte.
+
 Walidacja sprawdza też zakończenie generacji: obecne `finish_reason` musi być
 `stop` lub `tool_calls`; ucięcie, filtr, brak zakończenia i odmowa modelu powodują
 fallback offline, nawet gdy argumenty wyglądają jak poprawny JSON. Dla endpointów

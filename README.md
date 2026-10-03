@@ -90,6 +90,9 @@ odpowiedź bez zapisu; nieznane komendy — prośbę o doprecyzowanie. Agent nig
 - **STT:** nagranie z przycisku **Mów** → Gemini (audio) → transkrypcja w edytowalnym polu przed wysłaniem.
   Opcjonalnie `STT_API_KEY` przełącza na API zgodne z Whisper (np. Groq).
 - Sprawdzenie kontraktu z prawdziwym modelem: `npm run check:gemini` (3 zapytania, syntetyczne dane).
+- Rozszerzona próba w Pythonie: `python scripts/check-gemini.py --list`, następnie
+  wybrane scenariusze przez `--case`. 13 przypadków, raport JSON, bez wykonywania
+  narzędzi. Instrukcja i kody wyników: [docs/python-llm-readiness.md](docs/python-llm-readiness.md).
 
 ## Ustawienia (karta 12)
 
