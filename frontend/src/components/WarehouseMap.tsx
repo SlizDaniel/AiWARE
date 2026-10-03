@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '../api'
-import { itemsForZone } from './zoneItems'
+import { itemsForZone, normalizeZoneName } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
 
@@ -12,7 +12,7 @@ type Props = {
   onRetry: () => void
   itemsState: LoadState
   onRetryItems: () => void
-  onZoneAdded: (name: string) => void
+  onZoneAdded: (name: string, created: boolean) => void
 }
 
 function shortLabel(value: string): string {
@@ -26,11 +26,22 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
   const [draftError, setDraftError] = useState('')
+  const [draftWarning, setDraftWarning] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (draftOpen) nameInputRef.current?.focus()
+  }, [draftOpen])
+
+  useEffect(() => {
+    if (draftProposal) confirmButtonRef.current?.focus()
+  }, [draftProposal])
 
   const prepareZone = async () => {
     const name = draftName.trim()
     if (!name || draftBusy) return
-    const existing = zones.find((zone) => zone.name.toLocaleLowerCase('pl-PL') === name.toLocaleLowerCase('pl-PL'))
+    const existing = zones.find((zone) => normalizeZoneName(zone.name) === normalizeZoneName(name))
     if (existing) {
       setSelectedId(existing.id)
       setDraftError(`Strefa „${existing.name}” już istnieje. Wybierz ją z listy, aby zobaczyć szczegóły.`)
@@ -39,8 +50,10 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
 
     setDraftBusy(true)
     setDraftError('')
+    setDraftWarning('')
     try {
       const result = await sendCommand(`strefa: ${name}`)
+      setDraftWarning(result.warning ?? '')
       if (result.type === 'proposal' && result.proposal.tool === 'add_zone') {
         setDraftProposal(result.proposal)
       } else if (result.type === 'clarify') {
@@ -60,10 +73,12 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
     setDraftBusy(true)
     setDraftError('')
     try {
-      await confirmProposal(draftProposal.id)
-      onZoneAdded(draftName.trim())
+      const result = await confirmProposal(draftProposal.id)
+      onZoneAdded(result.name ?? draftName.trim(), result.created !== false)
+      setSelectedId(result.id ?? null)
       setDraftProposal(null)
       setDraftName('')
+      setDraftWarning('')
       setDraftOpen(false)
     } catch (reason) {
       setDraftError(reason instanceof Error ? reason.message : 'Nie udało się dodać strefy.')
@@ -121,6 +136,8 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
                       role="button"
                       tabIndex={0}
                       aria-label="Dodaj strefę w następnym wolnym miejscu"
+                      aria-expanded={draftOpen}
+                      aria-controls="new-zone-form"
                       className="cursor-pointer"
                       onClick={() => setDraftOpen(true)}
                       onKeyDown={(event) => {
@@ -172,17 +189,18 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
       <aside className="border border-[#e8e5de] bg-white p-5" aria-label="Szczegóły stref">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-lg font-bold">Strefy</h2>
-          <button type="button" onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
+          <button type="button" onClick={() => setDraftOpen((open) => !open)} aria-expanded={draftOpen} aria-controls="new-zone-form" className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]">{draftOpen ? 'Zamknij' : 'Dodaj strefę'}</button>
         </div>
         {draftOpen && (
-          <div className="mt-4 border border-[#cbd8c9] bg-[#f6f8f4] p-4">
+          <div id="new-zone-form" className="mt-4 border border-[#cbd8c9] bg-[#f6f8f4] p-4">
             <form onSubmit={(event) => { event.preventDefault(); void prepareZone() }}>
               <label htmlFor="new-zone-name" className="block text-sm font-semibold text-[#454b46]">Nazwa nowej strefy</label>
               <input
+                ref={nameInputRef}
                 id="new-zone-name"
                 value={draftName}
                 disabled={draftBusy || draftProposal !== null}
-                onChange={(event) => { setDraftName(event.target.value); setDraftError('') }}
+                onChange={(event) => { setDraftName(event.target.value); setDraftError(''); setDraftWarning('') }}
                 placeholder="np. kartony"
                 className="mt-2 w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] disabled:opacity-60"
               />
@@ -193,11 +211,12 @@ export default function WarehouseMap({ zones, items, state, error, onRetry, item
                 <p className="text-sm font-semibold text-[#315b37]">{draftProposal.summary}</p>
                 <p className="mt-1 text-xs text-[#646b64]">Nic nie zapisano. Potwierdź dodanie strefy.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void confirmZone()} disabled={draftBusy} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftBusy ? 'Zapisuję…' : 'Zatwierdź'}</button>
+                  <button ref={confirmButtonRef} type="button" onClick={() => void confirmZone()} disabled={draftBusy} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">{draftBusy ? 'Zapisuję…' : 'Zatwierdź'}</button>
                   <button type="button" onClick={() => { setDraftProposal(null); setDraftError('') }} disabled={draftBusy} className="border border-[#d8d6cf] bg-white px-4 py-2 text-sm font-semibold text-[#646b64] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:opacity-40">Odrzuć</button>
                 </div>
               </div>
             )}
+            {draftWarning && <p className="mt-3 border border-[#ead9a9] bg-[#fffaf0] p-3 text-sm text-[#805c12]" role="status">{draftWarning}</p>}
             {draftError && <p className="mt-3 border border-[#edc8c5] bg-[#fff7f6] p-3 text-sm text-[#8f3936]" role="alert">{draftError}</p>}
           </div>
         )}

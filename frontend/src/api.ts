@@ -124,9 +124,12 @@ export function confirmProposal(id: string): Promise<{
   applied: boolean
   audit_id?: number
   reorder_draft?: ReorderDraft | null
+  created?: boolean
+  id?: number
+  name?: string
 }> {
   return fetch(`/api/proposals/${id}/confirm`, { method: 'POST' }).then((r) =>
-    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null }>(r),
+    json<{ applied: boolean; audit_id?: number; reorder_draft?: ReorderDraft | null; created?: boolean; id?: number; name?: string }>(r),
   )
 }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { itemsForZone } from './zoneItems.ts'
+import { itemsForZone, normalizeZoneName } from './zoneItems.ts'
 
 const items = [
   { id: 1, name: 'Kartony', quantity: 54, minimum: 12, unit: 'szt', location: 'Strefa A-1' },
@@ -25,4 +25,13 @@ test('a recorded location wins over a matching product name when both zones exis
 
   assert.deepEqual(itemsForZone(nameZone, items, zones).map((item) => item.id), [])
   assert.deepEqual(itemsForZone(locationZone, items, zones).map((item) => item.id), [1, 2])
+})
+
+test('equivalent location labels normalize alike and the older zone owns the stock', () => {
+  const first = { id: 3, name: 'A-1', created: '' }
+  const alias = { id: 8, name: 'Strefa A-1', created: '' }
+
+  assert.equal(normalizeZoneName(first.name), normalizeZoneName(alias.name))
+  assert.deepEqual(itemsForZone(first, items, [alias, first]).map((item) => item.id), [1, 2])
+  assert.deepEqual(itemsForZone(alias, items, [alias, first]).map((item) => item.id), [])
 })
