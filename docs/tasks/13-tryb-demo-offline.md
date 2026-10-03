@@ -38,3 +38,8 @@ i frontend 5174 z osobną bazą `backend/magazyn-demo-local.db`; `--reset` rozpo
 nową próbę, Ctrl+C zatrzymuje serwery. Wymaga wcześniej przygotowanych zależności,
 nie pobiera niczego i wymusza brak chmurowego LLM/STT. Nie zastępuje próby Dockera
 ani brakujących funkcji kolegów z kart 06/07/10.
+
+Opcja `--built` w lokalnym launcherze serwuje wcześniej przygotowany
+`frontend/dist` przez Vite preview z tym samym proxy API/WS i portami.
+Nie kompiluje i nie pobiera zależności przy starcie; brak buildu jest wykrywany
+przed resetem. Po zmianach UI trzeba ponowić `npm run build`.

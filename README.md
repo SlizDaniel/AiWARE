@@ -189,7 +189,21 @@ tekstowo — ten tryb blokuje chmurowe LLM i STT, także gdy masz klucze w otocz
 Skrypt nie pobiera zależności i korzysta z osobnej bazy `backend/magazyn-demo-local.db`.
 Zajęty port powoduje błąd przed resetem danych. Ctrl+C zatrzymuje oba serwery demo;
 restart bez `--reset` zachowuje wynik poprzedniej próby.
-Pełny scenariusz prezentacyjny nadal wymaga integracji kart 06/07/10.
+Do próby z gotową wersją interfejsu zbuduj frontend, a potem użyj `--built`:
+
+```powershell
+Push-Location frontend
+npm run build
+Pop-Location
+.\backend\.venv\Scripts\python.exe .\scripts\start-demo-local.py --built
+# Nowa próba z gotowym buildem:
+.\backend\.venv\Scripts\python.exe .\scripts\start-demo-local.py --built --reset
+```
+
+`--built` używa lokalnego Vite preview, bez hot reload i kompilacji podczas startu.
+Brak `frontend/dist/index.html` przerywa uruchomienie przed resetem bazy.
+Po zmianach w frontendzie ponów build, aby próba pokazywała aktualną wersję.
+Pełny scenariusz prezentacyjny nadal wymaga undo z karty 06 i próby Dockera offline.
 
 ### Włączenie demo przez zmienną środowiskową
 
