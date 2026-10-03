@@ -220,11 +220,32 @@ ALTER TABLE app_meta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 `
 
-/** Creates tables/indexes if missing. Serialised so concurrent cold starts don't race. */
+/** Bump when SCHEMA_SQL changes so existing databases run the DDL again. */
+export const SCHEMA_VERSION = 1
+
+async function schemaIsCurrent(db: Db): Promise<boolean> {
+  // to_regclass never raises, so this is safe inside a caller's transaction.
+  const [table] = await db.query<{ found: boolean }>("SELECT to_regclass('app_meta') IS NOT NULL AS found")
+  if (!table?.found) return false
+  const rows = await db.query<{ value: number }>("SELECT value FROM app_meta WHERE key = 'schema_version'")
+  return rows[0]?.value === SCHEMA_VERSION
+}
+
+/**
+ * Creates tables/indexes if missing. A cold start on an up-to-date database
+ * costs one SELECT; otherwise the DDL runs once, serialised by an advisory
+ * lock so concurrent cold starts don't race.
+ */
 export async function ensureSchema(db: Db): Promise<void> {
+  if (await schemaIsCurrent(db)) return
   await db.transaction(async (tx) => {
     await tx.query('SELECT pg_advisory_xact_lock(724242)')
     await tx.exec(SCHEMA_SQL)
+    await tx.query(
+      `INSERT INTO app_meta (key, value) VALUES ('schema_version', $1)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [SCHEMA_VERSION],
+    )
   })
 }
 
