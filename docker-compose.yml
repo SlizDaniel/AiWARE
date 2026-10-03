@@ -12,6 +12,10 @@ services:
       LLM_MODE: ${LLM_MODE:-llm}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      # STT zgodne z Whisper (karta 04) — bez klucza działa fallback: pole tekstowe.
+      STT_API_KEY: ${STT_API_KEY:-}
+      STT_BASE_URL: ${STT_BASE_URL:-}
+      STT_MODEL: ${STT_MODEL:-}
     volumes:
       - backend-data:/data
     healthcheck:

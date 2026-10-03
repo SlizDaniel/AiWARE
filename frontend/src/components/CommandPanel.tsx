@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   confirmProposal,
   fetchAgentMode,
   sendCommand,
+  transcribeAudio,
   updateAgentMode,
   type AgentMode,
   type Proposal,
@@ -26,6 +27,20 @@ export default function CommandPanel({ onApplied }: Props) {
   const [state, setState] = useState<State>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [voiceNote, setVoiceNote] = useState('')
+  const [voiceFallback, setVoiceFallback] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
+  // nagranie nie może żyć dłużej niż panel — stop + zwolnienie mikrofonu
+  useEffect(() => {
+    return () => {
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    }
+  }, [])
 
   const [responseWarning, setResponseWarning] = useState<string | null>(null)
   const [mode, setMode] = useState<AgentMode>('llm')
@@ -97,25 +112,87 @@ export default function CommandPanel({ onApplied }: Props) {
     setText('')
   }
 
+  const showVoiceFallback = (message: string) => {
+    setVoiceNote(message)
+    setVoiceFallback(true)
+  }
+
+  const transcribeRecording = async () => {
+    setTranscribing(true)
+    try {
+      const type = recorderRef.current?.mimeType || 'audio/webm'
+      const blob = new Blob(chunksRef.current, { type })
+      const heard = await transcribeAudio(blob)
+      setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${heard}` : heard))
+      setVoiceFallback(false)
+      setVoiceNote('')
+      // kontrola użytkownika: transkrypcja widoczna w polu PRZED wysłaniem —
+      // użytkownik czyta/poprawia i sam klika „Wyślij”
+      inputRef.current?.focus()
+    } catch (error) {
+      showVoiceFallback(
+        error instanceof Error ? error.message : 'Transkrypcja nieudana — wpisz komendę ręcznie.',
+      )
+    } finally {
+      setTranscribing(false)
+      recorderRef.current = null
+    }
+  }
+
+  const startRecording = async () => {
+    if (busy || transcribing || recording) return
+    setVoiceNote('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      chunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setRecording(false)
+        void transcribeRecording()
+      }
+      recorder.start()
+      recorderRef.current = recorder
+      setRecording(true)
+    } catch {
+      showVoiceFallback('Nie udało się włączyć mikrofonu — wpisz komendę ręcznie.')
+    }
+  }
+
+  const toggleRecording = () => {
+    if (recording) {
+      recorderRef.current?.stop()
+      return
+    }
+    void startRecording()
+  }
+
   return (
     <section className="border border-[#e8e5de] bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <h2 className="text-lg font-bold">Powiedz Magazynierowi, co robisz</h2>
-        <label className="flex items-center gap-2 text-sm text-[#70756f]">
-          Tryb agenta
-          <select
-            value={mode}
-            onChange={(event) => void changeMode(event.target.value as AgentMode)}
-            className="border border-[#d8d6cf] bg-white px-2 py-1"
-            aria-label="Tryb agenta"
-            disabled={demoMode}
-          >
-            <option value="llm">LLM</option>
-            <option value="offline">Offline</option>
-            <option value="mock">Mock</option>
-          </select>
-        </label>
-
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <label className="flex items-center gap-2 text-sm text-[#70756f]">
+            Tryb agenta
+            <select
+              value={mode}
+              onChange={(event) => void changeMode(event.target.value as AgentMode)}
+              className="border border-[#d8d6cf] bg-white px-2 py-1"
+              aria-label="Tryb agenta"
+              disabled={demoMode}
+            >
+              <option value="llm">LLM</option>
+              <option value="offline">Offline</option>
+              <option value="mock">Mock</option>
+            </select>
+          </label>
+          <span className="text-xs font-medium uppercase tracking-wider text-[#70756f]">
+            tekst albo mikrofon · nic nie zapiszę bez zatwierdzenia
+          </span>
+        </div>
       </div>
 
       {modeWarning && <p className="mt-2 text-sm text-amber-700">{modeWarning}</p>}
@@ -128,13 +205,35 @@ export default function CommandPanel({ onApplied }: Props) {
           void submit()
         }}
       >
+        <button
+          type="button"
+          onClick={toggleRecording}
+          disabled={busy || transcribing}
+          aria-pressed={recording}
+          title={recording ? 'Zakończ nagrywanie' : 'Nagraj komendę głosem'}
+          className={
+            'flex shrink-0 items-center gap-2 px-4 py-3 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-40 ' +
+            (recording
+              ? 'bg-[#8f3936] text-white hover:bg-[#7a302e]'
+              : 'border border-[#d8d6cf] bg-white text-[#454b46] hover:bg-[#f8f7f3]')
+          }
+        >
+          <span aria-hidden className={'inline-block size-3 rounded-full ' + (recording ? 'animate-pulse bg-white' : 'bg-[#8f3936]')} />
+          {recording ? 'Nagrywam…' : transcribing ? 'Słyszę…' : 'Mów'}
+        </button>
         <label htmlFor="inventory-command" className="sr-only">Komenda magazynowa</label>
         <input
           id="inventory-command"
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder='np. „wzięliśmy paletę kartonów”'
-          className="min-w-0 flex-1 border border-[#d8d6cf] px-4 py-3 text-base outline-none focus-visible:border-[#536b56] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]"
+          className={
+            'min-w-0 flex-1 border px-4 py-3 text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56] ' +
+            (voiceFallback
+              ? 'border-[#d8a948] bg-[#fffaf0]'
+              : 'border-[#d8d6cf] focus-visible:border-[#536b56]')
+          }
         />
         <button
           type="submit"
@@ -146,6 +245,17 @@ export default function CommandPanel({ onApplied }: Props) {
       </form>
 
       {responseWarning && <p className="mt-3 text-sm text-amber-700">{responseWarning}</p>}
+      {recording && (
+        <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[#8f3936]" role="status">
+          <span aria-hidden className="inline-block size-2 animate-pulse rounded-full bg-[#8f3936]" />
+          Nagrywam — kliknij „Nagrywam…”, aby zakończyć i zobaczyć transkrypcję.
+        </p>
+      )}
+      {voiceNote && (
+        <p className="mt-3 border border-[#ead9a9] bg-[#fffaf0] p-3 text-sm text-[#805c12]" role="status">
+          {voiceNote} Pole tekstowe jest podświetlone — komenda głosowa nie jest jedyną drogą.
+        </p>
+      )}
       {state?.kind === 'proposal' && (
         <ChangeCard proposal={state.proposal} busy={busy} error={actionError} onConfirm={confirm} onReject={reject} />
       )}
