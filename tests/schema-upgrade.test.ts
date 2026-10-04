@@ -54,6 +54,24 @@ test('repairs a v4 database without sector tables and preserves inventory and pa
   expect(await listMapSectors(db)).toEqual([])
 })
 
+test('repairs a v4 database from the sectors branch that lacks packing tables', async () => {
+  const db = await createPgliteDb(null)
+  await db.exec(SCHEMA_SQL)
+  await db.exec('DROP TABLE packing_rules; DROP TABLE packaging_types;')
+  await db.query("INSERT INTO app_meta (key, value) VALUES ('schema_version', 4)")
+  await db.query("INSERT INTO items (name, quantity) VALUES ('Szkło', 20)")
+
+  await ensureSchema(db)
+
+  const tables = await db.query<{ tablename: string; rowsecurity: boolean }>(
+    "SELECT tablename, rowsecurity FROM pg_tables WHERE tablename IN ('packaging_types', 'packing_rules') ORDER BY tablename",
+  )
+  expect(tables).toEqual([{ tablename: 'packaging_types', rowsecurity: true }, { tablename: 'packing_rules', rowsecurity: true }])
+  expect((await db.query('SELECT name FROM packaging_types ORDER BY id')).length).toBe(4)
+  expect(await db.query('SELECT name, quantity FROM items')).toEqual([{ name: 'Szkło', quantity: 20 }])
+  expect((await db.query("SELECT value FROM app_meta WHERE key = 'schema_version'"))[0]).toEqual({ value: SCHEMA_VERSION })
+})
+
 test('upgrades a cached database handle after a code reload instead of opening another connection', async () => {
   const db = await createPgliteDb(null)
   await db.exec(SCHEMA_SQL)
