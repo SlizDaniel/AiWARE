@@ -11,6 +11,8 @@ export const RATE_LIMITS = {
   command: { limit: 30, windowSeconds: 60 },
   stt: { limit: 30, windowSeconds: 60 },
   importPreview: { limit: 10, windowSeconds: 60 },
+  // ścieżki, sektory i przypisania zapisuje każde konto — limit chroni przed pętlą klienta
+  mapWrite: { limit: 30, windowSeconds: 60 },
 } satisfies Record<string, RateLimit>
 
 /** Counts one request for `key`; HttpError 429 once the window's budget is spent. */

@@ -3,6 +3,7 @@ import { bumpDataVersion } from '@/server/db'
 import { listMapSectors, parseMapSectorInput, saveMapSector } from '@/server/mapSectors'
 import { readJson, route } from '@/server/http'
 import { session } from '@/server/session'
+import { enforceRateLimit, RATE_LIMITS } from '@/server/rateLimit'
 
 export const GET = route(async () => {
   const { db } = await session()
@@ -12,6 +13,7 @@ export const GET = route(async () => {
 export const POST = route(async (request: Request) => {
   const input = parseMapSectorInput(await readJson(request))
   const { db, user } = await session()
+  await enforceRateLimit(db, `map:${user.id}`, RATE_LIMITS.mapWrite)
   const sector = await saveMapSector(db, input, actorOf(user))
   await bumpDataVersion(db)
   return Response.json({ sector }, { status: 201 })
