@@ -1,3 +1,4 @@
+import { refreshPersonalNotifications } from '@/lib/workTasksApi'
 import { useState } from 'react'
 import { apiErrorFromResponse, readApiJson } from '@/lib/api'
 import type { ManagerNotifications as Notifications } from '@/lib/managerNotifications'
@@ -29,10 +30,11 @@ export default function ManagerNotifications({ refreshToken, onNavigate, onForbi
         throw await apiErrorFromResponse(response)
       }
       remote.retry()
+      refreshPersonalNotifications()
     } catch (error) { setSaveError(error instanceof Error ? error.message : 'Nie udało się oznaczyć powiadomień.') }
     finally { setSaving(false) }
   }
-  return <section className={cardClass} aria-label="Powiadomienia kierownika">
+  return <section className={`${cardClass} p-5 sm:p-6`} aria-label="Powiadomienia kierownika">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-bold">Powiadomienia kierownika</h2>
       <p role="status">{data ? `${data.unread_count} nieprzeczytanych · ${data.critical_count} pilnych` : 'Ładowanie…'}</p>

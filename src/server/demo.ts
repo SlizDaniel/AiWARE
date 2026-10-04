@@ -16,7 +16,7 @@ export const NOT_DEMO_DATABASE =
   'Baza nie jest bazą demo. Wskaż osobną bazę przez DEMO_DATABASE_URL (albo katalog PGLITE_DEMO_DIR).'
 
 /** Domain tables whose content would be wiped by a demo (re)seed. */
-const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures'] as const
+const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'work_tasks'] as const
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
 const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'items']
 
@@ -47,6 +47,7 @@ export async function initDemoDb(db: Db, options: { reset: boolean } = { reset: 
     await ensureSchema(tx)
     if (alreadySeeded && !options.reset) return false
 
+    if (await tableExists(tx, 'work_tasks')) await tx.exec('TRUNCATE work_tasks')
     await tx.exec(`TRUNCATE ${RESET_TABLES.join(', ')} RESTART IDENTITY CASCADE`)
     for (const [name, quantity, minimum, unit, location] of DEMO_ITEMS) {
       await tx.query('INSERT INTO items (name, quantity, minimum, unit, location) VALUES ($1, $2, $3, $4, $5)', [

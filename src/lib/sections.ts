@@ -1,4 +1,4 @@
-export type SectionId = 'mapa' | 'stany' | 'kolejka' | 'historia' | 'procedury' | 'dashboard' | 'ustawienia'
+export type SectionId = 'mapa' | 'stany' | 'kolejka' | 'historia' | 'procedury' | 'dashboard' | 'ustawienia' | 'zadania'
 
 /** `managerOnly` — sekcja widoczna tylko dla kierownika (po ustaleniu roli). */
 export const SECTIONS: { id: SectionId; label: string; managerOnly?: boolean }[] = [
@@ -8,6 +8,7 @@ export const SECTIONS: { id: SectionId; label: string; managerOnly?: boolean }[]
   { id: 'historia', label: 'Historia' },
   { id: 'procedury', label: 'Procedury' },
   { id: 'dashboard', label: 'Dashboard kierownika', managerOnly: true },
+  { id: 'zadania', label: 'Zadania' },
   { id: 'ustawienia', label: 'Ustawienia' },
 ]
 

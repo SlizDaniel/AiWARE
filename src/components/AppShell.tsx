@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import WorkTasksPanel from './WorkTasksPanel'
+import { useNotificationCounts } from './useNotificationCounts'
 import CommandPanel, { type PendingChange } from './CommandPanel'
 import ManagerDashboard from './dashboard/ManagerDashboard'
 import HistoryList from './HistoryList'
@@ -54,6 +56,7 @@ const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
   historia: { title: 'Historia zmian', subtitle: 'Audyt: kto, kiedy i co zmienił' },
   procedury: { title: 'Procedury', subtitle: 'Wiedza „jak u nas na hali”' },
   dashboard: { title: 'Dashboard kierownika', subtitle: 'Stan teraz, operacje w okresie, dziennik akcji i przekazanie zmiany' },
+  zadania: { title: 'Zadania', subtitle: 'Przydziały, nowe powiadomienia i wykonane zadania' },
   ustawienia: { title: 'Ustawienia', subtitle: 'Agent, konta, użycie AI i baza danych' },
 }
 
@@ -208,6 +211,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   // Bez logowania (tryb lokalny) serwer traktuje każdego jak kierownika.
   const role: Role | null = me?.user?.role ?? (authMode === 'disabled' ? 'kierownik' : null)
   const canManage = role === 'kierownik'
+  const notificationCounts = useNotificationCounts(me?.user?.id ?? (authMode === 'disabled' ? 'local' : null),role,updateTick,() => { void onReloadMe() })
   // dashboard tylko dla kierownika: bez roli (lub po jej utracie) pokazujemy Stany, a panel się odmontowuje
   const visibleSection: SectionId = section === 'dashboard' && !canManage ? 'stany' : section
   const ttsEnabled = settings.data?.tts_enabled === true && !settings.data.mode_status.demo_mode
@@ -273,6 +277,8 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
       label: `${lowTotal} poniżej minimum`,
     },
     kolejka: { count: pendingDrafts, kind: 'decision', label: `${pendingDrafts} czeka na decyzję` },
+    dashboard: { count: notificationCounts.dashboard, kind: 'alarm', label: `${notificationCounts.dashboard} nieprzeczytanych powiadomień`, notification: true },
+    zadania: { count: notificationCounts.tasks, kind: 'alarm', label: `${notificationCounts.tasks} nowych zadań`, notification: true },
   }
 
   return (
@@ -430,6 +436,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
 
             {visibleSection === 'dashboard' && canManage && (
               <ManagerDashboard
+              key={me?.user?.id ?? 'local'}
                 updateTick={updateTick}
                 items={stock.data}
                 onNavigate={setSection}
@@ -438,7 +445,9 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
               />
             )}
 
-            {visibleSection === 'ustawienia' && (
+            {visibleSection === 'zadania' && me?.user && <WorkTasksPanel key={me.user.id} userId={me.user.id} canManage={canManage} updateTick={updateTick} />}
+
+          {visibleSection === 'ustawienia' && (
               <SettingsPanel
                 canManage={canManage}
                 me={me}
