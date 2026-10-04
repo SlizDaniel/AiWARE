@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import CommandPanel from './CommandPanel'
+import CommandPanel, { type PendingChange } from './CommandPanel'
 import ManagerDashboard from './dashboard/ManagerDashboard'
 import HistoryList from './HistoryList'
 import InventoryExport from './InventoryExport'
@@ -15,7 +15,9 @@ import Sidebar, { type NavBadge } from './Sidebar'
 import StatusBanner from './StatusBanner'
 import StockTable from './StockTable'
 import WarehouseMap from './WarehouseMap'
+import { UploadIcon } from './ui/icons'
 import { StateShape } from './ui/StateMark'
+import { buttonClass } from './ui/styles'
 import { countDeviations } from './ui/stockLevel'
 import {
   fetchHealth,
@@ -134,7 +136,9 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   const [mapSelectionId, setMapSelectionId] = useState<number | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const [healthError, setHealthError] = useState('')
-  const [openImport, setOpenImport] = useState(false)
+  // null = domyślnie (otwarty dla źródła „import pliku” i pustego magazynu); true/false = wybór użytkownika
+  const [importOverride, setImportOverride] = useState<boolean | null>(null)
+  const [pendingChange, setPendingChange] = useState<PendingChange | null>(null)
   const [connected, setConnected] = useState(false)
   // rośnie przy każdej zmianie danych na serwerze (polling /api/version) — odświeża dashboard
   const [updateTick, setUpdateTick] = useState(0)
@@ -256,6 +260,9 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   }, [onReloadMe])
 
   const heading = SECTION_TITLES[visibleSection]
+  const importOpen =
+    canManage &&
+    (importOverride ?? (settings.data?.adapter === 'file_import' || (stock.state === 'ready' && stock.data.length === 0)))
   const deviations = countDeviations(stock.data)
   const pendingDrafts = queue.data.filter((draft) => draft.status === 'pending').length
   const lowTotal = deviations.empty + deviations.below
@@ -296,7 +303,6 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
                 localMode={authMode === 'disabled'}
                 onNavigate={setSection}
               />
-              {visibleSection === 'stany' && <InventoryExport />}
             </div>
           </div>
         </header>
@@ -325,14 +331,15 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
             showModeControl={visibleSection !== 'ustawienia'}
             canChangeMode={canManage}
             onSpeak={say}
+            onPendingChange={setPendingChange}
           />
         </aside>
 
         <div className="min-w-0 px-4 pb-16 sm:px-8 xl:col-start-1 xl:row-start-2 2xl:px-12">
           <div className="mx-auto max-w-[1180px] space-y-6">
             <StatusBanner storage={health?.storage ?? null} authMode={authMode} />
-            {visibleSection === 'stany' && canManage && (
-              <InventoryImport onImported={refresh} initialOpen={openImport || settings.data?.adapter === 'file_import'} />
+            {visibleSection === 'stany' && importOpen && (
+              <InventoryImport onImported={refresh} onClose={() => setImportOverride(false)} />
             )}
 
             {visibleSection === 'mapa' && (
@@ -361,6 +368,23 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
                 error={stock.error}
                 onRetry={() => void reloadStock()}
                 canManage={canManage}
+                pending={pendingChange}
+                toolbar={
+                  <>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => setImportOverride(!importOpen)}
+                        aria-expanded={importOpen}
+                        className={buttonClass(importOpen ? 'ghost' : 'secondary', 'sm')}
+                      >
+                        <UploadIcon size={16} />
+                        {importOpen ? 'Zamknij import' : 'Importuj plik'}
+                      </button>
+                    )}
+                    <InventoryExport />
+                  </>
+                }
                 onSave={async (id, changes) => {
                   const item = await updateStockItem(id, changes)
                   showToast(`Zapisano produkt: ${item.name}`)
@@ -426,7 +450,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
                 onRetrySettings={() => void reloadSettings()}
                 onSettingsSaved={setSettings}
                 onOpenImport={() => {
-                  setOpenImport(true)
+                  setImportOverride(true)
                   setSection('stany')
                 }}
                 onToast={(message) => showToast(message)}

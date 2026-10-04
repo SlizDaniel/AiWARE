@@ -40,7 +40,7 @@ export default function RangeIndicator({
   const afterPct = proposed ? rangePercent(after, scale) : valuePct
   const minPct = rangePercent(minimum, scale)
   const over = shown > scale
-  const fill = level === 'empty' ? 'bg-alarm' : level === 'below' ? 'bg-warn' : 'bg-ink-2'
+  const fill = level === 'empty' ? 'bg-alarm' : level === 'below' ? 'bg-warn' : 'bg-norm'
   const unitText = unit ? ` ${unit}` : ''
   const text = proposed
     ? `${label}: ${value}${unitText} → ${after}${unitText}, minimum ${minimum}`
@@ -66,7 +66,7 @@ export default function RangeIndicator({
         ) : proposed ? (
           <>
             <div className="absolute inset-y-0 left-0 rounded-full bg-act" style={{ width: `${afterPct}%` }} />
-            <div className="absolute inset-y-0 left-0 rounded-l-full bg-ink-2" style={{ width: `${valuePct}%` }} />
+            <div className="absolute inset-y-0 left-0 rounded-l-full bg-norm" style={{ width: `${valuePct}%` }} />
           </>
         ) : (
           <div className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out ${fill}`} style={{ width: `${valuePct}%` }} />

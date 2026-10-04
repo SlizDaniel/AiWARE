@@ -19,6 +19,8 @@
   --color-line-strong: oklch(0.79 0.008 250);
   --color-track: oklch(0.912 0.005 250);
   --color-band: oklch(0.845 0.008 250);
+  /* wypełnienie wskaźnika w stanie normalnym: spokojna szarość, lżejsza niż odchylenia */
+  --color-norm: oklch(0.68 0.012 255);
 
   --color-ink: oklch(0.235 0.012 255);
   --color-ink-2: oklch(0.42 0.012 255);

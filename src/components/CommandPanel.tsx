@@ -46,6 +46,9 @@ type PushToTalkSession = {
   serverStt: boolean
 }
 
+/** Oczekująca zmiana stanu — pokazywana także w wierszu tabeli stanów, nie tylko na karcie. */
+export type PendingChange = { itemId: number; after: number }
+
 type Props = {
   onApplied: (summary: string, reorderDraft: ReorderDraft | null) => void
   zones: Zone[]
@@ -61,6 +64,8 @@ type Props = {
   canChangeMode: boolean
   /** Odczyt odpowiedzi głosem (no-op, gdy TTS wyłączony). */
   onSpeak?: (text: string) => void
+  /** Zmiana oczekująca na zatwierdzenie (albo null) — do podglądu w tabeli stanów. */
+  onPendingChange?: (change: PendingChange | null) => void
 }
 
 type VoiceActions = {
@@ -90,6 +95,7 @@ export default function CommandPanel({
   showModeControl = true,
   canChangeMode,
   onSpeak,
+  onPendingChange,
 }: Props) {
   const [text, setText] = useState('')
   const [state, setState] = useState<State>(null)
@@ -330,6 +336,14 @@ export default function CommandPanel({
     latestRef.current = { runCommand, confirm, reject, busy }
   })
 
+  const pendingItemId = state?.kind === 'proposal' && state.proposal.tool === 'update_stock' ? state.proposal.item_id : undefined
+  const pendingAfter = state?.kind === 'proposal' && state.proposal.tool === 'update_stock' ? state.proposal.after : undefined
+  useEffect(() => {
+    onPendingChange?.(
+      typeof pendingItemId === 'number' && typeof pendingAfter === 'number' ? { itemId: pendingItemId, after: pendingAfter } : null,
+    )
+  }, [onPendingChange, pendingItemId, pendingAfter])
+
   const showVoiceFallback = (message: string) => {
     setVoiceNote(message)
     setVoiceFallback(true)
@@ -497,6 +511,8 @@ export default function CommandPanel({
   const recognizing = transcribing || wake.phase === 'refining'
   const pending = state?.kind === 'proposal'
   const pendingItem = state?.kind === 'proposal' ? items.find((item) => item.id === state.proposal.item_id) ?? null : null
+  // przy oczekującej karcie bufor nic nie wnosi (podpowiedź głosowa jest na karcie) — pole komendy zostaje tuż pod kartą
+  const showBuffer = !pending || busy || hearing || recognizing || micStarting || Boolean(text)
   const bufferStatus = busy
     ? 'Agent przetwarza komendę'
     : micStarting
@@ -599,7 +615,16 @@ export default function CommandPanel({
           </button>
         </div>
       )}
-      {wakeActive && wake.error && (
+      {wakeActive && wake.error && pending && (
+        <p className="flex items-center gap-2 text-xs text-alarm-ink" role="alert">
+          <StateShape kind="alarm" size={8} />
+          <span className="min-w-0 flex-1 truncate" title={wake.error}>Mikrofon niedostępny</span>
+          <button type="button" onClick={wake.retry} className="font-semibold underline underline-offset-2 hover:text-alarm">
+            Spróbuj ponownie
+          </button>
+        </p>
+      )}
+      {wakeActive && wake.error && !pending && (
         <Notice
           tone="alarm"
           role="alert"
@@ -613,6 +638,7 @@ export default function CommandPanel({
         </Notice>
       )}
 
+      {showBuffer && (
       <div
         className={'rounded-lg p-4 transition-colors duration-200 ' + (hearing ? 'bg-act-soft' : 'bg-ground')}
         aria-label="Bufor komendy"
@@ -638,6 +664,7 @@ export default function CommandPanel({
         </p>
         {hearing && <p className="mt-2 text-xs text-ink-2">To wstępny zapis mowy. Agent zinterpretuje komendę po zakończeniu wypowiedzi.</p>}
       </div>
+      )}
 
       <form
         className="flex gap-2"
@@ -666,7 +693,7 @@ export default function CommandPanel({
           value={text}
           onChange={(e) => setText(e.target.value)}
           readOnly={micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining'))}
-          placeholder={state?.kind === 'proposal' ? '„zatwierdź” albo „odrzuć”' : `np. „${settings?.prefix ?? 'Magu'}, ile mamy kartonów?”`}
+          placeholder={state?.kind === 'proposal' ? '„zatwierdź” albo „odrzuć”' : `„${prefix}, ile kartonów?”`}
           className={
             fieldClass +
             ' h-11 flex-1 text-[15px] ' +
@@ -716,10 +743,7 @@ export default function CommandPanel({
 
       {state?.kind === 'answer' && (
         <div className="animate-arrive rounded-lg bg-ground p-5">
-          <div className="flex items-center justify-between gap-3">
-            <p className="label-caps">Odpowiedź</p>
-            <code className="rounded bg-sheet px-2 py-0.5 font-mono text-[11px] text-ink-2">{state.tool}</code>
-          </div>
+          <p className="label-caps" title={`Narzędzie agenta: ${state.tool}`}>Odpowiedź</p>
           <p className="mt-2.5 whitespace-pre-wrap text-base leading-relaxed text-ink">{state.text}</p>
           {state.procedure && <ProcedureLocation procedure={state.procedure} zones={zones} items={items} onShowZone={onShowZone} />}
           {state.target && (
@@ -835,9 +859,8 @@ function ChangeCard({
 }) {
   return (
     <div className="animate-arrive rounded-lg bg-sheet p-5 shadow-raise ring-1 ring-act/45">
-      <div className="flex items-center justify-between gap-3">
+      <div title={`Narzędzie agenta: ${proposal.tool}`}>
         <StateMark kind="decision">Karta zmiany · do zatwierdzenia</StateMark>
-        <code className="rounded bg-ground px-2 py-0.5 font-mono text-[11px] text-ink-2">{proposal.tool}</code>
       </div>
 
       {proposal.tool === 'update_stock' ? <StockChange proposal={proposal} item={item} /> : <GenericChange proposal={proposal} />}

@@ -26,6 +26,8 @@ export default function StockTable({
   onRetry,
   canManage = false,
   onSave,
+  toolbar,
+  pending = null,
 }: {
   items: Item[]
   state?: StockState
@@ -33,6 +35,10 @@ export default function StockTable({
   onRetry?: () => void
   canManage?: boolean
   onSave?: (id: number, changes: Partial<Omit<Item, 'id'>>) => Promise<void>
+  /** akcje w pasku nad tabelą (import, eksport) */
+  toolbar?: ReactNode
+  /** zmiana czekająca na zatwierdzenie w panelu agenta — podgląd skutku w wierszu */
+  pending?: { itemId: number; after: number } | null
 }) {
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<number | null>(null)
@@ -56,7 +62,8 @@ export default function StockTable({
 
   if (items.length === 0) {
     return (
-      <section aria-label="Pozycje magazynowe">
+      <section aria-label="Pozycje magazynowe" className="space-y-4">
+        {toolbar && <div className="flex flex-wrap justify-end gap-2">{toolbar}</div>}
         <Empty text="Brak pozycji magazynowych" hint="Zaimportuj plik lub dodaj dane, aby zobaczyć stany." />
       </section>
     )
@@ -76,10 +83,13 @@ export default function StockTable({
             className={`${fieldClass} h-10 pl-10`}
           />
         </label>
-        <p className="text-sm text-ink-2" aria-live="polite">
-          <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
-          <span className="tabular-nums">{items.length}</span> pozycji
-        </p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="text-sm text-ink-2" aria-live="polite">
+            <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
+            <span className="tabular-nums">{items.length}</span> pozycji
+          </p>
+          {toolbar && <div className="flex flex-wrap items-center gap-2">{toolbar}</div>}
+        </div>
       </div>
 
       {filteredItems.length === 0 ? (
@@ -96,7 +106,7 @@ export default function StockTable({
       ) : (
         // Szerokości kolumn mieszczą się w ~600 px (laptop 1280 px z kolumną agenta); przewijanie tylko awaryjnie.
         <div className="relative overflow-x-auto border-t border-line">
-          <table className="w-full min-w-[34rem] table-fixed text-left">
+          <table className="w-full min-w-[38rem] table-fixed text-left">
             <thead>
               <tr>
                 <th scope="col" className="label-caps py-3 pl-5 pr-3 text-left">Pozycja</th>
@@ -169,16 +179,23 @@ export default function StockTable({
 
                 const level = stockLevel(item.quantity, item.minimum)
                 const { label, kind } = STOCK_LEVEL[level]
+                const pendingAfter = pending && pending.itemId === item.id ? pending.after : null
                 const deviation = level === 'empty' || level === 'below'
                 const minPct = item.minimum > 0 ? rangePercent(item.minimum, rangeScale(item.minimum, [item.quantity])) : null
                 // każda komórka ma własne podświetlenie (pozycjonowanie `tr` nie jest pewne we wszystkich przeglądarkach)
                 const flash = <ChangeFlash value={`${item.quantity}/${item.minimum}`} />
                 return (
-                  <tr key={item.id} className="border-t border-line align-top transition-colors duration-150 hover:bg-ground/50">
+                  <tr
+                    key={item.id}
+                    className={
+                      'border-t border-line align-top transition-colors duration-150 ' +
+                      (pendingAfter !== null ? 'bg-act-soft/60' : 'hover:bg-ground/50')
+                    }
+                  >
                     <th scope="row" className="relative py-4 pl-5 pr-3 text-left font-normal">
                       {flash}
                       <div className="relative min-w-0">
-                        <div className="break-words py-[3px] text-[15px] font-semibold leading-snug text-ink">{item.name}</div>
+                        <div className="hyphens-auto break-normal py-[3px] text-[15px] font-semibold leading-snug text-ink">{item.name}</div>
                         <div className={`narrow mt-1 truncate text-[13px] ${item.location ? 'text-ink-2' : 'text-mute'}`} title={item.location || undefined}>
                           {item.location || 'Bez lokalizacji'}
                         </div>
@@ -193,6 +210,11 @@ export default function StockTable({
                         />
                         <span className="truncate text-sm text-ink-2">{item.unit}</span>
                       </div>
+                      {pendingAfter !== null && (
+                        <div className="relative mt-1 whitespace-nowrap text-[13px] font-semibold tabular-nums text-act-ink">
+                          → {pendingAfter} {item.unit}
+                        </div>
+                      )}
                     </td>
                     <td className="relative px-3 py-4">
                       {flash}
@@ -201,6 +223,7 @@ export default function StockTable({
                           <RangeIndicator
                             value={item.quantity}
                             minimum={item.minimum}
+                            after={pendingAfter}
                             label={item.name}
                             unit={item.unit}
                             size="md"
@@ -220,7 +243,11 @@ export default function StockTable({
                     <td className={`relative py-4 pl-3 ${canManage ? 'pr-3' : 'pr-5'}`}>
                       {flash}
                       <div className="relative flex h-7 items-center">
-                        <StateMark kind={kind} className="whitespace-nowrap">{label}</StateMark>
+                        {pendingAfter !== null ? (
+                          <StateMark kind="decision" className="whitespace-nowrap">Czeka na decyzję</StateMark>
+                        ) : (
+                          <StateMark kind={kind} className="whitespace-nowrap">{label}</StateMark>
+                        )}
                       </div>
                     </td>
                     {canManage && (

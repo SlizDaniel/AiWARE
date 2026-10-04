@@ -19,10 +19,11 @@ const FIELDS: { id: ImportField; label: string; required?: boolean }[] = [
 
 type Mapping = Record<ImportField, number | null>
 
-export default function InventoryImport({ onImported, initialOpen = false }: { onImported: () => void; initialOpen?: boolean }) {
-  // Ustawienia (źródło danych = import pliku / „Przejdź do importu”) otwierają panel, dopóki użytkownik sam go nie zamknie.
-  const [openOverride, setOpen] = useState<boolean | null>(null)
-  const open = openOverride ?? initialOpen
+/**
+ * Panel importu pliku. Otwiera go przycisk „Importuj plik” w pasku tabeli stanów (stan trzyma AppShell,
+ * bo panel otwierają też Ustawienia i pusty magazyn).
+ */
+export default function InventoryImport({ onImported, onClose }: { onImported: () => void; onClose: () => void }) {
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [mapping, setMapping] = useState<Mapping | null>(null)
   const [busy, setBusy] = useState(false)
@@ -78,19 +79,12 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
           <h2 id="inventory-import-title" className="text-lg font-semibold text-ink">Import z Excela lub CSV</h2>
           <p className="mt-0.5 text-sm text-ink-2">Podgląd i mapowanie kolumn przed zapisaniem stanów.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-controls="inventory-import-form"
-          className={buttonClass(open ? 'ghost' : 'secondary')}
-        >
-          {open ? <CloseIcon size={16} /> : <UploadIcon size={16} />}
-          {open ? 'Zamknij import' : 'Importuj plik'}
+        <button type="button" onClick={onClose} aria-controls="inventory-import-form" className={buttonClass('ghost', 'sm')}>
+          <CloseIcon size={16} />
+          Zamknij import
         </button>
       </div>
 
-      {open && (
         <div id="inventory-import-form" className="space-y-6 border-t border-line px-5 py-5">
           <div className="space-y-3">
             <label
@@ -225,7 +219,6 @@ export default function InventoryImport({ onImported, initialOpen = false }: { o
             </>
           )}
         </div>
-      )}
     </section>
   )
 }
