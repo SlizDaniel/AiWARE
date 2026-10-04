@@ -9,7 +9,7 @@ import { DEFAULT_ACTOR, StaleStockProposalError, getItem, listItems, logEvent, s
 import { HttpError } from './http'
 import { GeminiRequestError } from './llm'
 import { delta, parseCommand, stockCommandConcern, SZT_NA_PALETE, type ParsedCommand } from './parser'
-import { levenshtein } from '@/lib/speech'
+import { levenshtein, matchWakeWord } from '@/lib/speech'
 import { sameInventoryWord } from '@/lib/inventoryNames'
 import { commandText, getAgentModeStatus, getAppSettings } from './settings'
 import type { Db } from './sql'
@@ -46,6 +46,9 @@ function fallbackWarning(error: unknown): string {
 }
 
 const READ_TOOLS = new Set(Object.values(TOOL_REGISTRY).filter((spec) => spec.kind === 'read').map((spec) => spec.name))
+
+/** „Nie”, „anuluj”… — the follow-up refuses the pending command instead of completing it. */
+const CANCEL_RE = /^(?:nie|anuluj|zapomnij|stop|rezygnuj|porzuć)(?![\p{L}\p{N}_])/iu
 
 export type Proposal = {
   id: string
@@ -143,36 +146,62 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   if (interpreted === null) {
     return { type: 'clarify', text, message: `Aktualny prefix to „${prefix}”. Użyj go albo wpisz komendę bez prefixu.` }
   }
-  const command = interpreted || text.trim()
+  let command = interpreted || text.trim()
   const { default_minimum: defaultMinimum } = await getAppSettings(db)
   const rows = await listItems(db)
   const items: ItemRef[] = rows.map((row) => ({ id: row.id, name: row.name, unit: row.unit }))
   let warning: string | null = null
-  let parsed: ParsedCommand | null
 
-  if (status.mode === 'llm' && options.provider !== null) {
-    const relatedText = [...conversation.map((turn) => turn.userText), command].join(' ')
-    const suppliedItems = contextItems(rows, relatedText)
-    const context = JSON.stringify({ ...JSON.parse(inventoryContext(suppliedItems, conversation)),
-      role: options.role ?? 'pracownik', packaging_catalogue: await listPackaging(db) })
-    try {
-      const interpretation = await options.provider.interpret(command, toolSchemas(), context)
-      if (interpretation.toolCall === null) {
-        return { type: 'clarify', text, message: interpretation.clarification || 'Doprecyzuj polecenie.' }
-      }
-      parsed = normalizeCall(interpretation.toolCall, command, suppliedItems)
-    } catch (error) {
-      // LLMProviderError (or any provider failure): never block the warehouse — use the offline parser.
-      parsed = parseCommand(command, items)
-      warning = fallbackWarning(error)
+  // Continuation of an unresolved command („wzięliśmy paletę kartonów” → dopyt →
+  // „duże”): the short answer completes the pending sentence without repeating
+  // it. A complete new command wins; an explicit refusal drops the context.
+  const standalone = parseCommand(command, items)
+  const pendingTurn = conversation.length > 0 ? conversation[0] : undefined
+  let parsed: ParsedCommand | null = null
+  if (pendingTurn && (standalone === null || standalone.clarification || standalone.missingItem)) {
+    if (CANCEL_RE.test(command)) {
+      // An unknown answer clears the client-side pending context.
+      return { type: 'unknown', text, hints: [...HINTS] }
     }
-  } else {
-    parsed = parseCommand(command, items)
-    if (status.mode === 'llm') warning = NO_KEY_COMMAND_WARNING
-    else if (status.mode === 'mock') warning = status.warning
+    const wake = prefix ? matchWakeWord(pendingTurn.userText, prefix) : null
+    const merged = `${wake?.matched ? wake.rest : pendingTurn.userText} ${command}`.trim()
+    const completed = parseCommand(merged, items)
+    if (completed && !completed.clarification && !completed.missingItem) {
+      command = merged
+      parsed = completed
+    }
+  }
+
+  if (parsed === null) {
+    if (status.mode === 'llm' && options.provider !== null) {
+      const relatedText = [...conversation.map((turn) => turn.userText), command].join(' ')
+      const suppliedItems = contextItems(rows, relatedText)
+      const context = JSON.stringify({ ...JSON.parse(inventoryContext(suppliedItems, conversation)),
+        role: options.role ?? 'pracownik', packaging_catalogue: await listPackaging(db) })
+      try {
+        const interpretation = await options.provider.interpret(command, toolSchemas(), context)
+        if (interpretation.toolCall === null) {
+          return { type: 'clarify', text, message: interpretation.clarification || 'Doprecyzuj polecenie.' }
+        }
+        parsed = normalizeCall(interpretation.toolCall, command, suppliedItems)
+      } catch (error) {
+        // LLMProviderError (or any provider failure): never block the warehouse — use the offline parser.
+        parsed = parseCommand(command, items)
+        warning = fallbackWarning(error)
+      }
+    } else {
+      parsed = parseCommand(command, items)
+      if (status.mode === 'llm') warning = NO_KEY_COMMAND_WARNING
+      else if (status.mode === 'mock') warning = status.warning
+    }
   }
 
   const deterministic = parseCommand(command, items)
+  // Offline uncertainty about the item (a family like Kartony/Kartony duże)
+  // outranks the model's pick: ask instead of silently answering one variant.
+  if (parsed && deterministic?.clarification && READ_TOOLS.has(parsed.tool)) {
+    return { type: 'clarify', text, message: deterministic.clarification, ...(warning ? { warning } : {}) }
+  }
   if (parsed && deterministic && parsed.tool !== deterministic.tool) {
     return { type: 'clarify', text, message: 'Rozpoznana intencja nie zgadza się z operacją zaproponowaną przez model. Powtórz pełne polecenie.' }
   }

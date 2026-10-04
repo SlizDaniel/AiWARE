@@ -1,7 +1,21 @@
 import { describe, expect, test } from 'vitest'
-import { correctInventorySpeech } from './speechInventory'
+import { correctInventorySpeech, extractInventoryQuestion } from './speechInventory'
 
 describe('inventory names in spoken commands', () => {
+  test('wyłapuje pytanie z literówką, powtórzeniem i dowolnym szumem na końcu', () => {
+    expect(extractInventoryQuestion('ile mamy kartnów kartonów tutaj jakiś syf szum', ['Kartony', 'Szkło'])).toBe('ile mamy Kartony')
+    expect(extractInventoryQuestion('ile mamy kartnów szum szum', ['Kartony'])).toBe('ile mamy Kartony')
+    expect(extractInventoryQuestion('gdzie leży szkła eee szum', ['Szkło'])).toBe('gdzie leży Szkło')
+  })
+  test('nie wybiera wariantu przed dopowiedzeniem jego nazwy ani nie skraca zapisu', () => {
+    expect(extractInventoryQuestion('ile mamy kartonów', ['Kartony duże', 'Kartony małe'])).toBeNull()
+    expect(extractInventoryQuestion('ile mamy kartonów', ['Kartony', 'Kartony duże'])).toBeNull()
+    expect(extractInventoryQuestion('ile mamy kartony', ['Kartony', 'Kartony duże'])).toBe('ile mamy Kartony')
+    expect(extractInventoryQuestion('ile mamy kartonów kartonów dużych szum', ['Kartony duże', 'Kartony małe'])).toBe('ile mamy Kartony duże')
+    expect(extractInventoryQuestion('wzięliśmy dwie palety kartonów szum', ['Kartony'])).toBeNull()
+    expect(extractInventoryQuestion('zapamiętaj ile mamy kartonów', ['Kartony'])).toBeNull()
+    expect(extractInventoryQuestion('ile mamy M9 szum', ['M8'])).toBeNull()
+  })
   test('recognises inflected names before correcting, and repairs a misheard inflected noun', () => {
     expect(correctInventorySpeech('ile mamy bułek?', ['Bułki', 'Bułka']).corrections).toEqual([])
     expect(correctInventorySpeech('ile mamy półek?', ['Bułki']).text).toBe('ile mamy Bułki?')

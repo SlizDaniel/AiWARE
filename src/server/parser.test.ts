@@ -175,6 +175,33 @@ describe('warehouse command reliability', () => {
   })
 })
 
+describe('family variants must be asked, not guessed', () => {
+  const FAMILY: ItemRef[] = [
+    { id: 1, name: 'Kartony' },
+    { id: 2, name: 'Kartony duże' },
+    { id: 3, name: 'Kartony małe' },
+  ]
+
+  it('an inflected family lead asks with options', () => {
+    const parsed = parseCommand('ile mamy kartonów', FAMILY)!
+    expect(parsed.clarification).toContain('Kartony duże')
+    expect(parsed.clarification).toContain('Dopowiedz')
+    expect(parseCommand('gdzie leży kartonów', FAMILY)!.clarification).toBeTruthy()
+  })
+
+  it('the exact spoken name resolves without asking', () => {
+    expect(parseCommand('ile mamy kartony', FAMILY)).toMatchObject({ tool: 'get_stock', itemId: 1 })
+    expect(parseCommand('ile mamy kartonów duże', FAMILY)).toMatchObject({ tool: 'get_stock', itemId: 2 })
+  })
+
+  it('a stock command with a family lead asks too, and a variant word completes it', () => {
+    expect(parseCommand('wzięliśmy paletę kartonów', FAMILY)!.clarification).toContain('Kartony małe')
+    expect(parseCommand('wzięliśmy paletę kartonów duże', FAMILY)).toMatchObject({
+      tool: 'update_stock', itemId: 2, args: { item_id: 2, delta: -SZT_NA_PALETE },
+    })
+  })
+})
+
 describe('offline path (test_offline.py)', () => {
   const BANNED = ['http', 'https', 'net', 'tls', 'dgram', 'undici', 'axios', 'node-fetch', '@google/genai', '@google/generative-ai']
   const MODULES = ['db.ts', 'parser.ts', 'tools.ts', 'commands.ts', 'agentContract.ts', 'settings.ts', 'demo.ts']

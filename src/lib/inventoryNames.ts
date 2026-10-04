@@ -15,6 +15,16 @@ export function sameInventoryWord(left: string, right: string): boolean {
   return ENDINGS.has(a) && ENDINGS.has(b)
 }
 
+/** Items whose name extends the given one with more words: „Kartony” → „Kartony duże”. */
+export function inventoryFamily<T extends { name: string }>(name: string, items: readonly T[]): T[] {
+  const base = normalizeSpeech(name)
+  if (!base) return []
+  return items.filter(item => {
+    const full = normalizeSpeech(item.name)
+    return full !== base && full.startsWith(`${base} `)
+  })
+}
+
 /** Match every spoken word; never silently drop a product's spoken qualifier. */
 export function matchInventoryNames<T extends { name: string }>(fragment: string, items: readonly T[]): T[] {
   const query = normalizeSpeech(fragment)

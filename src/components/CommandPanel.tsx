@@ -14,10 +14,11 @@ import {
   type ReorderDraft,
   type Zone,
 } from '@/lib/api'
-import { delay, PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
+import { PcmRecorder, wavBlob } from '@/lib/pcmRecorder'
+import { SPEECH_WINDOW_MS } from '@/lib/speechWindow'
 import { playListeningCue, unlockListeningCue } from '@/lib/listeningCue'
-import { abortRecognition, createRecognition, fullTranscript, voiceDecision, type SpeechRecognitionLike } from '@/lib/speech'
-import { correctInventorySpeech, speechCorrectionNote } from '@/lib/speechInventory'
+import { abortRecognition, createRecognition, fullTranscript, latestWakeWord, voiceDecision, type SpeechRecognitionLike } from '@/lib/speech'
+import { correctInventorySpeech, extractInventoryQuestion, speechCorrectionNote } from '@/lib/speechInventory'
 import ProcedureLocation from './ProcedureLocation'
 import { CheckIcon, MicIcon, MicOffIcon, PinIcon, SendIcon } from './ui/icons'
 import { Notice } from './ui/feedback'
@@ -30,10 +31,9 @@ import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '@/lib/com
 import { findZoneByName, mapTargetFromAnswer, type MapTarget } from './zoneItems'
 
 /** Bez prefiksu („zatwierdź”) karta zmiany przyjmuje decyzję głosem tylko przez tyle od pokazania. */
-const VOICE_DECISION_MS = 60_000
+const VOICE_DECISION_MS = 15_000
 /** „Mów”: nagranie trwa najwyżej tyle (bufor PCM ma 30 s), po stopie dobieramy „ogon”. */
-const MAX_PUSH_TO_TALK_MS = 29_000
-const PUSH_TO_TALK_TAIL_MS = 300
+const MAX_PUSH_TO_TALK_MS = SPEECH_WINDOW_MS
 const MIN_AUDIO_SECONDS = 0.3
 
 /** Jedno naciśnięcie „Mów”: początek na zegarze nagrania i podgląd przeglądarki. */
@@ -110,6 +110,7 @@ export default function CommandPanel({
   const [refiningLive, setRefiningLive] = useState(false)
   const [voiceNote, setVoiceNote] = useState('')
   const [voiceFallback, setVoiceFallback] = useState(false)
+  const [autoCommand, setAutoCommand] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const pcmRef = useRef<PcmRecorder | null>(null)
   const pushToTalkRef = useRef<PushToTalkSession | null>(null)
@@ -154,6 +155,7 @@ export default function CommandPanel({
     refine: sttRefine,
     paused: busy,
     onCorrection: setVoiceNote,
+    readQuestion: text => extractInventoryQuestion(text, items.map(item => item.name)),
     cardStatus: () => {
       const pending = stateRef.current?.kind === 'proposal'
       return { pending, fresh: pending && Date.now() - proposalShownAtRef.current <= VOICE_DECISION_MS }
@@ -176,7 +178,7 @@ export default function CommandPanel({
       } else actions.reject()
     },
   })
-  const liveSpeech = wake.supported
+  const liveSpeech = wake.supported && !wake.error
   // wake_word bez Web Speech (Firefox) → zwykły przycisk Mów z nagraniem
   const wakeActive = wakeMode && liveSpeech
   const pushToTalk = voiceEnabled && !wakeActive
@@ -195,17 +197,18 @@ export default function CommandPanel({
       : !voiceEnabled
         ? 'Tryb tekstowy — mikrofon wyłączony. Możesz zmienić tryb głosu w Ustawieniach.'
         : wakeActive
-          ? `Mów bez klikania: „${prefix}, …” i komenda — wyśle się po krótkiej pauzie. Kartę zmiany zatwierdzisz słowem „zatwierdź” albo „tak”, odrzucisz „odrzuć” albo „nie”.`
+          ? `Powiedz „${prefix}” i komendę. Jedna wypowiedź trwa maksymalnie 3 s od wykrycia mowy, także gdy nie rozpoznam prefiksu. Na zatwierdzenie karty słowem „zatwierdź” albo „tak” masz 15 s. Inna odpowiedź lub brak zgody odrzuca zmianę.`
           : liveSpeech
             ? sttRefine
-              ? 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco, a po nagraniu serwer go poprawi. Sprawdź i kliknij Wyślij.'
-              : 'Kliknij Mów i mów — tekst pojawia się w polu na bieżąco. Sprawdź go i kliknij Wyślij.'
-            : 'Nagraj komendę albo wpisz ją poniżej. Sprawdź transkrypcję przed wysłaniem.'
+              ? 'Kliknij Mów i wypowiedz komendę. Po maksymalnie 3 s nagranie się kończy, a agent rozpoznaje i przetwarza polecenie.'
+              : 'Kliknij Mów i wypowiedz komendę. Po maksymalnie 3 s nasłuch się kończy, a agent przetwarza polecenie.'
+            : 'Kliknij Mów — nagranie trwa maksymalnie 3 s, potem serwer rozpozna i przetworzy komendę. Możesz też wpisać ją poniżej.'
 
   // tryb głosu zmieniony w Ustawieniach (np. przez kierownika) → przerwij nagranie, zwolnij mikrofon,
   // a trwające nagranie nie trafi już na serwer
   useEffect(() => {
     voiceSessionRef.current++
+    setAutoCommand(null)
     uploadAllowedRef.current = pushToTalk
     if (!pushToTalk) cancelPushToTalk(pushToTalkRef, pcmRef)
   }, [pushToTalk])
@@ -224,7 +227,8 @@ export default function CommandPanel({
   }
 
   const runCommand = async (command: string) => {
-    const t = command.trim()
+    const addressed = latestWakeWord(command, prefix)
+    const t = extractInventoryQuestion(addressed.matched ? addressed.rest : command, items.map(item => item.name)) ?? command.trim()
     if (!t || busyRef.current || pushToTalkRef.current || transcribing) return
     if (stateRef.current?.kind === 'proposal') {
       const decision = voiceDecision(t, prefix)
@@ -233,6 +237,7 @@ export default function CommandPanel({
     }
     wake.resetForReply()
     busyRef.current = true
+    setText(t)
     setProcessingCommand(t)
     setBusy(true)
     setActionError('')
@@ -276,12 +281,18 @@ export default function CommandPanel({
         setState({ kind: 'clarify', message })
         setText('')
         onSpeak?.(message)
-      } else setState({ kind: 'unknown', text: res.text, hints: res.hints })
+        // Nasłuch zostaje żywy — dopowiedzenie („duże”) domyka oczekującą komendę.
+        if (wakeActive) wake.resetForReply()
+      } else {
+        setState({ kind: 'unknown', text: res.text, hints: res.hints })
+        if (wakeActive) wake.resetForReply()
+      }
     } catch (error) {
       setState({
         kind: 'error',
         message: error instanceof Error ? error.message : 'Nie udało się połączyć z magazynem.',
       })
+      if (wakeActive) wake.stopForRetry('Nie udało się wykonać polecenia. Kliknij „Spróbuj ponownie” albo wpisz komendę.')
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -336,6 +347,15 @@ export default function CommandPanel({
     latestRef.current = { runCommand, confirm, reject, busy }
   })
 
+  useEffect(() => {
+    if (!voiceEnabled || busy || state?.kind !== 'proposal') return
+    const timer = setTimeout(() => {
+      latestRef.current.reject()
+      setVoiceNote('Minął czas na potwierdzenie (15 s) — zmiana odrzucona.')
+    }, VOICE_DECISION_MS)
+    return () => clearTimeout(timer)
+  }, [voiceEnabled, busy, state])
+
   const pendingItemId = state?.kind === 'proposal' && state.proposal.tool === 'update_stock' ? state.proposal.item_id : undefined
   const pendingAfter = state?.kind === 'proposal' && state.proposal.tool === 'update_stock' ? state.proposal.after : undefined
   useEffect(() => {
@@ -351,7 +371,7 @@ export default function CommandPanel({
 
   // „Mów”: podgląd na żywo (Chrome/Edge), opcjonalnie nagranie PCM do poprawiania przez serwer.
   // Po stopie fragment idzie jako WAV do STT, jeśli sesja wymaga rozpoznawania na serwerze.
-  // Użytkownik sprawdza tekst i sam klika „Wyślij”.
+  // Po maksymalnie 3 s zatrzymujemy mikrofon i przetwarzamy rozpoznaną komendę.
   const startPushToTalk = async () => {
     if (busyRef.current || transcribing || pushToTalkRef.current || !pushToTalk) return
     unlockListeningCue()
@@ -447,13 +467,13 @@ export default function CommandPanel({
     setRefiningLive(Boolean(session.browserText))
     const recorder = pcmRef.current
     try {
-      await delay(PUSH_TO_TALK_TAIL_MS)
       const samples = recorder ? recorder.slice(session.startMs, recorder.now()) : new Float32Array(0)
       const sampleRate = recorder?.sampleRate ?? 16_000
       recorder?.stop()
       if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       if (samples.length < sampleRate * MIN_AUDIO_SECONDS) {
         if (!session.browserText) setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
+        else applyVoiceTranscript(session.browserText)
         return
       }
       const transcription = await transcribeAudioDetailed(wavBlob(samples, sampleRate))
@@ -465,13 +485,14 @@ export default function CommandPanel({
         setVoiceFallback(false)
       } else if (!session.browserText) {
         setVoiceNote('Nic nie usłyszałem — kliknij Mów i spróbuj ponownie.')
-      }
+      } else applyVoiceTranscript(session.browserText)
     } catch (error) {
       if (!uploadAllowedRef.current || voiceSession !== voiceSessionRef.current) return
       const detail = error instanceof Error ? error.message : 'Transkrypcja nieudana — wpisz komendę ręcznie.'
       showVoiceFallback(
         session.browserText ? `Nie udało się poprawić transkrypcji (${detail}) — zostawiam tekst rozpoznany w przeglądarce.` : detail,
       )
+      if (session.browserText) applyVoiceTranscript(session.browserText)
     } finally {
       setTranscribing(false)
       inputRef.current?.focus()
@@ -483,11 +504,21 @@ export default function CommandPanel({
     const corrected = correctInventorySpeech(heard, items.map((item) => item.name), prefix)
     setText(corrected.text)
     setVoiceNote(corrected.corrections.length ? speechCorrectionNote(corrected.corrections) : '')
-    if (stateRef.current?.kind !== 'proposal' || busyRef.current) return
+    if (busyRef.current) return
+    if (stateRef.current?.kind !== 'proposal') {
+      if (corrected.text.trim()) setAutoCommand(corrected.text)
+      return
+    }
     const decision = voiceDecision(heard, prefix)
     if (decision === 'confirm') void latestRef.current.confirm()
     else if (decision === 'reject') latestRef.current.reject()
   }
+
+  useEffect(() => {
+    if (!autoCommand || transcribing || listening || micStarting || busy) return
+    setAutoCommand(null)
+    void latestRef.current.runCommand(autoCommand)
+  }, [autoCommand, transcribing, listening, micStarting, busy])
 
   const toggleMic = () => {
     const session = pushToTalkRef.current
@@ -885,7 +916,7 @@ function ChangeCard({
           Odrzuć
         </button>
       </div>
-      {voiceHint && <p className="mt-3 text-center text-xs text-ink-2">albo powiedz „zatwierdź” lub „odrzuć”</p>}
+      {voiceHint && <p className="mt-3 text-center text-xs text-ink-2">Powiedz „zatwierdź” lub „tak” w ciągu 15 s. Inna odpowiedź albo brak zgody odrzuca zmianę.</p>}
     </div>
   )
 }

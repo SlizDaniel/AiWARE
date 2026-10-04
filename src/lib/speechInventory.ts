@@ -1,7 +1,50 @@
-import { levenshtein, matchWakeWord, normalizeSpeech } from './speech'
-import { matchInventoryNames, sameInventoryWord } from './inventoryNames'
+import { cleanSpeechCommand, levenshtein, matchWakeWord, normalizeSpeech } from './speech'
+import { inventoryFamily, matchInventoryNames, sameInventoryWord } from './inventoryNames'
 
 export type SpeechCorrection = { heard: string; name: string }
+
+/** Extract a complete read-only question; trailing noise never changes an inventory write. */
+export function extractInventoryQuestion(text: string, names: readonly string[]): string | null {
+  const heard = normalizeSpeech(cleanSpeechCommand(text))
+  const intent = /^(ile mamy|gdzie (?:lezy|leza|jest|sa)|jak pakujemy)\s+(.+)$/.exec(heard)
+  if (!intent) return null
+  const words = intent[2].split(' ')
+  const matchesWord = (spoken: string, known: string) => {
+    if (sameInventoryWord(spoken, known)) return true
+    if (/\d/.test(spoken + known) || spoken.length < 4 || known.length < 4) return false
+    const variants = [known]
+    if (known.endsWith('y')) variants.push(known.slice(0, -1) + 'ow')
+    if (known.endsWith('o')) variants.push(known.slice(0, -1) + 'a')
+    if (known.endsWith('ki')) variants.push(known.slice(0, -2) + 'ek')
+    return variants.some(variant => levenshtein(spoken, variant) <= 1)
+  }
+  const candidates = [...new Set(names)].map(name => ({ name, words: normalizeSpeech(name).split(' ') }))
+  const matched = candidates.filter(candidate => {
+    let index = 0
+    for (const word of candidate.words) {
+      if (!matchesWord(words[index] ?? '', word)) return false
+      const previous = word
+      index++
+      // Repeated corrections: "kartnów kartonów dużych".
+      while (index < words.length && matchesWord(words[index], previous)) index++
+    }
+    return true
+  }).sort((a, b) => b.words.length - a.words.length)
+  const best = matched[0]
+  if (!best || matched.filter(candidate => candidate.words.length === best.words.length).length !== 1) return null
+  // A variant win with an unspoken word („duże” was never said) over a shorter
+  // matched item is a guess, and so is an inflected family lead („kartonów” may
+  // mean Kartony duże albo małe). Both go to the server, which asks for a variant.
+  if (best.words.length > words.length &&
+      matched.some(candidate => candidate !== best &&
+        normalizeSpeech(best.name).startsWith(`${normalizeSpeech(candidate.name)} `))) {
+    return null
+  }
+  const exactSpoken = best.words.every((word, index) => words[index] === word)
+  if (!exactSpoken && inventoryFamily(best.name, candidates).length > 0) return null
+  const lead = intent[1].startsWith('gdzie') ? 'gdzie leży' : intent[1]
+  return `${lead} ${best.name}`
+}
 
 // Only an item at the end of a simple read/stock command. Never scan arbitrary
 // prose: "bułki na półce" must not turn the shelf into another product.

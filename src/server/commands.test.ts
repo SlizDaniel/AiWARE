@@ -654,3 +654,88 @@ describe('LLM context size', () => {
     expect(contextItems(rows.slice(0, 10), 'cokolwiek')).toHaveLength(10)
   })
 })
+
+describe('clarification continuation', () => {
+  const FAMILY_COMMAND = 'wzięliśmy paletę kartonów'
+
+  async function addVariants(): Promise<void> {
+    await db.exec(`INSERT INTO items (name, quantity, minimum, unit, location) VALUES
+      ('Kartony duże', 10, 5, 'szt', 'A-1'),
+      ('Kartony małe', 4, 2, 'szt', 'A-2')`)
+  }
+
+  function clarifyMessage(response: CommandResponse): string {
+    if (response.type !== 'clarify') throw new Error(`expected clarify, got ${JSON.stringify(response)}`)
+    return response.message
+  }
+
+  it('a family stock command asks for the variant and a spoken qualifier completes it', async () => {
+    await addVariants()
+    const first = await command(FAMILY_COMMAND)
+    expect(first.type).toBe('clarify')
+    const message = clarifyMessage(first)
+    expect(message).toContain('„Kartony”')
+    expect(message).toContain('Kartony duże')
+    expect(message).toContain('Dopowiedz')
+    const next = await runCommand(db, 'duże', {
+      provider: null,
+      actor: WORKER,
+      conversation: [{ userText: FAMILY_COMMAND, question: message }],
+    })
+    expect(next.type).toBe('proposal')
+    const proposal = (next as Extract<CommandResponse, { type: 'proposal' }>).proposal
+    expect(proposal.item_name).toBe('Kartony duże')
+    expect(proposal.delta).toBe(-2)
+    expect(proposal.text).toBe('wzięliśmy paletę kartonów → duże')
+    expect(await stock('Kartony duże')).toBe(10)
+  })
+
+  it('a family question asks for the variant and the answer completes the read', async () => {
+    await addVariants()
+    const first = await command('ile mamy kartonów')
+    expect(first.type).toBe('clarify')
+    const message = clarifyMessage(first)
+    const next = await runCommand(db, 'małe', {
+      provider: null,
+      actor: WORKER,
+      conversation: [{ userText: 'ile mamy kartonów', question: message }],
+    })
+    expect(next.type).toBe('answer')
+    expect((next as Extract<CommandResponse, { type: 'answer' }>).text).toContain('Kartony małe: 4')
+  })
+
+  it('a refusal drops the pending command instead of completing it', async () => {
+    await addVariants()
+    const first = await command(FAMILY_COMMAND)
+    const message = clarifyMessage(first)
+    const next = await runCommand(db, 'nie', {
+      provider: null,
+      actor: WORKER,
+      conversation: [{ userText: FAMILY_COMMAND, question: message }],
+    })
+    expect(next.type).toBe('unknown')
+  })
+
+  it('a complete new command wins over the pending clarification', async () => {
+    await addVariants()
+    const next = await runCommand(db, 'ile mamy Folia stretch', {
+      provider: null,
+      actor: WORKER,
+      conversation: [{ userText: FAMILY_COMMAND, question: 'Pasuje kilka produktów.' }],
+    })
+    expect(next.type).toBe('answer')
+    expect((next as Extract<CommandResponse, { type: 'answer' }>).text).toContain('Folia stretch')
+  })
+
+  it('offline family uncertainty outranks the model item pick', async () => {
+    await addVariants()
+    const provider: LLMProvider = {
+      async interpret() {
+        return { toolCall: { name: 'get_stock', arguments: { item_id: 1 } }, clarification: null }
+      },
+    }
+    const next = await runCommand(db, 'ile mamy kartonów', { provider, actor: WORKER })
+    expect(next.type).toBe('clarify')
+    expect(clarifyMessage(next)).toContain('Kartony duże')
+  })
+})

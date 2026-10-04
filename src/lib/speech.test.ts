@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   abortRecognition,
   changedResults,
+  cleanSpeechCommand,
   commandFromServerText,
   createRecognition,
   decideWakeAction,
@@ -11,6 +12,7 @@ import {
   isRejectPhrase,
   levenshtein,
   matchWakeWord,
+  latestWakeWord,
   normalizeSpeech,
   preferredSpeechTranscript,
   resultEntries,
@@ -43,13 +45,29 @@ describe('granica między komendą a decyzją o karcie', () => {
   })
 
   test('pełna komenda z dopiskiem zatwierdź nie jest zgodą na zapis', () => {
-    expect(voiceDecision('wzięliśmy paletę kartonów zatwierdź', 'Magu')).toBeNull()
+    expect(voiceDecision('wzięliśmy paletę kartonów zatwierdź', 'Magu')).toBe('reject')
     expect(voiceDecision('zatwierdź', 'Magu')).toBe('confirm')
     expect(voiceDecision('Magu, odrzuć', 'Magu')).toBe('reject')
   })
 })
 
 describe('normalizeSpeech', () => {
+  test('odcina rozmowę przed ostatnim prefiksem i rozpoznaje wołacz imienia', () => {
+    expect(latestWakeWord('rozmawialiśmy o obiedzie Jakubie ile mamy kartonów szum', 'Jakub')).toEqual({ matched: true, rest: 'ile mamy kartonów szum' })
+    expect(latestWakeWord('Jakub gdzie szkło Jakubie ile kartonów', 'Jakub').rest).toBe('ile kartonów')
+    expect(latestWakeWord('rozmowa ile mamy kartonów', 'Jakub').matched).toBe(false)
+  })
+  test('usuwa szum i wypełniacze, zachowując negację oraz ilość', () => {
+    expect(cleanSpeechCommand('[szum] yyy nie bierz 2 palet eee')).toBe('nie bierz 2 palet')
+    expect(cleanSpeechCommand('ile mamy hmm kartonów')).toBe('ile mamy kartonów')
+  })
+  test('akceptacja wymaga słowa kluczowego, odmowa i wahanie mają pierwszeństwo', () => {
+    expect(voiceDecision('yyy tak proszę zapisz', 'Magu')).toBe('confirm')
+    expect(voiceDecision('proszę zatwierdź zmianę', 'Magu')).toBe('confirm')
+    for (const phrase of ['tak ale nie teraz', 'nie zatwierdzaj', 'może tak', 'nie wiem', 'przypadkowe słowa', 'takie kartony']) {
+      expect(voiceDecision(phrase, 'Magu')).toBe('reject')
+    }
+  })
   test('lowercases, strips Polish diacritics and punctuation', () => {
     expect(normalizeSpeech('Magu, ILE mamy kartonów?')).toBe('magu ile mamy kartonow')
     expect(normalizeSpeech('Zatwierdź! Łódź — żółć.')).toBe('zatwierdz lodz zolc')
@@ -167,7 +185,7 @@ describe('confirm / reject phrases', () => {
     expect(voiceDecision('tak', 'Magu')).toBe('confirm')
     expect(voiceDecision('Magu, zatwierdź', 'Magu')).toBe('confirm')
     expect(voiceDecision('Magu nie', 'Magu')).toBe('reject')
-    expect(voiceDecision('Magu, ile mamy kartonów', 'Magu')).toBeNull()
+    expect(voiceDecision('Magu, ile mamy kartonów', 'Magu')).toBe('reject')
   })
 
   test('without the wake word only when allowed (fresh card)', () => {
@@ -216,10 +234,9 @@ describe('decideWakeAction', () => {
     // Wynik pośredni jest tylko podglądem; na jego podstawie nie wolno zapisać zmiany.
     expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: false })).toEqual({ type: 'tentative', decision: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'Magu odrzuć', isFinal: false })).toEqual({ type: 'tentative', decision: 'reject' })
-    // nowa komenda z prefiksem nadal działa przy otwartej karcie
+    // Przy oczekującej karcie wypowiedź bez zgody odrzuca propozycję.
     expect(decideWakeAction({ ...pending, transcript: 'Magu ile mamy taśmy', isFinal: true })).toEqual({
-      type: 'submit',
-      text: 'ile mamy taśmy',
+      type: 'reject',
     })
   })
 

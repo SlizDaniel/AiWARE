@@ -159,6 +159,16 @@ export function normalizeSpeech(text: string): string {
     .trim()
 }
 
+/** Remove STT noise markers and hesitation sounds without changing quantities or negation. */
+export function cleanSpeechCommand(text: string): string {
+  return text
+    .replace(/\[(?:szum|muzyka|cisza|noise|silence)\]/gi, ' ')
+    .replace(/(^|[\s,])(?:yyy+|eee+|hmm+|uh+|um+)(?=$|[\s,.!?])/gi, '$1')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim()
+}
+
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0
   if (!a.length) return b.length
@@ -181,7 +191,20 @@ function wordMatchesPrefix(word: string, prefix: string): boolean {
   const heard = normalizeSpeech(word)
   if (!heard) return false
   // krótkie prefiksy tylko dokładnie — inaczej łapałyby przypadkowe słowa
-  return prefix.length >= 4 ? levenshtein(heard, prefix) <= 1 : heard === prefix
+  const vocative = prefix.length >= 4 && (heard === `${prefix}ie` || (prefix.endsWith('a') && heard === `${prefix.slice(0, -1)}o`))
+  return prefix.length >= 4 ? vocative || levenshtein(heard, prefix) <= 1 : heard === prefix
+}
+
+/** A live result can contain conversation before the address; only retain its latest suffix. */
+export function latestWakeWord(transcript: string, prefix: string): { matched: boolean; rest: string } {
+  const wanted = normalizeSpeech(prefix)
+  const words = [...transcript.matchAll(/[\p{L}\p{N}]+/gu)]
+  if (!wanted) return { matched: false, rest: '' }
+  for (let index = words.length - 1; index >= 0; index--) {
+    const match = wakeAt(transcript, words, index, wanted)
+    if (match.matched) return match
+  }
+  return { matched: false, rest: '' }
 }
 
 function wakeAt(text: string, words: RegExpMatchArray[], index: number, prefix: string): { matched: boolean; rest: string } {
@@ -238,8 +261,8 @@ export function commandFromServerText(
   prefix: string,
   browserText: string,
 ): { type: 'submit'; text: string } | { type: 'armed' } {
-  const heard = serverText.replace(/\s+/g, ' ').trim()
-  const fallback = browserText.trim()
+  const heard = cleanSpeechCommand(serverText)
+  const fallback = cleanSpeechCommand(browserText)
   if (!normalizeSpeech(heard)) return fallback ? { type: 'submit', text: fallback } : { type: 'armed' }
   const wake = findWakeWord(heard, prefix)
   if (wake.matched) return normalizeSpeech(wake.rest) ? { type: 'submit', text: wake.rest } : { type: 'armed' }
@@ -305,9 +328,13 @@ export function voiceDecision(
   const wake = matchWakeWord(transcript, prefix)
   if (!wake.matched && !withoutWakeWord) return null
   const phrase = wake.matched ? wake.rest : transcript
-  if (isConfirmPhrase(phrase)) return 'confirm'
-  if (isRejectPhrase(phrase)) return 'reject'
-  return null
+  const words = normalizeSpeech(phrase).split(' ').filter(Boolean)
+  if (!words.length) return null
+  if (/\b(?:wziel\w*|wzielismy|wez|wydaj|dodaj|usun|ile|gdzie|jak|strefa)\b/.test(words.join(' '))) return 'reject'
+  // Negation and hesitation override acceptance anywhere in the utterance.
+  if (words.some(word => wordInVocabulary(word, REJECT_WORDS) || ['ale', 'jednak', 'moze', 'pozniej', 'czekaj', 'stop', 'jeszcze', 'chyba'].includes(word))) return 'reject'
+  if (words.some(word => wordInVocabulary(word, CONFIRM_WORDS))) return 'confirm'
+  return 'reject'
 }
 
 export type WakeAction =

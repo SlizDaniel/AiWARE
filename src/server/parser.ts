@@ -17,7 +17,7 @@
 // Regexy: Python `\w` i `\b` są unikodowe; w JS `\b` działa tylko dla ASCII,
 // więc granicę słowa zapisujemy lookbehindem na klasie [\p{L}\p{N}_] (flaga `u`).
 import type { ItemRef } from './types'
-import { matchInventoryNames } from '@/lib/inventoryNames'
+import { inventoryFamily, matchInventoryNames } from '@/lib/inventoryNames'
 import { normalizeSpeech } from '@/lib/speech'
 
 export const SZT_NA_PALETE = 2
@@ -128,13 +128,26 @@ export function parseCommand(text: string, items: ItemRef[]): ParsedCommand | nu
   return parseStock(text, items)
 }
 
+/** Lista opcji przy niejednoznacznym towarze — dopowiedzenie jednej cechy domyka komendę. */
+function ambiguousMessage(matches: readonly ItemRef[]): string {
+  return `Pasuje kilka produktów: ${matches.map((match) => `„${match.name}”`).join(', ')}. Dopowiedz różnicę, np. „duże”, albo podaj pełną nazwę.`
+}
+
+/** Rodzinę („Kartony” z wariantami) rozstrzyga wyłącznie dokładna nazwa, nie odmieniona. */
+function familyAmbiguous(fragment: string, item: ItemRef, items: ItemRef[]): boolean {
+  return normalizeSpeech(fragment) !== normalizeSpeech(item.name) && inventoryFamily(item.name, items).length > 0
+}
+
 /** Pytania o stan/lokalizację: z towarem, bez towaru (cały magazyn) albo missingItem. */
 function queryIntent(tool: string, fragment: string, items: ItemRef[], text: string): ParsedCommand {
   if (!fragment) return command(tool, text, { args: {} })
   const matches = matchInventoryNames(fragment, items)
-  if (matches.length > 1) return clarify(tool, text, 'Pasuje kilka produktów. Podaj pełną nazwę ze Stanów.')
+  if (matches.length > 1) return clarify(tool, text, ambiguousMessage(matches))
   const item = matches[0] ?? null
   if (item !== null) {
+    if (familyAmbiguous(fragment, item, items)) {
+      return clarify(tool, text, ambiguousMessage([item, ...inventoryFamily(item.name, items)]))
+    }
     return command(tool, text, { args: { item_id: item.id }, itemId: item.id, itemName: item.name })
   }
   return command(tool, text, { missingItem: fragment })
@@ -174,7 +187,7 @@ function parseStock(text: string, items: ItemRef[]): ParsedCommand | null {
     return clarify('update_stock', text, 'Podaj dodatnią, całkowitą ilość i nazwę towaru.')
   }
   const matches = matchInventoryNames(rest, items)
-  if (matches.length > 1) return clarify('update_stock', text, 'Pasuje kilka produktów. Podaj pełną nazwę ze Stanów.')
+  if (matches.length > 1) return clarify('update_stock', text, ambiguousMessage(matches))
   if (!matches.length) {
     if (!unit && /^(?:kg|kilogram\p{L}*|litr\p{L}*|metr\p{L}*|pacz\p{L}*|opakowan\p{L}*|skrzyn\p{L}*)(?: |$)/u.test(rest)) {
       return clarify('update_stock', text, 'Nie znam przelicznika tej jednostki. Podaj ilość w jednostce towaru ze Stanów.')
@@ -185,6 +198,9 @@ function parseStock(text: string, items: ItemRef[]): ParsedCommand | null {
     return command('update_stock', text, { missingItem: text.normalize('NFC').trim().replace(/[.!?]+$/, '').slice(-rest.length).toLowerCase() })
   }
   const item = matches[0]
+  if (familyAmbiguous(rest, item, items)) {
+    return clarify('update_stock', text, ambiguousMessage([item, ...inventoryFamily(item.name, items)]))
+  }
   const spokenUnit = unit?.[1] ?? ''
   if (item.unit && (spokenUnit.startsWith('rol') || spokenUnit.startsWith('szt'))) {
     const storedUnit = normalizeSpeech(item.unit)
