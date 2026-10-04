@@ -18,7 +18,7 @@ export const NOT_DEMO_DATABASE =
 /** Domain tables whose content would be wiped by a demo (re)seed. */
 const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures'] as const
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
-const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'items']
+const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'map_paths', 'items']
 
 async function tableExists(db: Db, table: string): Promise<boolean> {
   const rows = await db.query<{ found: boolean }>('SELECT to_regclass($1::text) IS NOT NULL AS found', [table])

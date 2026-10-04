@@ -8,6 +8,8 @@ const EVENT_LABELS: Record<string, string> = {
   item_added: 'nowa pozycja',
   procedure_saved: 'procedura',
   inventory_item_updated: 'edycja produktu',
+  map_path_saved: 'ścieżka na mapie',
+  map_path_deleted: 'usunięcie ścieżki',
 }
 
 type Props = {

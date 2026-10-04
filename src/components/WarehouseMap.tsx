@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '@/lib/api'
+import { confirmProposal, sendCommand, type Item, type MapPath, type Proposal, type Zone } from '@/lib/api'
+import { formatMeters, pathDistanceM } from '@/lib/pdr'
+import PathMap, { PATH_COLORS } from './PathMap'
 import { findZoneByName, itemsForZone, zoneForItem, type MapTarget } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -7,6 +9,8 @@ type LoadState = 'loading' | 'ready' | 'error'
 type Props = {
   zones: Zone[]
   items: Item[]
+  /** Ścieżki nagrane telefonem (mapowanie hali) — nakładka na schemat. */
+  paths?: MapPath[]
   locationTarget: MapTarget | null
   selectedId: number | null
   onSelectZone: (id: number | null) => void
@@ -22,8 +26,9 @@ function shortLabel(value: string): string {
   return value.length > 25 ? `${value.slice(0, 24)}…` : value
 }
 
-export default function WarehouseMap({ zones, items, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
+export default function WarehouseMap({ zones, items, paths = [], locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
+  const [showPaths, setShowPaths] = useState(true)
   const [draftName, setDraftName] = useState('')
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
@@ -207,6 +212,46 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
             })}
           </svg>
         </div>
+        {paths.length > 0 && (
+          <div className="border-t border-[#e8e5de] px-3 pb-4 pt-4 sm:px-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-base font-bold">Rzeczywisty rzut hali (z telefonu)</h3>
+              <button
+                type="button"
+                onClick={() => setShowPaths((value) => !value)}
+                aria-expanded={showPaths}
+                className="text-sm font-semibold text-[#315b37] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]"
+              >
+                {showPaths ? 'Ukryj ścieżki' : 'Pokaż ścieżki'}
+              </button>
+            </div>
+            {showPaths && (
+              <>
+                <div className="mt-3 overflow-x-auto">
+                  <PathMap
+                    width={880}
+                    height={480}
+                    shapes={paths.map((path, index) => ({
+                      points: path.points,
+                      markers: path.markers,
+                      color: PATH_COLORS[index % PATH_COLORS.length],
+                      label: path.name,
+                    }))}
+                    onMarkerClick={(marker) => {
+                      if (!marker.zone) return
+                      const zone = findZoneByName(marker.zone, zones)
+                      if (zone) onSelectZone(zone.id)
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-[#70756f]">
+                  Ścieżki z akcelerometru i kompasu (kroki × kierunek). Łącznie {formatMeters(paths.reduce((sum, path) => sum + pathDistanceM(path.points), 0))}.
+                  Znacznik ze strefą — kliknij, by wybrać strefę na schemacie. Kratka w metrach.
+                </p>
+              </>
+            )}
+          </div>
+        )}
         <p className="border-t border-[#e8e5de] px-5 py-3 text-xs text-[#70756f]">Układ schematyczny. Położenie stref na rzucie nie oznacza fizycznych współrzędnych.</p>
       </div>
 
