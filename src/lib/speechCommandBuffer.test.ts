@@ -18,6 +18,35 @@ describe('bufor wypowiedzi', () => {
     expect(buffer.pending).toBe(false)
   })
 
+  it('powtórzony niezmieniony wynik nie odsuwa wysłania komendy', () => {
+    const ready = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready)
+    buffer.update(0, 'ile mamy kartonów', true, 10)
+    for (let step = 0; step < 5; step++) {
+      vi.advanceTimersByTime(300)
+      buffer.update(0, 'ile mamy kartonów', true, 10)
+    }
+    expect(ready).toHaveBeenCalledExactlyOnceWith('ile mamy kartonów', 10)
+  })
+
+  it('zgłasza ciszę po wyniku pośrednim, a finish wysyła bieżący tekst', () => {
+    const ready = vi.fn()
+    const idle = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready, 1000, idle, 1500)
+    buffer.update(0, 'wzięliśmy paletę', true, 10)
+    buffer.update(1, 'kartonów', false, 20)
+    vi.advanceTimersByTime(700)
+    buffer.update(1, 'kartonów', false, 20)
+    vi.advanceTimersByTime(799)
+    expect(idle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(idle).toHaveBeenCalledOnce()
+    expect(ready).not.toHaveBeenCalled()
+    buffer.finish()
+    expect(ready).toHaveBeenCalledExactlyOnceWith('wzięliśmy paletę kartonów', 10)
+    expect(buffer.pending).toBe(false)
+  })
+
   it('zastępuje podgląd poprawionym tekstem bez powtarzania słów; nie wysyła wyniku pośredniego', () => {
     const ready = vi.fn()
     const buffer = createSpeechCommandBuffer(ready)

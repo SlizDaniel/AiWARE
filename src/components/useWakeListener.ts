@@ -24,6 +24,8 @@ const OFF_STORAGE_KEY = 'magazynier.wake-off'
 const ARMED_MS = 8000
 /** Co tyle sprawdzamy, czy wznowić nasłuch (koniec sesji, koniec mowy TTS). */
 const SUPERVISOR_MS = 300
+/** Pauza po wyniku końcowym, po której komenda jest wysyłana. */
+const COMMAND_PAUSE_MS = 1000
 const MAX_NETWORK_ERRORS = 3
 /** Wycinek do STT: zapas przed pierwszym wynikiem przeglądarki i „ogon” po wyniku końcowym. */
 const LEAD_MS = 800
@@ -121,6 +123,8 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   const refineQueueRef = useRef(createOrderedQueue<SpeechTranscription | null>())
   const pendingRefinesRef = useRef(0)
   const commandBufferRef = useRef<ReturnType<typeof createSpeechCommandBuffer> | null>(null)
+  // rozpoznawanie zatrzymane po ciszy, żeby przeglądarka domknęła ostatni wynik pośredni
+  const idleStopRef = useRef(false)
 
   useEffect(() => {
     optionsRef.current = { prefix, cardStatus, onEvent, onCorrection, refine: refineEnabled, paused }
@@ -209,17 +213,32 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   }, [])
 
   const commandBuffer = useCallback(() => {
-    commandBufferRef.current ??= createSpeechCommandBuffer((text, startMs) => {
-      armedUntilRef.current = 0
-      hearingCueRef.current = false
-      if (optionsRef.current.refine) {
-        const now = recorderRef.current?.now() ?? 0
-        refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), text)
-      } else {
-        setPhase('listening')
-        optionsRef.current.onEvent({ type: 'submit', text })
-      }
-    })
+    commandBufferRef.current ??= createSpeechCommandBuffer(
+      (text, startMs) => {
+        armedUntilRef.current = 0
+        hearingCueRef.current = false
+        if (optionsRef.current.refine) {
+          const now = recorderRef.current?.now() ?? 0
+          refine(startMs ?? Math.max(0, now - UNKNOWN_START_MS), text)
+        } else {
+          setPhase('listening')
+          optionsRef.current.onEvent({ type: 'submit', text })
+        }
+      },
+      COMMAND_PAUSE_MS,
+      () => {
+        // Człowiek skończył mówić, a ostatni wynik wciąż jest pośredni: stop() (nie abort) każe
+        // przeglądarce oddać wynik końcowy; onend wyśle tekst, jeśli i tak go nie domknie.
+        const recognition = recognitionRef.current
+        if (!recognition || idleStopRef.current) return
+        idleStopRef.current = true
+        try {
+          recognition.stop()
+        } catch {
+          idleStopRef.current = false
+        }
+      },
+    )
     return commandBufferRef.current
   }, [refine])
 
@@ -273,6 +292,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
     if (recognitionRef.current || optionsRef.current.paused || pendingRefinesRef.current > 0 || commandBufferRef.current?.pending) return
     const recognition = createRecognition({ continuous: true })
     if (!recognition) return
+    idleStopRef.current = false
     // nowa sesja przeglądarki numeruje wyniki od zera
     utteranceStartRef.current = new Map()
     speechStartRef.current = null
@@ -328,6 +348,8 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
     recognition.onend = () => {
       if (recognitionRef.current === recognition) {
         recognitionRef.current = null
+        if (idleStopRef.current && commandBufferRef.current?.pending) commandBufferRef.current.finish()
+        idleStopRef.current = false
         commandBufferRef.current?.endSession()
         if (pendingRefinesRef.current === 0) setPhase(Date.now() < armedUntilRef.current ? 'hearing' : 'listening')
       }
