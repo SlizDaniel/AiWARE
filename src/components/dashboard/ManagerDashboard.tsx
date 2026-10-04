@@ -23,11 +23,10 @@ const PRESETS: { id: PresetPeriod; label: string }[] = [
 ]
 
 /** Dolny panel: jeden widok szczegółów naraz (jedno zadanie na widok). */
-type DetailView = 'log' | 'shift' | 'trend'
+type DetailView = 'log' | 'shift'
 const DETAIL_VIEWS: { id: DetailView; label: string }[] = [
   { id: 'log', label: 'Dziennik akcji' },
   { id: 'shift', label: 'Przekazanie zmiany' },
-  { id: 'trend', label: 'Historia zapasu' },
 ]
 
 type Props = {
@@ -60,7 +59,7 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
   const [timerTick, setTimerTick] = useState(0)
   const [trendItemId, setTrendItemId] = useState<number | null>(null)
   const [detailView, setDetailView] = useState<DetailView>('log')
-  const detailRef = useRef<HTMLElement>(null)
+  const trendRef = useRef<HTMLDivElement>(null)
   const tabsId = useId()
 
   useEffect(() => {
@@ -95,8 +94,7 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
 
   const showTrend = (itemId: number) => {
     setTrendItemId(itemId)
-    setDetailView('trend')
-    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    trendRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const tabId = (view: DetailView) => `${tabsId}-${view}-tab`
@@ -201,8 +199,21 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
         </div>
       )}
 
-      {/* E–H: jeden panel, jeden widok naraz; ukryte widoki zostają zamontowane (filtry i strona dziennika nie giną) */}
-      <section ref={detailRef} className={`${panelClass} scroll-mt-6`} aria-label="Dziennik, zmiana i historia zapasu">
+      {/* trend z linią minimum jest wykresem — widoczny od razu, nie za zakładką */}
+      <div ref={trendRef} className="scroll-mt-6">
+        <StockTrend
+          items={items}
+          itemId={trendItemId}
+          onItemChange={setTrendItemId}
+          period={period}
+          periodKey={periodKey}
+          refreshToken={refreshToken}
+          onForbidden={onForbidden}
+        />
+      </div>
+
+      {/* E–G: jeden panel, jeden widok naraz; ukryte widoki zostają zamontowane (filtry i strona dziennika nie giną) */}
+      <section className={panelClass} aria-label="Dziennik akcji i przekazanie zmiany">
         <div className="border-b border-line px-6 py-4">
           <div role="tablist" aria-label="Widok" className={segmentGroupClass} onKeyDown={onTabsKeyDown}>
             {DETAIL_VIEWS.map((view) => {
@@ -241,18 +252,6 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
         </div>
         <div role="tabpanel" id={panelId('shift')} aria-labelledby={tabId('shift')} hidden={detailView !== 'shift'}>
           <ShiftSummary refreshToken={refreshToken} timezone={timezone} onForbidden={onForbidden} embedded />
-        </div>
-        <div role="tabpanel" id={panelId('trend')} aria-labelledby={tabId('trend')} hidden={detailView !== 'trend'}>
-          <StockTrend
-            items={items}
-            itemId={trendItemId}
-            onItemChange={setTrendItemId}
-            period={period}
-            periodKey={periodKey}
-            refreshToken={refreshToken}
-            onForbidden={onForbidden}
-            embedded
-          />
         </div>
       </section>
     </div>
