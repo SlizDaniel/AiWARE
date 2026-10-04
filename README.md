@@ -1,209 +1,385 @@
+<div align="center">
+
+<img src="public/brand/mascot.jpg" alt="Maskotka MAGAZYNIER" width="96" />
+
 # MAGAZYNIER
 
-Głosowy agent magazynowy: powiedz mu na hali, co robisz — on proponuje zmianę na karcie,
-ty ją zatwierdzasz jednym kliknięciem, a strona pokazuje całą wiedzę o magazynie.
-HackYeah 2026, Open Task ARTIFICIAL INTELLIGENCE.
+### Powiedz, co robisz. Sprawdź propozycję. Zatwierdź zmianę.
 
-**Stack:** Next.js 16 (App Router, TypeScript) · Supabase (Postgres + Auth) · Google Gemini
-(function calling, transkrypcja mowy, mapowanie kolumn importu) · Tailwind v4 · wdrożenie na **Vercel**.
-Poprzednia wersja (FastAPI + SQLite + Vite + Docker) leży w [`legacy/`](legacy/) jako punkt odniesienia.
+Głosowy asystent magazynu, który łączy **stany, lokalizacje, procedury i zadania zespołu**.
 
-## Aplikacja mobilna (Android / iOS)
+**Next.js 16 · TypeScript · Supabase · Gemini · Expo**
 
-[`mobile/`](mobile/) zawiera osobną aplikację **Expo SDK 57 + React Native + TypeScript + NativeWind
-(Tailwind CSS)**. Logowanie korzysta z Supabase Auth, a dane i operacje magazynowe z istniejącego
-API Next.js oraz tej samej bazy Supabase Postgres. API obsługuje zarówno tokeny Bearer z telefonu,
-jak i cookies klienta webowego; role i audyt nadal ustala serwer.
+Projekt stworzony podczas **HackYeah 2026 — Open Task ARTIFICIAL INTELLIGENCE**.
+
+[Szybki start](#szybki-start) · [Funkcjonalności](#funkcjonalności) · [Role](#role-i-uprawnienia) · [Konfiguracja](#konfiguracja) · [Mobile](#aplikacja-mobilna) · [Demo offline](#demo-offline)
+
+</div>
+
+---
+
+## Co robi MAGAZYNIER?
+
+W małym magazynie Excel często przestaje odzwierciedlać rzeczywistość: ktoś pobrał towar, zapomniał poprawić stan, a instrukcja pakowania została w głowie jednej osoby. MAGAZYNIER skraca drogę od wykonanej pracy do aktualnych danych. Pracownik mówi lub wpisuje zdanie po polsku, a agent zamienia je w odpowiedź albo czytelną propozycję operacji.
+
+**„Wzięliśmy paletę kartonów” → karta `Kartony 13 → 11` → zatwierdzenie → aktualny stan i historia.** Jeśli zapas spadnie poniżej minimum, aplikacja tworzy szkic zamówienia do decyzji kierownika. Pytania „gdzie leży szkło?” i „jak pakujemy szkło?” pozwalają odszukać lokalizację i zapisaną instrukcję bez szukania w arkuszach.
+
+![Karta zmiany w demonstracji offline: Kartony 13 → 11, z zatwierdzeniem i odrzuceniem](gui-test-screenshots/t15_karta_kartony_13_11.png)
+
+*Zrzut z próby demo. Przed zatwierdzeniem karty stan magazynowy pozostaje bez zmian. W tym scenariuszu paleta oznacza 2 jednostki — to uproszczenie parsera demo.*
+
+## Funkcjonalności
+
+| Obszar | Możliwości |
+|---|---|
+| **Komendy i głos** | Polecenia po polsku, nagrania i widoczna transkrypcja, doprecyzowanie niejasnych poleceń, karty zmian z zatwierdzeniem lub odrzuceniem. Mikrofon po naciśnięciu, nasłuch na prefix i tryb tekstowy; opcjonalny odczyt odpowiedzi głosem. |
+| **Stany magazynowe** | Produkty, wyszukiwanie, sortowanie, ilości, jednostki, minima i lokalizacje. Oznaczenia braków i stanów poniżej progu. Edycja i usuwanie produktów przez kierownika. |
+| **Import i eksport** | XLSX/CSV, sugestia mapowania kolumn przez Gemini lub reguły offline, ręczna korekta i zatwierdzenie importu. Eksport aktualnych stanów CSV/XLSX. |
+| **Mapa magazynu** | Schemat stref, szczegóły towarów i podświetlenie lokalizacji z odpowiedzi agenta. Ścieżki przejść, sektory i przypisania produktów. Mobilne mapowanie alejek wspomagane wykrywaniem kroków. |
+| **Kolejka zatwierdzeń** | Proaktywne szkice uzupełnienia zapasów, decyzje kierownika, podgląd rozpatrzonych szkiców i zbiorcze odrzucanie oczekujących. |
+| **Historia** | Audyt operacji z autorem, czasem i szczegółami. Kierownik może cofnąć zmianę stanu; cofnięcie tworzy osobny wpis. |
+| **Procedury pakowania** | Opakowanie z katalogu, liczba sztuk na opakowanie i uwagi dla produktu. Pytania o pakowanie. Kierownik zapisuje reguły po zatwierdzeniu karty i może powiązać opakowanie z towarem magazynowym. |
+| **Zadania zespołu** | Przydzielanie zadań z opisem i priorytetem, oznaczanie własnych zadań jako przeczytane i wykonane. Pomoc „Jak wykonać?” na podstawie zapisanych procedur. Pytania do agenta o zadania. |
+| **Dashboard kierownika** | Podsumowanie zapasów, braków i szkiców, dziennik aktywności z filtrami, trend produktu, raport zmiany i eksport aktywności CSV. Powiadomienia o zdarzeniach wymagających uwagi. |
+| **Ustawienia i konta** | Prefix agenta, tryb interpretacji i głosu, TTS, domyślne minimum i ilość zamówienia. Akceptacja kont i role. Informacja o użyciu AI. |
+| **Praca awaryjna** | Parser deterministyczny przy braku lub awarii LLM, komendy tekstowe przy braku mikrofonu i osobna baza demo offline. |
+
+### Kontrola nad zmianami
+
+Operacje zapisu proponowane przez agenta wymagają zatwierdzenia karty. Pytania o stan, lokalizację, procedury i zadania nie zmieniają danych magazynowych. Niejasne polecenie prowadzi do doprecyzowania. Serwer waliduje argumenty narzędzi i uprawnienia; zmiana stanu od przygotowania karty powoduje odrzucenie nieaktualnej propozycji.
+
+Szkic zamówienia jest wewnętrzną propozycją: **jego zatwierdzenie nie wysyła zamówienia do dostawcy ani ERP**.
+
+## Role i uprawnienia
+
+**Pracownik** obsługuje codzienną pracę magazynu. **Kierownik** zarządza danymi, procedurami, zakupami i dostępem zespołu. Uprawnienia egzekwuje API, również dla klienta mobilnego.
+
+| Operacja | Pracownik | Kierownik |
+|---|:---:|:---:|
+| Komendy głosowe i tekstowe, pytania do agenta | ✓ | ✓ |
+| Przygotowanie i zatwierdzanie kart zmian stanów | ✓ | ✓ |
+| Dodanie nieznanego produktu przez kartę agenta | ✓ | ✓ |
+| Podgląd stanów, mapy, historii i procedur | ✓ | ✓ |
+| Eksport stanów CSV/XLSX | ✓ | ✓ |
+| Dodawanie stref, zapis ścieżek i sektorów, przypisania towarów do sektorów | ✓ | ✓ |
+| Usuwanie ścieżek i sektorów | — | ✓ |
+| Bezpośrednia edycja i usuwanie produktów | — | ✓ |
+| Import XLSX/CSV i zatwierdzenie mapowania | — | ✓ |
+| Podgląd szkiców zamówień | ✓ | ✓ |
+| Zatwierdzanie i odrzucanie szkiców zamówień | — | ✓ |
+| Cofnięcie zmiany stanu w historii | — | ✓ |
+| Tworzenie i aktualizacja reguł pakowania, powiązanie opakowań | — | ✓ |
+| Podgląd zadań i pomoc z procedur | Własne zadania | Wszystkie zadania |
+| Oznaczenie zadania jako przeczytane lub wykonane | Własne zadania | — |
+| Przydzielanie i anulowanie zadań | — | ✓ |
+| Pytania o zadania innych osób | — | ✓ |
+| Dashboard, raporty i powiadomienia kierownika | — | ✓ |
+| Podgląd ustawień | ✓ | ✓ |
+| Zmiana ustawień i trybu agenta | — | ✓ |
+| Lista użytkowników, akceptacja kont i zmiana ról | — | ✓ |
+| Reset bazy w trybie demo | — | ✓ |
+
+### Pierwsze logowanie i akceptacja kont
+
+1. Pierwsze rzeczywiste konto logujące się do nowej bazy otrzymuje rolę **kierownika**.
+2. Kolejne konta otrzymują status **`oczekujacy`**. Do czasu akceptacji nie mają dostępu do danych ani operacji magazynowych.
+3. Kierownik w **Ustawienia → Użytkownicy** nadaje rolę pracownika lub kierownika. Może przywrócić status oczekujący.
+4. Aplikacja blokuje odebranie uprawnień ostatniemu rzeczywistemu kierownikowi.
+
+Lokalnie, bez Supabase Auth, serwer deweloperski działa jako **„Kierownik (bez logowania)”**. Do sprawdzenia rozdzielenia ról skonfiguruj Supabase i użyj osobnych kont.
+
+## Szybki start
+
+### Wymagania
+
+- **Node.js ≥ 20.9** i npm, zgodnie z `package.json`.
+- Git oraz internet przy pobieraniu zależności.
+- Klucze AI i konto Supabase są opcjonalne dla lokalnego startu.
+- Python **3.10+** tylko dla opcjonalnego launchera demo i skryptów Python.
+
+### 1. Pobierz i zainstaluj
+
+```bash
+git clone https://github.com/SlizDaniel/AiWARE.git
+cd AiWARE
+npm ci
+```
+
+### 2. Przygotuj konfigurację
+
+Windows / PowerShell:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+macOS / Linux:
+
+```bash
+cp .env.example .env.local
+```
+
+Puste wartości wystarczą do lokalnego startu: aplikacja używa **PGlite w `data/pglite`**, tworzy schemat i dane początkowe, działa bez logowania i interpretuje komendy parserem offline. Jeśli masz własny `.env.local`, zachowaj go zamiast nadpisywać.
+
+### 3. Uruchom
+
+```bash
+npm run dev
+```
+
+Otwórz **[localhost:3000](http://localhost:3000)**. Wpisz `ile mamy szkła?`, a następnie przetestuj komendę zmiany stanu i zatwierdzenie karty.
+
+**[/api/health](http://localhost:3000/api/health)** pokazuje tryb agenta, rodzaj bazy i tryb logowania. Nie jest pełnym testem dostępności zewnętrznych dostawców AI.
+
+## Konfiguracja
+
+Przykładową konfigurację zawiera [`.env.example`](.env.example). Klucze serwerowe wpisuj do `.env.local`; plik jest ignorowany przez Git. Po zmianie zmiennych środowiskowych uruchom serwer ponownie. Ustawienia z interfejsu są zapisywane w bazie i obowiązują bez restartu.
+
+### Zmienne środowiskowe
+
+| Zmienna | Znaczenie / wartość domyślna |
+|---|---|
+| `GEMINI_API_KEY` | Gemini: komendy, mapowanie importu, transkrypcja i pomoc do zadań. |
+| `GEMINI_MODEL` | Model tekstowy; domyślnie `gemini-3.5-flash-lite`. |
+| `GEMINI_STT_MODEL` | Model transkrypcji; domyślnie `gemini-3.5-transcribe`. |
+| `OPENROUTER_API_KEY` | Opcjonalna hybryda Mercury Decide + Gemini dla prostych komend. |
+| `OPENROUTER_MODEL` | Domyślnie `inception/mercury-decide:free`. |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1`; implementacja akceptuje wyłącznie ten adres dostawcy. |
+| `STT_API_KEY` | Opcjonalny klucz dostawcy zgodnego z Whisper, np. Groq; ma pierwszeństwo przed Gemini STT. |
+| `STT_BASE_URL` | Domyślnie `https://api.groq.com/openai/v1`. |
+| `STT_MODEL` | Domyślnie `whisper-large-v3`. |
+| `DATABASE_URL` | Connection string PostgreSQL. Bez wartości lokalnie działa PGlite. |
+| `POSTGRES_URL` | Alternatywa z integracji Vercel–Supabase. `DATABASE_URL` ma pierwszeństwo. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Publiczny adres projektu Supabase Auth. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publiczny klucz publishable / anon; nie używaj `service_role` ani secret key. |
+| `LLM_MODE` | Startowy tryb `llm`, `offline` lub `mock`. Potem tryb ustala kierownik w aplikacji. |
+| `APP_TIMEZONE` | Domyślnie `Europe/Warsaw`. |
+| `AUTH_DISABLED` | `1` wyłącza logowanie i nadaje każdemu lokalną rolę kierownika. Wyłącznie lokalne testy / demo. |
+| `PGLITE_DIR` | Lokalna baza; domyślnie `./data/pglite`. |
+| `DEMO_MODE` | `1` wymusza izolowane demo, parser offline i wyłączenie chmurowego STT. |
+| `DEMO_DATABASE_URL` | Osobna baza PostgreSQL demo; musi różnić się od normalnej bazy. |
+| `PGLITE_DEMO_DIR` | Lokalna baza demo; domyślnie `./data/pglite-demo`. |
+
+Nazwy modeli odzwierciedlają domyślne wartości w kodzie. Dostępność i limity zależą od konta dostawcy; konfigurację Gemini sprawdzisz przez `npm run check:gemini`.
+
+### AI i rozpoznawanie mowy
+
+Ustaw `GEMINI_API_KEY` z [Google AI Studio](https://aistudio.google.com/apikey), uruchom ponownie serwer i wybierz `llm`. Model proponuje narzędzie, które serwer waliduje. Błąd, timeout lub nieprawidłowa odpowiedź uruchamia parser offline z komunikatem dla użytkownika.
+
+Opcjonalny `OPENROUTER_API_KEY` włącza Mercury Decide do prostych zmian stanów i pytań o towar. Trudniejsze lub niejednoznaczne komendy trafiają do Gemini. Import i STT mają osobny pipeline.
+
+Przy `STT_API_KEY` serwer najpierw korzysta z dostawcy Whisper, a przy błędzie z Gemini. Bez tego klucza korzysta z Gemini. Przeglądarka może pokazywać transkrypcję na żywo; doprecyzowanie przez serwer zależy od ustawienia STT. Przy braku rozpoznawania pozostaje pole tekstowe. Mikrofon wymaga zgody i bezpiecznego kontekstu: HTTPS lub localhost.
+
+### Supabase: baza i logowanie
+
+1. Utwórz projekt w [Supabase](https://supabase.com).
+2. W **Connect → Transaction Pooler** skopiuj connection string, uzupełnij hasło i ustaw `DATABASE_URL`. Zakoduj znaki specjalne hasła w URL, np. `@` jako `%40`.
+3. Ustaw `NEXT_PUBLIC_SUPABASE_URL` i `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` z konfiguracji projektu.
+4. W Supabase Auth skonfiguruj e-mail/hasło, **Site URL** i redirect `http://localhost:3000/auth/callback`. Dla wdrożenia dodaj `https://<twoja-domena>/auth/callback`. Potwierdzenie e-mail zależy od ustawień Supabase.
+5. Przygotuj bazę i sprawdź połączenie:
+
+   ```bash
+   npm run db:setup
+   npm run dev
+   ```
+
+Schemat tworzy się również przy pierwszym użyciu. Tabele domenowe mają **RLS bez publicznych polityk**. Klient komunikuje się przez API Next.js; serwer wykonuje SQL i sprawdza role. Connection string musi wskazywać konto z uprawnieniami wymaganymi do inicjalizacji schematu.
+
+### Ustawienia w aplikacji
+
+Kierownik może zmienić prefix (domyślnie **Magu**), tryb `llm` / `offline` / `mock`, źródło danych, minimum dla nowych pozycji, ilość szkicu zamówienia, tryb głosu, doprecyzowanie STT i TTS. Komendy bez prefixu również działają. Zmiana domyślnego minimum nie nadpisuje progów istniejących produktów. Pracownik widzi ustawienia do odczytu.
+
+## Aplikacja mobilna
+
+Klient w [`mobile/`](mobile/) korzysta z **Expo SDK 57, React Native, TypeScript i NativeWind**. Łączy się z tym samym API i Supabase Auth. Telefon przekazuje token Bearer; role pozostają po stronie serwera.
 
 ```bash
 cd mobile
 npm ci
-cp .env.example .env
-# Uzupełnij adres API oraz publiczny adres i klucz Supabase.
+```
+
+Skopiuj konfigurację (`Copy-Item .env.example .env` w PowerShell lub `cp .env.example .env` w macOS/Linux) i uzupełnij:
+
+```dotenv
+EXPO_PUBLIC_API_URL=https://twoja-aplikacja.vercel.app
+EXPO_PUBLIC_SUPABASE_URL=https://twoj-projekt.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+```
+
+```bash
 npm start
 ```
 
-Zeskanuj kod QR w Expo Go zgodnym z SDK 57. Dostępne są komendy głosowe i tekstowe,
-zatwierdzanie zmian, stany, mapa stref, historia z undo, kolejka, procedury, import/eksport i ustawienia.
-Konfiguracja, uruchomienie na telefonie i granice weryfikacji: [docs/mobile.md](docs/mobile.md).
+Otwórz w Expo Go zgodnym z SDK albo buildzie deweloperskim. Dostępne są komendy, nagrania z edytowalną transkrypcją, stany, mapa, historia, kolejka, procedury, import/eksport i ustawienia agenta. Zarządzanie rolami pozostaje w panelu webowym.
 
-## Szybki start lokalnie (bez kont i bez Dockera)
+Dla backendu na laptopie uruchom z katalogu głównego `npm run dev -- --hostname 0.0.0.0`. Telefon musi mieć dostęp do adresu LAN laptopa, np. `http://192.168.1.20:3000`, bez `/api`. `localhost` na telefonie wskazuje telefon. Android Emulator może używać `http://10.0.2.2:3000`.
 
-```bash
-npm install
-npm run dev
-```
+Mobilna mapa pozwala zapisywać prostopadłe alejki, skrzyżowania i powroty do znanych punktów. Kroki wykrywa czujnik ruchu; dostępny jest ręczny przycisk **„+ Krok”**. To schemat o szacowanych wymiarach, nie dokładny skan pomieszczenia.
 
-Otwórz http://localhost:3000. Bez konfiguracji aplikacja:
-
-- trzyma dane w lokalnym Postgresie **PGlite** (`./data/pglite`, seed przy pierwszym starcie),
-- działa **bez logowania** — jesteś lokalnym kierownikiem,
-- rozumie komendy **parserem offline** (6 komend demo + „zapamiętaj: …”).
-
-Aby włączyć Gemini, skopiuj `.env.example` do `.env.local` i ustaw `GEMINI_API_KEY`
-(klucz: https://aistudio.google.com/apikey). Restart `npm run dev`.
-
-## Wdrożenie na Vercel
-
-1. **Supabase:** utwórz projekt na https://supabase.com (albo z poziomu Vercel →
-   Storage → Supabase, integracja sama doda zmienne `POSTGRES_URL`, `NEXT_PUBLIC_SUPABASE_URL`, …).
-2. **Zmienne środowiskowe** w Vercel → Project → Settings → Environment Variables:
-
-   | Zmienna | Skąd |
-   |---|---|
-   | `GEMINI_API_KEY` | Google AI Studio |
-   | `DATABASE_URL` | Supabase → Connect → **Transaction pooler** (port 6543); pomiń, jeśli integracja ustawiła `POSTGRES_URL` |
-   | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase → API Keys (publishable / anon) |
-
-3. **Supabase Auth:** Authentication → URL Configuration → *Site URL* = adres z Vercela,
-   *Redirect URLs* += `https://<twoja-domena>/auth/callback`. Metoda logowania: e-mail + hasło.
-4. Import repo w Vercelu → **Deploy**. `vercel.json` przypina framework Next.js z katalogu głównego
-   (Root Directory puste / `./`) i region funkcji `fra1` (Frankfurt, obok bazy Supabase eu-central-1).
-   Albo z terminala: `npx vercel` i `npx vercel --prod`.
-   Projekt zaimportowany jeszcze przy starym układzie repo (`backend/` + `frontend/`) może mieć
-   zapisaną konfigurację tamtych katalogów — błąd „backend doesn't exist” naprawia nowy import projektu.
-
-Schemat bazy tworzy się sam przy pierwszym żądaniu (idempotentnie). Wszystkie tabele mają
-włączone RLS bez polityk: publiczny klucz Supabase nie odczyta danych przez PostgREST,
-a serwer łączy się jako właściciel tabel i sprawdza role w route handlerach.
-
-`/api/health` pokazuje, czego używa wdrożenie (`storage`: `supabase` / `pglite` / `ephemeral`,
-`auth_mode`, model Gemini). `ephemeral` = brak `DATABASE_URL` na Vercelu — dane znikną; UI to sygnalizuje.
-
-## Konta i role
-
-- Pierwsze konto, które się zaloguje, zostaje **kierownikiem**; kolejne — **pracownikami**.
-- Kierownik zmienia role w **Ustawienia → Użytkownicy**.
-
-| Akcja | Pracownik | Kierownik |
-|---|:-:|:-:|
-| Komendy głosem/tekstem, zatwierdzanie kart zmian | ✓ | ✓ |
-| Podgląd stanów, mapy, historii, procedur, eksport CSV/XLSX | ✓ | ✓ |
-| Import Excela/CSV, decyzje o szkicach zamówień | — | ✓ |
-| Cofanie zmian w historii (undo), ustawienia, role użytkowników | — | ✓ |
-
-Audyt zapisuje autora każdej zmiany.
-
-## Demo check (ścieżka weryfikacyjna)
-
-1. **Stany → Importuj plik** → `public/demo-offline.xlsx` (do pobrania pod `/demo-offline.xlsx`) →
-   Gemini proponuje mapowanie kolumn → **Zatwierdź import**.
-2. `strefa: kartony`, `strefa: szkło`, `strefa: folia stretch` → zatwierdź każdą kartę → strefy na **Mapie**.
-3. „wzięliśmy paletę kartonów” (przycisk **Mów** albo tekst) → karta `Kartony 13→11` → **Zatwierdź** →
-   wpis w **Historii** (z „Cofnij”) i szkic zamówienia w **Kolejce**.
-4. `ile mamy szkła?`, `gdzie leży szkło?` (→ podświetlenie na mapie), `Magu, jak pakujemy szkło?`.
-5. `zapamiętaj: szkło pakujemy z przekładkami` → zatwierdź → sekcja **Procedury**.
-
-Komendy zapisu tworzą **kartę zmiany** i dotykają bazy dopiero po zatwierdzeniu; pytania dostają
-odpowiedź bez zapisu; nieznane komendy — prośbę o doprecyzowanie. Agent nigdy nie zgaduje po cichu.
-
-## Tryb agenta i Gemini
-
-- **Hybryda Mercury Decide + Gemini:** ustaw `OPENROUTER_API_KEY` w `.env.local`
-  i zachowaj `GEMINI_API_KEY`. Domyślny `OPENROUTER_MODEL` to
-  `inception/mercury-decide:free`, a `OPENROUTER_BASE_URL` to `https://openrouter.ai/api/v1`.
-  Komendy korzystają z [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)
-  pod `/api/alpha/decisions`. Mercury wybiera intencję i towar w jednym zapytaniu
-  (limit 2 s); kod odczytuje jawne ilości sztuk lub palet (demo: 2 szt./paletę).
-  Obsługiwane są proste wydania, przyjęcia, pytania o stan i lokalizację.
-  Niepewność, niejednoznaczna ilość, inne intencje, doprecyzowania i awarie
-  kierują komendę do Gemini. Bez Gemini niepewność prowadzi do dopytania,
-  a awaria do parsera offline. STT i import pozostają w istniejących integracjach.
-  Bez klucza OpenRouter działa dotychczasowe Gemini; offline/mock/demo bez API.
-  Zapis nadal wymaga confirm i audytu. `npm run check:decisions` porównuje czas
-  i poprawność na trzech syntetycznych komendach, bez bazy i wykonania narzędzi.
-  Skrypt wymaga obu kluczy; mała próba nie gwarantuje przyspieszenia w produkcji.
-- `llm` (domyślny): Gemini z function calling na rejestrze 8 narzędzi (`get_stock`, `update_stock`,
-  `check_reorder`, `draft_order`, `get_location`, `add_zone`, `remember_procedure`, `recall_procedure`)
-  + `add_item`. Odpowiedź modelu przechodzi walidację schematu; błąd, timeout (15 s) albo
-  niejednoznaczny JSON → parser offline + ostrzeżenie. Zapis i tak wymaga zatwierdzenia karty.
-- `offline` / `mock`: deterministyczny parser, bez zewnętrznych API (import też nie wysyła pliku do LLM).
-- Tryb zmienia kierownik w panelu komend albo w Ustawieniach (zapis w bazie, bez restartu).
-- **STT:** przeglądarka pokazuje tekst na żywo i wykrywa prefiks; ostateczny tekst daje serwer —
-  dedykowany `gemini-3.5-transcribe` ze słownikiem z bazy (towary, strefy, procedury), przy limicie lub
-  błędzie `GEMINI_MODEL`. Z kluczem `STT_API_KEY` najpierw Groq Whisper large-v3.
-  Opcjonalnie `STT_API_KEY` przełącza na API zgodne z Whisper (np. Groq).
-- Sprawdzenie kontraktu z prawdziwym modelem: `npm run check:gemini` (3 zapytania, syntetyczne dane).
-- Rozszerzona próba w Pythonie: `python scripts/check-gemini.py --list`, następnie
-  wybrane scenariusze przez `--case`. 13 przypadków, raport JSON, bez wykonywania
-  narzędzi. Instrukcja i kody wyników: [docs/python-llm-readiness.md](docs/python-llm-readiness.md).
-
-## Ustawienia (karta 12)
-
-Sekcja **Ustawienia** (zapis: kierownik, odczyt: wszyscy) — zmiany obowiązują od następnej komendy, bez restartu,
-i są zapisane w bazie (`GET` / `PATCH /api/settings`):
-
-- **Prefix agenta** (domyślnie „Magu”): jedno słowo, 2–30 liter. Komendy bez prefixu też działają;
-  poprzedni prefix zostaje wyłączony — „Magu, …” po zmianie na „Gosiu” dostaje prośbę o doprecyzowanie, a nie wykonanie.
-- **Tryb agenta** `llm` / `offline` / `mock` — ten sam przełącznik co w panelu komend.
-- **Źródło danych:** wbudowana baza albo import z pliku (otwiera panel importu w Stanach).
-- **Domyślne minimum** nowych pozycji (import bez kolumny minimum, karta „Nowa pozycja”); istniejące progi zostają.
-- **Tryb głosu:** mikrofon po naciśnięciu albo tylko tekst (wtedy `/api/stt` zwraca 503, a mikrofon jest wyłączony).
-- **Odczyt głosem:** domyślnie wyłączony; po włączeniu i zapisaniu ustawień czyta odpowiedzi i potwierdzenia zmian (maks. 2 zdania, 220 znaków plus ewentualny wielokropek). Wymaga polskiego głosu udostępnionego przez przeglądarkę/system. Brak głosu, błąd syntezy lub `DEMO_MODE=1` oznacza ciszę; tekst nadal jest widoczny. Wyłączenie i zapisanie ustawienia przerywa trwającą wypowiedź. Przycisk „Odsłuchaj próbkę głosu” pozwala sprawdzić głos przed włączeniem; w demo offline jest wyłączony.
-- **Domyślna ilość** w szkicu zamówienia.
-- **Użycie AI:** gotowy tekst do sekcji „ujawnienie AI” w zgłoszeniu (modele i dostawcy z konfiguracji serwera).
+Instrukcja tunelu, nasłuchu i walidacji na fizycznych urządzeniach: **[docs/mobile.md](docs/mobile.md)**. `npm run android`, `npm run ios` i `npm run web` wybierają platformę; eksport Expo generuje bundle, nie podpisane APK/IPA. Klucze AI i connection string pozostają na backendzie.
 
 ## Demo offline
 
-`DEMO_MODE=1` wymusza parser offline, wyłącza STT i używa osobnej bazy demo
-(Kartony 13/min 12, Szkło 20/8, Folia 15/6 + procedura pakowania szkła).
-Lokalnie: `./data/pglite-demo`; na Vercelu ustaw `DEMO_DATABASE_URL` (inna baza niż `DATABASE_URL`).
-Reset próby: `npm run demo:reset` (zatrzymaj wcześniej `npm run dev`) albo `POST /api/demo/reset` (kierownik).
+Demo ma osobną bazę z danymi do prezentacji: **Kartony 13 / minimum 12**, **Szkło 20 / 8**, **Folia stretch 15 / 6** oraz przykładowe reguły pakowania. Komendy wpisujesz tekstowo; zewnętrzne API AI nie są wywoływane.
 
-### Lokalna prezentacja bez internetu (Next.js)
-
-Przygotowanie z internetem: zainstaluj Node.js i Python 3.10+, wykonaj `npm ci`,
-a następnie `python scripts/start-demo.py --build --reset`.
-Na Windows zamiast `python` możesz użyć `py`.
-
-Kolejne próby: `python scripts/start-demo.py --reset` → **http://127.0.0.1:3002**.
-Bez `--reset` zachowasz stan poprzedniej próby. Ctrl+C zatrzymuje uruchomiony serwer.
-Opcja `--port 3003` pozwala wybrać inny port. Zatrzymaj poprzedni serwer demo przed resetem.
-
-Launcher uruchamia przygotowany build przez `next start`, wiąże serwer tylko do
-lokalnego adresu i wymusza parser offline, tekstowy fallback mikrofonu oraz
-brak logowania na laptopie demo. Nadpisuje konfigurację chmurowej bazy i kluczy AI
-wyłącznie w procesach demo — nie edytuje `.env.local`. Używa `data/pglite-demo`;
-reset wymaga bazy oznaczonej jako demo. Brak buildu albo zajęty port zatrzymuje
-uruchomienie przed resetem. Bez `--build` launcher niczego nie instaluje ani nie kompiluje.
-
-Instrukcja próby: [docs/demo-offline.md](docs/demo-offline.md).
-Testy launchera: `python -m unittest discover -s scripts -p test_start_demo.py`.
-
-## Skrypty
+Przygotuj build z internetem, w katalogu głównym:
 
 ```bash
-npm run dev          # serwer deweloperski
-npm run db:setup     # tworzy tabele w Supabase (DATABASE_URL), seed, sprawdza połączenie i RLS
-npm run build        # build produkcyjny (to samo robi Vercel)
-npm test             # vitest: parser, narzędzia, reorder, import/eksport, Gemini (mock), auth, API
-npm run typecheck
-npm run lint
+npm ci
+python scripts/start-demo.py --build --reset
 ```
 
-## Struktura
+Kolejne próby:
 
-```
-src/app/            strony (/, /login) i route handlery /api/*
-src/components/     UI: Mapa, Stany, Kolejka, Historia, Procedury, Ustawienia, panel komend
-src/lib/            klient API, polling zmian (/api/version), TTS, klienci Supabase
-src/server/         logika: db (SQL), parser offline, rejestr narzędzi, Gemini, STT, import, auth
-public/             demo-magazyn.xlsx, demo-offline.xlsx, grafiki
-docs/               PRD, koncept, karty tasków
-legacy/             poprzednia wersja (FastAPI + Vite + Docker)
+```bash
+python scripts/start-demo.py --reset
 ```
 
-Zmiany na żywo: zamiast WebSocketu (niedostępny w funkcjach serverless Vercela) klient co 3 s
-odpytuje `/api/version` — licznik zwiększany po każdym zapisie — i odświeża dane po zmianie.
+Otwórz **[127.0.0.1:3002](http://127.0.0.1:3002)**. Na Windows możesz użyć `py` zamiast `python`. Ctrl+C zatrzymuje serwer. Bez `--reset` zachowasz dane poprzedniej próby; `--port 3003` zmienia port.
 
-## Ujawnienie użycia AI
+Launcher używa osobnego buildu `.next-demo`, bazy `data/pglite-demo` i nadpisuje konfigurację tylko w procesie demo. Nie edytuje `.env.local`. Zatrzymaj poprzedni serwer przed resetem; po aktualizacji kodu przygotuj build ponownie.
 
-Google Gemini (`gemini-3.5-flash-lite` lub model z `GEMINI_MODEL`): interpretacja komend i function calling,
-transkrypcja mowy, propozycja mapowania kolumn przy imporcie. Użytkownik widzi transkrypcję
-i kartę zmiany przed zapisem; każda zmiana trafia do audytu z autorem i możliwością cofnięcia.
-Gotowy tekst do zgłoszenia: **Ustawienia → Użycie AI**.
+### Scenariusz prezentacji
 
-## Import w wersji legacy (karta 05)
+1. **Stany → Importuj plik**: wybierz [`public/demo-offline.xlsx`](public/demo-offline.xlsx), sprawdź mapowanie i zatwierdź. Offline sugestię tworzą reguły; w skonfigurowanym trybie AI — Gemini.
+2. Dodaj i zatwierdź `strefa: Strefa A-1`, `strefa: Strefa B-2`, `strefa: Strefa C-1`. Nazwy odpowiadają lokalizacjom danych demo.
+3. Wpisz `wzięliśmy paletę kartonów`, sprawdź **13 → 11** i zatwierdź.
+4. W **Historii** sprawdź autora i cofnij zmianę jako kierownik. Stan wraca do 13; ponów komendę, aby ponownie zejść do 11.
+5. W **Kolejce** sprawdź szkic **50 szt. kartonów**. Zatwierdzenie zapisuje decyzję bez wysyłki zamówienia.
+6. Zapytaj `ile mamy szkła?`, `gdzie leży szkło?`, `Magu, jak pakujemy szkło?` — sprawdź stan, mapę i instrukcję.
+7. Pobierz CSV/XLSX. Przy skonfigurowanych kontach przydziel pracownikowi zadanie i sprawdź **„Jak wykonać?”**.
 
-W legacy/ mapowanie korzysta ze wspólnego providera OpenAI przy aktywnym LLM_API_KEY i trybie llm. Wysyła nagłówki i pierwsze 5 wierszy; ekran pokazuje źródło sugestii i szacowaną pewność. Awaria lub błędna odpowiedź uruchamia jawny fallback po nazwach kolumn. Offline/mock/demo nie wysyłają danych. Ręczna korekta i zatwierdzenie pozostają wymagane; re-import aktualizuje pozycje. Próba z prawdziwym API wymaga klucza. Nowa aplikacja Next.js używa istniejącego mapowania Gemini w src/server/columnMapping.ts.
+Pełna instrukcja: [demo offline](docs/demo-offline.md). Dodatkowe scenariusze wyjątków: [przykładowe procedury](docs/sample-warehouse-procedures.md).
+
+## Wdrożenie
+
+### Vercel + Supabase
+
+1. Zaimportuj repozytorium do [Vercel](https://vercel.com), wybierz **Next.js** i katalog główny (`./`).
+2. Ustaw `DATABASE_URL` lub `POSTGRES_URL`, `NEXT_PUBLIC_SUPABASE_URL` i `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Dodaj `GEMINI_API_KEY` oraz opcjonalne klucze OpenRouter/Groq.
+3. W Supabase Auth ustaw adres wdrożenia i redirect `https://<twoja-domena>/auth/callback`.
+4. Wdróż projekt. [`vercel.json`](vercel.json) ustawia `npm ci`, `npm run build` i region `fra1`.
+5. Sprawdź `/api/health`, logowanie i role na osobnych kontach. Po zmianie `NEXT_PUBLIC_*` wykonaj nowy build/deploy.
+
+Na Vercel brak PostgreSQL oznacza magazyn **`ephemeral`** w pamięci instancji — dane nie są trwałe ani wspólne między instancjami. Brak Supabase Auth w produkcji powoduje odmowę dostępu do danych. `AUTH_DISABLED=1` służy wyłącznie do lokalnych prób.
+
+### Lokalny build produkcyjny
+
+```bash
+npm run build
+npm start
+```
+
+Skonfiguruj Supabase Auth. Do lokalnej próby bez logowania możesz jawnie ustawić `AUTH_DISABLED=1`; do izolowanej prezentacji użyj launchera demo.
+
+## Architektura
+
+```mermaid
+flowchart LR
+    WEB[Przeglądarka] --> API[Next.js API]
+    MOBILE[Expo / React Native] --> API
+    AUTH[Supabase Auth] --> API
+    API --> AGENT[Interpretacja i walidacja]
+    AGENT --> AI[Gemini / Mercury Decide]
+    AGENT --> OFFLINE[Parser offline]
+    AGENT --> CARD[Karta zmiany]
+    CARD --> CONFIRM[Zatwierdzenie użytkownika]
+    CONFIRM --> DB[(Postgres / PGlite)]
+    DB --> AUDIT[Audyt i szkice uzupełnień]
+```
+
+| Warstwa | Technologia i zastosowanie |
+|---|---|
+| Web | Next.js 16 App Router, React i TypeScript; wspólny projekt UI i API. |
+| Interfejs | Tailwind CSS 4; responsywne widoki, karty i mapa. |
+| Serwer | Route handlery `src/app/api/*`, logika domenowa `src/server/*`. |
+| Dane | PostgreSQL przez `postgres.js`; lokalnie i w testach PGlite przez wspólny `Db`. |
+| Tożsamość | Supabase Auth: cookies w webie, Bearer na telefonie, role w `profiles`. |
+| AI i mowa | Gemini, opcjonalnie Mercury Decide przez OpenRouter i Whisper przez Groq. |
+| Mobile | Expo, React Native, NativeWind 4 / Tailwind 3; osobne zależności i lockfile. |
+| Odświeżanie | Polling `GET /api/version`; zapis zwiększa licznik, klient odświeża dane. |
+| Testy | Vitest dla domeny i kontraktów, TypeScript i oxlint. |
+
+### Struktura repozytorium
+
+```text
+src/
+  app/                  Strony, logowanie i API
+  components/           Widoki magazynu, dashboard i agent
+  lib/                  Klient API, Supabase, polling, głos i typy
+  server/               Baza, role, narzędzia, import, zadania, LLM i STT
+mobile/                 Klient Expo / React Native
+public/                 Excel demo i zasoby marki
+scripts/                Inicjalizacja bazy, demo i próby AI
+docs/                   PRD, koncept, instrukcje i karty zadań
+gui-test-screenshots/    Zrzuty z prób interfejsu
+legacy/                 Poprzednia wersja FastAPI / SQLite / Vite
+```
+
+Obowiązujący stack webowy opisuje [AGENTS.md](AGENTS.md); zastępuje pierwotny stack w PRD. `legacy/` jest punktem odniesienia migracji — bieżącą aplikację uruchamiasz z katalogu głównego przez npm.
+
+## Testy i skrypty
+
+| Polecenie | Zastosowanie |
+|---|---|
+| `npm run dev` | Serwer deweloperski. |
+| `npm run build` / `npm start` | Build i serwer produkcyjny. |
+| `npm test` / `npm run test:watch` | Vitest jednorazowo / obserwacja. |
+| `npm run typecheck` | Typy aplikacji webowej. |
+| `npm run lint` | oxlint dla `src/`. |
+| `npm run db:setup` | Inicjalizacja PostgreSQL, seed i sprawdzenie RLS; wymaga connection stringa. |
+| `npm run demo:reset` | Reset osobnej bazy demo przy konfiguracji demo; wcześniej zatrzymaj serwer. |
+| `npm run check:gemini` | Prawdziwy model na syntetycznych komendach; wymaga klucza, wywołuje API. |
+| `npm run check:decisions` | Porównanie Mercury i Gemini; wymaga obu kluczy, wywołuje API. |
+| `npm run mobile:start` | Expo po instalacji zależności `mobile/`. |
+| `npm run mobile:typecheck` | Typy klienta mobilnego. |
+| `python -m unittest discover -s scripts -p test_start_demo.py` | Testy launchera demo. |
+
+Testy obejmują parser, narzędzia, potwierdzanie, konflikty stanów, import/eksport, reorder, undo, role, transport mobilny i kontrakty AI z mockami. Nie zastępują testu mikrofonu, czujników i logowania na fizycznym telefonie ani prób dostawców z aktywnymi kluczami.
+
+Rozszerzone scenariusze Gemini i raporty JSON: [docs/python-llm-readiness.md](docs/python-llm-readiness.md).
+
+## Rozwiązywanie problemów
+
+| Objaw | Co sprawdzić |
+|---|---|
+| Agent przechodzi w offline | Klucz, model, limit API, komunikat fallbacku; `npm run check:gemini`. |
+| Nowy klucz nie działa | Zmienne procesu mogą nadpisywać `.env.local`. Sprawdź również `GOOGLE_API_KEY` i zrestartuj serwer. |
+| Mikrofon niedostępny | Zgoda, HTTPS/localhost, tryb głosu i `DEMO_MODE`; pozostaje pole tekstowe. |
+| Konto czeka na akceptację | Kierownik nadaje rolę w **Ustawienia → Użytkownicy**. |
+| API zwraca 401 / 403 / 503 | Sesja / uprawnienia lub oczekujące konto / konfiguracja lub dostępność usługi. Sprawdź komunikat odpowiedzi. |
+| Błąd bazy | Connection string, zakodowane hasło, sieć; `npm run db:setup`. |
+| Health pokazuje `ephemeral` | Uzupełnij trwałą bazę PostgreSQL dla wdrożenia. |
+| Telefon nie łączy się z API | LAN zamiast localhost, sieć i port; tunel opisano w `docs/mobile.md`. |
+| Expo nie widzi zmian `.env` | `npm start -- --clear` w `mobile/`. |
+| Demo nie startuje | Zatrzymaj poprzedni proces, przygotuj build lub wybierz `--port 3003`. |
+| Import odrzucony | CSV/XLSX, kolumny nazwy i ilości, wartości; limit **4 MB / 10 000 wierszy**. |
+| Nieaktualna karta | Pobierz stan i przygotuj nową propozycję. |
+
+## Prywatność, AI i granice projektu
+
+W trybie AI odpowiednie dane trafiają do dostawców: komenda i kontekst magazynu do modelu interpretującego, audio do STT, nagłówki i próbka wierszy do mapowania importu oraz zadanie i dopasowane procedury do pomocy AI. Klucze dostawców i connection string pozostają na serwerze. `NEXT_PUBLIC_*` i `EXPO_PUBLIC_*` są publiczne.
+
+Tryby `offline` / `mock` wyłączają interpretację i mapowanie przez LLM, lecz nie są globalnym wyłączeniem sieci: zwykły tryb głosu może korzystać ze STT, a baza i logowanie z Supabase. **`DEMO_MODE=1`** służy do izolowanej ścieżki bez zewnętrznych API AI. TTS zależy od głosów przeglądarki lub systemu. Gotowy opis dostawców do zgłoszenia: **Ustawienia → Użycie AI**.
+
+- Projekt jest prototypem hackathonowym; mapa nie jest dokładnym skanem AR ani dokumentacją pomiarową.
+- Parser offline obsługuje określone intencje. Przelicznik palety w demo wynosi 2 jednostki.
+- Eksport XLSX/CSV obejmuje stany, nie pełny backup audytu, kont, map i procedur. Backup PostgreSQL przygotuj osobno.
+- Undo dotyczy zmian zapasu; nie każda audytowana operacja ma funkcję cofnięcia.
+- Odczyt procedury nie odejmuje automatycznie opakowań i nie wykonuje zadania za pracownika.
+- Import korzysta z wartości arkusza; aplikacja nie oblicza formuł Excel.
+- Brak automatycznej wysyłki zamówień, pełnej integracji ERP i dokumentów PZ/WZ. Ollama/on-prem z pierwotnego konceptu nie jest aktywnym providerem obecnej wersji.
+
+## Dokumentacja, autorzy i licencja
+
+- [PRD — zakres i scenariusz demo](docs/PRD.md)
+- [Koncept — problem, rozwiązanie i ryzyka](docs/CONCEPT.md)
+- [Karty zadań](docs/tasks/)
+- [Klient mobilny i walidacja](docs/mobile.md)
+- [Kontrakt API dashboardu](docs/manager-dashboard-api.md)
+- [Demo offline](docs/demo-offline.md)
+- [Przykładowe procedury i scenariusze](docs/sample-warehouse-procedures.md)
+
+Projekt zespołu MAGAZYNIER na HackYeah 2026. Wkład autorów: [contributors](https://github.com/SlizDaniel/AiWARE/graphs/contributors) i [historia zmian](https://github.com/SlizDaniel/AiWARE/commits/main/).
+
+Kod udostępniono na licencji **[Apache 2.0](LICENSE)**.
