@@ -609,6 +609,19 @@ export async function decideReorderDraft(
   })
 }
 
+/** Reject the confirmed snapshot only; new arrivals and decided drafts are untouched. */
+export async function rejectReorderDrafts(db: Db, draftIds: readonly number[], actor: Actor = DEFAULT_ACTOR) {
+  return db.transaction(async tx => {
+    const ids = [...new Set(draftIds)].sort((a, b) => a - b)
+    let rejected = 0
+    for (const id of ids) {
+      if (await decideReorderDraft(tx, id, 'rejected', actor)) rejected++
+    }
+    if (rejected > 0) await bumpDataVersion(tx)
+    return { rejected, skipped: ids.length - rejected }
+  })
+}
+
 /**
  * Order draft from the `draft_order` tool (card 02) — same queue as the
  * proactive reorder (card 08). Idempotent while a draft for the item is pending.

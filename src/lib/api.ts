@@ -499,6 +499,13 @@ export function rejectReorderDraft(id: number): Promise<{ rejected: boolean }> {
   return fetch(`/api/reorder-drafts/${id}/reject`, { method: 'POST' }).then((r) => json<{ rejected: boolean }>(r))
 }
 
+export function rejectReorderDrafts(draftIds: number[]): Promise<{ rejected: number; skipped: number }> {
+  return fetch('/api/reorder-drafts/reject-batch', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ draft_ids: draftIds }),
+  }).then(r => json<{ rejected: number; skipped: number }>(r))
+}
+
 // --- import / eksport -------------------------------------------------------------
 
 export async function previewInventoryFile(file: File): Promise<ImportPreview> {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { approveReorderDraft, rejectReorderDraft, type ReorderDraft } from '@/lib/api'
+import { approveReorderDraft, rejectReorderDraft, rejectReorderDrafts, type ReorderDraft } from '@/lib/api'
 import { EmptyState, LoadError, Notice, Skeleton } from './ui/feedback'
 import { CheckIcon } from './ui/icons'
 import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
@@ -29,6 +29,8 @@ function formatDeliveryDate(value: string): string {
 }
 
 export default function ReorderQueue({ drafts, state, error, onRetry, onChanged, canDecide }: Props) {
+  const [clearing, setClearing] = useState(false)
+  const [clearIds, setClearIds] = useState<number[] | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'pending' | 'decided' | 'all'>('pending')
@@ -38,7 +40,7 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
   )
 
   const decide = async (draft: ReorderDraft, decision: 'approve' | 'reject') => {
-    if (busyId !== null || !canDecide) return
+    if (busyId !== null || clearing || !canDecide) return
     setBusyId(draft.id)
     setActionError(null)
     try {
@@ -53,6 +55,21 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
       setActionError(cause instanceof Error ? cause.message : 'Nie udało się zapisać decyzji.')
     } finally {
       setBusyId(null)
+    }
+  }
+
+  const clearPending = async () => {
+    if (!clearIds || clearing || busyId !== null || !canDecide) return
+    setClearing(true)
+    setActionError(null)
+    try {
+      const result = await rejectReorderDrafts(clearIds)
+      setClearIds(null)
+      onChanged(`Usunięto z kolejki ${result.rejected} szkiców. Decyzje zapisano w Historii.${result.skipped ? ` Pominięto ${result.skipped} szkiców już rozpatrzonych lub nieistniejących.` : ''}`)
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Nie udało się wyczyścić kolejki.')
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -91,6 +108,29 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
           </button>
         ))}
       </div>
+
+      {pendingCount > 0 && (
+        <div className="space-y-3">
+          <button type="button" className={buttonClass('danger')}
+            disabled={busyId !== null || clearing || !canDecide || clearIds !== null}
+            title={canDecide ? undefined : DECISION_LOCKED}
+            onClick={() => { setActionError(null); setClearIds(drafts.filter(d => d.status === 'pending').slice(0, 1000).map(d => d.id)) }}>
+            Usuń {pendingCount > 1000 ? 'pierwsze 1000' : 'wszystkie oczekujące'} ({Math.min(pendingCount, 1000)})
+          </button>
+          {!canDecide && <p className="text-sm text-mute">{DECISION_LOCKED} — poproś go o wyczyszczenie kolejki.</p>}
+          {clearIds !== null && (
+            <Notice tone="warn" role="status" aria-label="Potwierdź usunięcie szkiców z kolejki">
+              <p>Usunąć z kolejki {clearIds.length} oczekujących szkiców? Trafią do Rozpatrzonych jako odrzucone. Historia i stany pozostaną zachowane.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className={buttonClass('danger')} disabled={clearing || !canDecide}
+                  onClick={() => void clearPending()}>{clearing ? 'Usuwam…' : 'Tak, usuń z kolejki'}</button>
+                <button type="button" className={buttonClass('secondary')} disabled={clearing}
+                  onClick={() => setClearIds(null)}>Anuluj</button>
+              </div>
+            </Notice>
+          )}
+        </div>
+      )}
 
       {actionError && (
         <Notice tone="alarm" role="alert">
@@ -143,7 +183,7 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
                       <button
                         type="button"
                         onClick={() => void decide(draft, 'approve')}
-                        disabled={busyId !== null || !canDecide}
+                        disabled={busyId !== null || clearing || clearIds !== null || !canDecide}
                         title={canDecide ? undefined : DECISION_LOCKED}
                         aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
                         className={buttonClass('action')}
@@ -154,12 +194,12 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
                       <button
                         type="button"
                         onClick={() => void decide(draft, 'reject')}
-                        disabled={busyId !== null || !canDecide}
+                        disabled={busyId !== null || clearing || clearIds !== null || !canDecide}
                         title={canDecide ? undefined : DECISION_LOCKED}
                         aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
                         className={buttonClass('danger')}
                       >
-                        {busyId === draft.id ? 'Zapisuję…' : 'Odrzuć'}
+                        {busyId === draft.id ? 'Zapisuję…' : 'Usuń z kolejki'}
                       </button>
                     </div>
                   </div>
