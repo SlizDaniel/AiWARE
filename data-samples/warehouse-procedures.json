@@ -1,0 +1,20 @@
+[
+  {
+    "item": "Szkło",
+    "packaging": "Duży karton",
+    "quantity_per_package": 1,
+    "notes": "DEMO: sprawdź szkło, owiń folią, dodaj przekładki i oznacz paczkę „OSTROŻNIE”. Uszkodzenie: nie pakuj, oznacz towar i zgłoś kierownikowi. Brak dużego kartonu lub folii: wstrzymaj pakowanie; zamiennik wymaga zgody kierownika. Brak szkła: sprawdź Strefę B-2 i stan w aplikacji, nie potwierdzaj wydania niedostępnej ilości. Rozbieżność stanu: przelicz i zgłoś; korekta wymaga karty i zatwierdzenia."
+  },
+  {
+    "item": "Kartony",
+    "packaging": "Folia stretch",
+    "quantity_per_package": 10,
+    "notes": "DEMO: zbierz 10 suchych kartonów, ułóż płasko i zabezpiecz folią; nie zgniataj krawędzi. Mokre lub uszkodzone kartony: odłóż do sprawdzenia i zgłoś kierownikowi. Brak kartonów: sprawdź Strefę A-1, wstrzymaj kompletację i poproś kierownika o przegląd szkicu zamówienia. Szkic nie oznacza zamówienia wysłanego dostawcy. Brak folii: nie zastępuj jej samodzielnie; poproś o zatwierdzony sposób zabezpieczenia."
+  },
+  {
+    "item": "Folia stretch",
+    "packaging": "Mały karton",
+    "quantity_per_package": 1,
+    "notes": "DEMO: sprawdź jedną rolkę, osłoń jej końce i włóż do małego kartonu. Brak małego kartonu: wstrzymaj pakowanie i zapytaj kierownika o zamiennik. Ostatnia rolka: sprawdź zapas w Strefie C-1, zgłoś ryzyko braku i ustal priorytet zadań. Rozbieżność między półką a aplikacją: przelicz rolki, zgłoś kierownikowi, nie wpisuj fikcyjnego przyjęcia. Wydanie lub korektę zapisuj dopiero po zatwierdzeniu właściwej karty."
+  }
+]
