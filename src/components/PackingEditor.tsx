@@ -26,7 +26,7 @@ export default function PackingEditor({ items, procedures, onChanged }: Props) {
       .catch((reason) => { if (!cancelled) setCatalogueError(reason instanceof Error ? reason.message : 'Nie udało się pobrać katalogu.') })
       .finally(() => { if (!cancelled) setCatalogueLoading(false) })
     return () => { cancelled = true }
-  }, [items, procedures, reload])
+  }, [reload])
 
   function chooseProduct(id: string) {
     setItemId(id)

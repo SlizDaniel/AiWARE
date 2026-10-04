@@ -40,7 +40,7 @@ export default function ManagerNotifications({ refreshToken, onNavigate, onForbi
   return <section className={`${cardClass} p-5 sm:p-6`} aria-label="Powiadomienia kierownika">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-bold">Powiadomienia kierownika</h2>
-      <p role="status">{data ? `${data.unread_count} nieprzeczytanych · ${data.critical_count} pilnych` : 'Ładowanie…'}</p>
+      <p role="status">{data ? `${data.unread_count} nieprzeczytanych · ${data.critical_count} pilnych` : remote.error ? '' : 'Ładowanie…'}</p>
     </div>
     <p className="mt-2 text-sm text-[#646b64]">Automatyczne alerty o zapasach i zamówieniach. Odczytane znikają z dashboardu; przeczytanie nie rozwiązuje problemu ani nie zmienia stanu magazynu.</p>
     {Boolean(remote.error) && <BlockError error={remote.error} fallback="Nie udało się pobrać powiadomień." onRetry={remote.retry} />}
