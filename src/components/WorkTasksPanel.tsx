@@ -1,3 +1,4 @@
+import TaskHelpPanel from './TaskHelpPanel'
 import { useState } from 'react'
 import { fetchUsers, type UserAccount } from '@/lib/api'
 import type { WorkTasksResponse } from '@/lib/workTasks'
@@ -59,6 +60,7 @@ export default function WorkTasksPanel({canManage,userId,updateTick}:{canManage:
             <button className={secondaryButton} disabled={busy} onClick={() => void run(() => updateTask(task.id,'complete'),'Zadanie oznaczone jako wykonane.')}>Oznacz jako wykonane</button>
           </>}
         </div>}
+        {task.status === 'assigned' && <TaskHelpPanel key={`${task.id}:${updateTick}:${refresh}`} id={task.id} />}
       </li>)}</ul>
       <div className="mt-4 flex gap-3"><button className={secondaryButton} disabled={page===1 || feed.loading} onClick={() => setPage(value => value-1)}>Poprzednia</button><span>Strona {page}</span><button className={secondaryButton} disabled={!feed.data.has_more || feed.loading} onClick={() => setPage(value => value+1)}>Następna</button></div>
     </>}

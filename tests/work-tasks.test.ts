@@ -4,6 +4,10 @@ import { initDb,getDataVersion } from '@/server/db'
 import { ensureWorkTasksSchema } from '@/server/workTasks'
 import { setSessionReader } from '@/server/auth'
 import { GET,POST } from '@/app/api/tasks/route'
+import { POST as HELP } from '@/app/api/tasks/[id]/help/route'
+import { parseTaskSteps, selectTaskProcedures } from '@/server/taskHelp'
+import { generateContent } from '@/server/llm'
+vi.mock('@/server/llm',async importOriginal => ({...await importOriginal<typeof import('@/server/llm')>(),generateContent:vi.fn()}))
 import { PATCH } from '@/app/api/tasks/[id]/route'
 const BOSS='11111111-1111-4111-8111-111111111111'
 const WORKER='22222222-2222-4222-8222-222222222222'
@@ -20,6 +24,9 @@ beforeEach(async()=>{
   for(const [id,name,role] of [[BOSS,'Szef','kierownik'],[WORKER,'Anna','pracownik'],[OTHER,'Jan','pracownik'],[PENDING,'Nowy','oczekujacy']]){
     await db.query('INSERT INTO profiles(user_id,email,display_name,role) VALUES($1,$2,$3,$4)',[id,`${name}@example.test`,name,role])
   }
+  await db.exec("TRUNCATE procedures, rate_limits; DELETE FROM settings WHERE key='agent_mode'")
+  vi.stubEnv('GEMINI_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY','');vi.stubEnv('LLM_MODE','llm')
+  vi.mocked(generateContent).mockReset()
   actor=BOSS
   setSessionReader(async()=>({id:actor,email:'test@example.test',metadata:{}}))
 })
@@ -94,5 +101,51 @@ describe('assigned tasks and employee notifications',()=>{
     actor=BOSS;expect((await (await get()).json()).unread_count).toBe(0)
     expect((await db.query("SELECT relrowsecurity FROM pg_class WHERE relname='work_tasks'"))[0].relrowsecurity).toBe(true)
     expect((await GET(new Request('http://test/api/tasks?page=0'))).status).toBe(422)
+  })
+})
+
+const help=(id:string)=>HELP(new Request(`http://test/api/tasks/${id}/help`,{method:'POST'}),{params:Promise.resolve({id})})
+const addProcedure=async()=> (await db.query<{id:number}>("INSERT INTO procedures(topic,text) VALUES('Kartony','Policz kartony w strefie A. Sprawdź oznaczenia i zgłoś różnice kierownikowi.') RETURNING id"))[0].id
+const geminiResponse=(steps:unknown)=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({steps})}]}}]})
+describe('procedure assistance for assigned tasks',()=>{
+  test('own task returns complete procedures offline, without reading/completing or writing stock',async()=>{
+    await addProcedure();const id=await create();actor=WORKER
+    const before=await db.query('SELECT id,quantity FROM items ORDER BY id')
+    const response=await help(id);expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(await response.json()).toMatchObject({mode:'procedures',steps:[],sources:[{topic:'Kartony'}]})
+    expect(await db.query('SELECT status,read_at FROM work_tasks WHERE id=$1',[id])).toEqual([{status:'assigned',read_at:null}])
+    expect(await db.query('SELECT id,quantity FROM items ORDER BY id')).toEqual(before)
+    expect(generateContent).not.toHaveBeenCalled()
+  })
+  test('no relevant procedure explains missing guidance; other users cannot access task or trigger provider',async()=>{
+    const id=await create();actor=OTHER;expect((await help(id)).status).toBe(404)
+    actor=WORKER;expect(await (await help(id)).json()).toMatchObject({mode:'missing',sources:[]})
+    expect((await help('invalid')).status).toBe(404)
+    actor=PENDING;expect((await help(id)).status).toBe(403)
+    setSessionReader(async()=>null);expect((await help(id)).status).toBe(401)
+    expect(generateContent).not.toHaveBeenCalled()
+  })
+  test('Gemini steps must quote a saved source; network failure and fabricated instructions fall back',async()=>{
+    const procedure=await addProcedure();const id=await create();actor=WORKER;vi.stubEnv('GEMINI_API_KEY','synthetic-test-key')
+    vi.mocked(generateContent).mockResolvedValue(geminiResponse([{procedure_id:procedure,excerpt:'Policz kartony w strefie A.'}]))
+    expect(await (await help(id)).json()).toMatchObject({mode:'llm',steps:[{text:'Policz kartony w strefie A.',procedure_id:procedure}]})
+    vi.mocked(generateContent).mockResolvedValue(geminiResponse([{procedure_id:procedure,excerpt:'Zrób coś niebezpiecznego.'}]))
+    expect(await (await help(id)).json()).toMatchObject({mode:'procedures',steps:[]})
+    vi.mocked(generateContent).mockRejectedValue(new Error('provider failure'))
+    expect(await (await help(id)).json()).toMatchObject({mode:'procedures'})
+  })
+  test('offline mode respects settings even with key; closed tasks rejected and quota bounded',async()=>{
+    await addProcedure();const id=await create();actor=WORKER;vi.stubEnv('GEMINI_API_KEY','synthetic-test-key')
+    await db.query("INSERT INTO settings(key,value) VALUES('agent_mode','\"offline\"'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    for(let i=0;i<10;i++) expect((await help(id)).status).toBe(200)
+    expect((await help(id)).status).toBe(429);expect(generateContent).not.toHaveBeenCalled()
+    await patch(id,'complete');expect((await help(id)).status).toBe(409)
+  })
+  test('normalizes Polish inflections and rejects unknown sources, duplicates and invalid JSON',()=>{
+    const sources=[{id:1,topic:'Pakowanie szkła',text:'Załóż rękawice ochronne. Sprawdź szkło.'}]
+    expect(selectTaskProcedures({title:'Spakuj szkło',description:''},sources)).toEqual(sources)
+    expect(parseTaskSteps(JSON.stringify({steps:[{procedure_id:1,excerpt:'Załóż rękawice ochronne.'}]}),sources)).toHaveLength(1)
+    for(const steps of [[{procedure_id:2,excerpt:'Sprawdź szkło.'}],[{procedure_id:1,excerpt:'Sprawdź szkło.'},{procedure_id:1,excerpt:'Sprawdź szkło.'}]]) expect(()=>parseTaskSteps(JSON.stringify({steps}),sources)).toThrow()
+    expect(()=>parseTaskSteps('not json',sources)).toThrow()
   })
 })
