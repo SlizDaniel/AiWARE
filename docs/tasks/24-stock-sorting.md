@@ -16,3 +16,11 @@ Na prośbę użytkownika rozszerzamy webowy widok Stany. Bez zmian API i bazy.
   Po aktualizacji danych sortowanie i filtrowanie przeliczają się automatycznie.
 - Nie mutujemy danych wejściowych ani nie zmieniamy edycji, importu, eksportu.
 - Testy logiki, typy, lint, pełna regresja oraz GUI-check przed merge/push.
+
+## Weryfikacja
+
+902 testy przeszły, 2 pominięte (52 pliki), w tym 9 regresji sortowania.
+Web/mobile typecheck, lint, git diff --check i produkcyjny build webpack: OK.
+GUI w izolowanym demo: braki najpierw, malejąca ilość, filtr braków i zerowego
+stanu, licznik, połączenie z wyszukiwaniem i wyczyszczenie pustego wyniku: OK.
+Zatwierdzenie Kartony 13 → 0 odświeżyło filtr. Review Standards i Spec: bez uwag.
