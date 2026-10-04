@@ -33,7 +33,6 @@ import {
   fetchSettings,
   fetchStock,
   fetchZones,
-  ApiError,
   onApiForbidden,
   undoHistoryEntry,
   updateStockItem,
@@ -106,16 +105,17 @@ const PENDING_DETAIL = /czeka na zatwierdzenie/i
 export default function AppShell() {
   const [session, setSession] = useState<{ loaded: boolean; me: Me | null }>({ loaded: false, me: null })
 
+  const [startupError, setStartupError] = useState('')
   const reloadMe = useCallback(
-    () =>
-      fetchMe().then(
-        (me) => setSession({ loaded: true, me }),
+    () => {
+      setStartupError('')
+      return fetchMe().then(
+        (me) => { setStartupError(''); setSession({ loaded: true, me }) },
         (reason: unknown) => {
-          // 401 → trwa przekierowanie do /login; inne błędy → aplikacja z ograniczeniami
-          if (reason instanceof ApiError && reason.status === 401) return
-          setSession((current) => ({ loaded: true, me: current.me }))
+          setStartupError(errorMessage(reason, 'Nie udało się sprawdzić konta. Spróbuj ponownie.'))
         },
-      ),
+      )
+    },
     [],
   )
 
@@ -123,7 +123,7 @@ export default function AppShell() {
     void reloadMe()
   }, [reloadMe])
 
-  if (!session.loaded) return <StartupScreen />
+  if (!session.loaded) return <StartupScreen error={startupError} onRetry={() => void reloadMe()} />
   if (session.me?.user?.role === 'oczekujacy') return <PendingApprovalScreen me={session.me} onCheck={reloadMe} />
   return <Workspace me={session.me} onReloadMe={reloadMe} />
 }

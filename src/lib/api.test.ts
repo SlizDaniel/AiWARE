@@ -144,3 +144,29 @@ describe('speech upload', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+
+describe('bounded startup requests', () => {
+  afterEach(() => vi.useRealTimers())
+  test.each(['fetchMe', 'fetchHealth', 'fetchVersion'] as const)('%s times out and aborts a stalled request', async method => {
+    vi.useFakeTimers()
+    const api = await loadApi()
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+    const pending = api[method]()
+    const assertion = expect(pending).rejects.toMatchObject({ status: 408 })
+    await vi.advanceTimersByTimeAsync(api.SESSION_TIMEOUT_MS)
+    await assertion
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
+  })
+  test('also bounds a stalled JSON body and allows retry after timeout', async () => {
+    vi.useFakeTimers()
+    const api = await loadApi()
+    fetchMock.mockResolvedValue({ ok: true, json: () => new Promise(() => {}) })
+    const assertion = expect(api.fetchMe()).rejects.toMatchObject({ status: 408 })
+    await vi.advanceTimersByTimeAsync(api.SESSION_TIMEOUT_MS)
+    await assertion
+    fetchMock.mockResolvedValue(respond(200, { user: null, auth_mode: 'disabled' }))
+    expect((await api.fetchMe()).auth_mode).toBe('disabled')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

@@ -36,13 +36,16 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 /** Krótko po wejściu: czekamy na /api/me, zanim pobierzemy dane i włączymy mikrofon. */
-export function StartupScreen() {
+export function StartupScreen({ error = '', onRetry }: { error?: string; onRetry?: () => void }) {
   return (
     <Frame>
-      <p className="mt-8 flex items-center gap-2.5 border-t border-line pt-6 text-sm text-ink-2" role="status">
+      {error ? <div className="mt-8 space-y-4 border-t border-line pt-6">
+        <p role="alert" className="text-sm text-ink-2">{error}</p>
+        <button type="button" onClick={onRetry} className={buttonClass('secondary')}>Spróbuj ponownie</button>
+      </div> : <p className="mt-8 flex items-center gap-2.5 border-t border-line pt-6 text-sm text-ink-2" role="status">
         <StateShape kind="idle" className="animate-breathe" />
         Sprawdzam konto…
-      </p>
+      </p>}
     </Frame>
   )
 }

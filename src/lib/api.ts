@@ -279,19 +279,37 @@ function sendJson(method: 'POST' | 'PUT' | 'PATCH', body: unknown): RequestInit 
 
 // --- konto, zdrowie, ustawienia -----------------------------------------------
 
+export const SESSION_TIMEOUT_MS = 15000
+
+/** Bound startup and polling, including response-body reads. A stalled server must not freeze the UI. */
+async function sessionJson<T>(path: string): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new ApiError(408, 'Serwer nie odpowiedział w ciągu 15 sekund. Sprawdź połączenie i spróbuj ponownie.'))
+      controller.abort()
+    }, SESSION_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([fetch(path, { cache: 'no-store', signal: controller.signal }).then(r => json<T>(r)), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function fetchMe(): Promise<Me> {
-  const me = await fetch('/api/me', { cache: 'no-store' }).then((r) => json<Me>(r))
+  const me = await sessionJson<Me>('/api/me')
   knownAuthMode = me.auth_mode
   return me
 }
 
 export function fetchHealth(): Promise<Health> {
-  return fetch('/api/health', { cache: 'no-store' }).then((r) => json<Health>(r))
+  return sessionJson<Health>('/api/health')
 }
 
 export function fetchVersion(): Promise<number> {
-  return fetch('/api/version', { cache: 'no-store' })
-    .then((r) => json<{ version: number }>(r))
+  return sessionJson<{ version: number }>('/api/version')
     .then((d) => d.version)
 }
 

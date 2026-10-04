@@ -17,6 +17,7 @@ class DemoLauncherTests(unittest.TestCase):
                   "GEMINI_API_KEY": "fake", "AUTH_DISABLED": "0", "PGLITE_DEMO_DIR": "normal-data"}
         env = launcher.demo_environment(Path("warehouse"), source)
         self.assertEqual(env["DEMO_MODE"], "1")
+        self.assertEqual(env["MAGAZYNIER_DEMO_BUILD"], "1")
         self.assertEqual(env["LLM_MODE"], "offline")
         self.assertEqual(env["AUTH_DISABLED"], "1")
         self.assertEqual(env["PGLITE_DEMO_DIR"], str(Path("warehouse/data/pglite-demo").resolve()))
@@ -45,8 +46,8 @@ class DemoLauncherTests(unittest.TestCase):
     def test_success_runs_reset_then_local_production_server(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
-            (repo / ".next").mkdir()
-            (repo / ".next/BUILD_ID").write_text("test", encoding="utf-8")
+            (repo / ".next-demo").mkdir()
+            (repo / ".next-demo/BUILD_ID").write_text("test", encoding="utf-8")
             with patch.object(launcher, "REPO", repo), patch.object(launcher.shutil, "which", return_value="npm"), patch.object(launcher, "port_available", return_value=True), patch.object(launcher.subprocess, "run") as run, patch.object(launcher.subprocess, "Popen") as popen:
                 run.return_value.returncode = 0
                 popen.return_value.wait.return_value = 0

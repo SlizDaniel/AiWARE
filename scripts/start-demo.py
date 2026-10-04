@@ -19,7 +19,7 @@ def demo_environment(repo: Path, inherited: dict[str, str]) -> dict[str, str]:
                 "LLM_API_KEY", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL",
                 "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"):
         env[key] = ""
-    env.update(DEMO_MODE="1", LLM_MODE="offline", AUTH_DISABLED="1",
+    env.update(MAGAZYNIER_DEMO_BUILD="1", DEMO_MODE="1", LLM_MODE="offline", AUTH_DISABLED="1",
                PGLITE_DEMO_DIR=str((repo / "data/pglite-demo").resolve()))
     return env
 
@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     if not npm:
         print("Missing npm. Install Node.js and run npm ci while online first.", file=sys.stderr)
         return 1
-    if not args.build and not (REPO / ".next/BUILD_ID").is_file():
+    if not args.build and not (REPO / ".next-demo/BUILD_ID").is_file():
         print("Missing production build. Run this launcher with --build while online first. No data was reset.", file=sys.stderr)
         return 1
     if not port_available(args.port):
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     command = ["cmd.exe", "/d", "/c", npm] if os.name == "nt" else [npm]
     server = None
     try:
-        if args.build and subprocess.run([*command, "run", "build"], cwd=REPO, env=env, check=False).returncode:
+        if args.build and subprocess.run([*command, "run", "build", "--", "--webpack"], cwd=REPO, env=env, check=False).returncode:
             return 1
         if args.reset and subprocess.run([*command, "run", "demo:reset"], cwd=REPO, env=env, check=False).returncode:
             return 1
