@@ -47,6 +47,27 @@ describe('bufor wypowiedzi', () => {
     expect(buffer.pending).toBe(false)
   })
 
+  it('wynik końcowy pod nowym indeksem zastępuje stary pośredni — bez podwójnego słowa', () => {
+    const ready = vi.fn()
+    const idle = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready, 1000, idle, 1500)
+    buffer.update(0, 'wzięliśmy dwie palety', true, 10)
+    buffer.update(1, 'bułek', false, 20)
+    vi.advanceTimersByTime(1500)
+    expect(idle).toHaveBeenCalledOnce()
+    // po stop() przeglądarka oddaje końcówkę jako nowy wynik końcowy
+    expect(buffer.update(2, 'bułek', true, 20)).toBe('wzięliśmy dwie palety bułek')
+    buffer.finish()
+    expect(ready).toHaveBeenCalledExactlyOnceWith('wzięliśmy dwie palety bułek', 10)
+  })
+
+  it('nie usuwa nowej mowy, która nie powtarza wyniku końcowego', () => {
+    const buffer = createSpeechCommandBuffer(vi.fn())
+    buffer.update(0, 'ile mamy', true, 10)
+    buffer.update(1, 'kartonów', false, 20)
+    expect(buffer.update(0, 'ile mamy', true, 10)).toBe('ile mamy kartonów')
+  })
+
   it('zastępuje podgląd poprawionym tekstem bez powtarzania słów; nie wysyła wyniku pośredniego', () => {
     const ready = vi.fn()
     const buffer = createSpeechCommandBuffer(ready)

@@ -10,6 +10,7 @@ export function createSpeechCommandBuffer(
   idleMs = 1500,
 ) {
   const segments = new Map<number, { text: string; final: boolean; startMs: number | null }>()
+  const normalized = (text: string) => text.toLocaleLowerCase('pl-PL').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
   let timer: ReturnType<typeof setTimeout> | undefined
   let idle: ReturnType<typeof setTimeout> | undefined
   const ordered = () => [...segments.entries()].sort(([left], [right]) => left - right).map(([, segment]) => segment)
@@ -55,6 +56,16 @@ export function createSpeechCommandBuffer(
       clearTimeout(idle)
       timer = idle = undefined
       segments.set(index, { text, final, startMs: previous?.startMs ?? startMs })
+      // Wynik końcowy może przyjść pod nowym indeksem (np. po stop()) — stary wynik pośredni
+      // tego samego fragmentu nie może zostać obok, bo słowo wyszłoby podwójnie („bułek bułek”).
+      if (final) {
+        const words = normalized(text)
+        for (const [other, segment] of segments) {
+          if (other === index || segment.final) continue
+          const tail = normalized(segment.text)
+          if (other < index || (tail && (words === tail || words.endsWith(` ${tail}`)))) segments.delete(other)
+        }
+      }
       if ([...segments.values()].every(segment => segment.final)) timer = setTimeout(flush, pauseMs)
       else if (onInterimIdle) idle = setTimeout(onInterimIdle, idleMs)
       return preview()
