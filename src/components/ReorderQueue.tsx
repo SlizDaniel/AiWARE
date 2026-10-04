@@ -134,7 +134,7 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
 
       {actionError && (
         <Notice tone="alarm" role="alert">
-          Nie udało się zapisać decyzji: {actionError}. Spróbuj ponownie przyciskiem decyzji.
+          Nie udało się zapisać decyzji: {actionError}. Spróbuj ponownie lub anuluj operację.
         </Notice>
       )}
 

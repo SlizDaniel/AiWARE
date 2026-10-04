@@ -14,3 +14,15 @@ a nie skasowanie historii.
 - Stany magazynowe nie zmieniają się. Rozpatrzone i historia zachowują decyzje.
 - Blokada przycisków podczas operacji i czytelny błąd/retry. Pracownik nie ma prawa odrzucać.
 - Dla kolejki ponad 1000 szkiców czyszczenie po 1000 z jawną etykietą.
+
+## Weryfikacja
+
+13 nowych testów: audyt, snapshot, idempotencja, atomowy rollback, walidacja ID,
+API kierownika oraz 403/401 dla pracownika i bez sesji.
+Pełna regresja: 52 pliki przeszły; test API na postgres.js nie wystartował przez
+losowy zablokowany port Windows. Ponowienie całego tego pliku: 11 przeszło,
+1 pominięty. Łącznie 915 testów przeszło, 2 pominięte.
+Web/mobile typecheck, lint i produkcyjny build webpack: OK.
+GUI: anulowanie potwierdzenia, odrzucenie dwóch szkiców naraz, licznik 0,
+Rozpatrzone z zachowanymi decyzjami i pojedyncze usunięcie: OK.
+Review Standards i Spec: bez blockerów; doprecyzowano komunikat retry.
