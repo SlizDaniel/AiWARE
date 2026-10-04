@@ -5,6 +5,7 @@ import { customRangeError, fetchDashboard, formatDateTime, type PeriodSelection,
 import type { SectionId } from '@/lib/sections'
 import DashboardActivityLog from './DashboardActivity'
 import DashboardAttention from './DashboardAttention'
+import ManagerNotifications from './ManagerNotifications'
 import { ActivityCharts, SummaryTiles } from './DashboardSummary'
 import ShiftSummary from './ShiftSummary'
 import StockTrend from './StockTrend'
@@ -83,6 +84,7 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
   const data = summary.data
   return (
     <div className="space-y-5">
+      <ManagerNotifications refreshToken={refreshToken} onNavigate={onNavigate} onForbidden={onForbidden} />
       {/* A: okres, odświeżanie, czas pobrania */}
       <section className={cardClass} aria-label="Okres i odświeżanie">
         <div className="flex flex-wrap items-center justify-between gap-3">
