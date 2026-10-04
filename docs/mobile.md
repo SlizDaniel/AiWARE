@@ -70,8 +70,18 @@ Na telefonie otwórz nowy adres `exp://…exp.direct` w Expo Go.
   szum otoczenia może przekraczać próg — celem produkcyjnym jest telefon.
 - **Stany:** wyszukiwanie i minima; kierownik importuje XLSX/CSV po sprawdzeniu mapowania.
   Wszyscy mogą eksportować XLSX/CSV do arkusza udostępniania telefonu.
-- **Mapa:** schemat stref i ich zawartość. Odpowiedź o lokalizacji przełącza do mapy i podświetla
-  odpowiadającą strefę. Reguły przypisania pozycji są współdzielone z klientem webowym.
+- **Mapa:** rzeczywisty rzut hali ze spaceru z telefonem, sektory i schemat stref.
+  Nagrywanie ścieżki korzysta z `expo-sensors`: akcelerometr wykrywa kroki (wspólny
+  `StepDetector` z klientem webowym), magnetometr ustawia kierunek przy telefonie trzymanym
+  płasko (formuła w `mobile/src/lib/imu.ts` — gdy na urządzeniu kierunek jest odwrócony,
+  poprawką jest znak w `compassHeadingDeg`). Bez czujników albo po 3,5 s milczenia włącza się
+  tryb ręczny: punkty ścieżki dotyka się na kanwie (dotyk → metry przez wspólną projekcję
+  z `src/lib/pdr.ts`). W miejscach składowania dodaje się znaczniki (z opcjonalną strefą).
+  Zapisana ścieżka staje się główną mapą; na niej dotykiem stawia się sektory i przypisuje
+  im przedmioty z magazynu w dowolnej ilości (rozmieszczenie — bez zmiany stanów). Usuwanie
+  ścieżek i sektorów tylko dla kierownika; wszystkie operacje trafiają do audytu na serwerze.
+  Odpowiedź o lokalizacji przełącza do mapy i podświetla odpowiadającą strefę. Reguły
+  przypisania pozycji do stref są współdzielone z klientem webowym.
 - **Historia:** audyt, a dla kierownika cofnięcie z osobnym potwierdzeniem.
 - **Więcej:** szkice zamówień, procedury, konto i ustawienia agenta. Role egzekwuje API;
   zarządzanie rolami użytkowników pozostaje w panelu webowym. Ustawienia agenta odpowiadają
