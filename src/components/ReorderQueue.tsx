@@ -1,5 +1,9 @@
 import { useState } from 'react'
 import { approveReorderDraft, rejectReorderDraft, type ReorderDraft } from '@/lib/api'
+import { EmptyState, LoadError, Notice, Skeleton } from './ui/feedback'
+import { CheckIcon } from './ui/icons'
+import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
+import { buttonClass, panelClass, segmentClass, segmentGroupClass } from './ui/styles'
 
 type Props = {
   drafts: ReorderDraft[]
@@ -53,34 +57,24 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
   }
 
   if (state === 'loading') {
-    return <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status">Pobieram kolejkę zatwierdzeń…</div>
+    return <Skeleton rows={3} label="Pobieram kolejkę zatwierdzeń…" />
   }
 
   if (state === 'error') {
-    return (
-      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
-        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać kolejki zatwierdzeń.</p>
-        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
-        >
-          Spróbuj ponownie
-        </button>
-      </div>
-    )
+    return <LoadError title="Nie udało się pobrać kolejki zatwierdzeń." detail={error || undefined} onRetry={onRetry} />
   }
 
   if (drafts.length === 0) {
-    return <div className="border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-8 text-center text-sm text-[#70756f]">
-      Brak szkiców zamówień. Agent zaproponuje zamówienie, gdy stan spadnie poniżej minimum.
-    </div>
+    return (
+      <EmptyState title="Brak szkiców zamówień">
+        Agent zaproponuje zamówienie, gdy stan spadnie poniżej minimum.
+      </EmptyState>
+    )
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtr szkiców zamówień">
+    <div className="space-y-5">
+      <div className={segmentGroupClass} role="group" aria-label="Filtr szkiców zamówień">
         {([
           ['pending', 'Oczekujące', pendingCount],
           ['decided', 'Rozpatrzone', drafts.length - pendingCount],
@@ -91,80 +85,113 @@ export default function ReorderQueue({ drafts, state, error, onRetry, onChanged,
             type="button"
             aria-pressed={filter === value}
             onClick={() => setFilter(value)}
-            className={
-              'border px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] ' +
-              (filter === value ? 'border-[#315b37] bg-[#315b37] text-white' : 'border-[#d8d6cf] bg-white text-[#646b64] hover:bg-[#f8f7f3]')
-            }
+            className={segmentClass(filter === value)}
           >
-            {label} ({count})
+            {label} <span className="tabular-nums">({count})</span>
           </button>
         ))}
       </div>
+
       {actionError && (
-        <p role="alert" className="border border-[#edc8c5] bg-[#fff7f6] px-4 py-3 text-sm text-[#8f3936]">
+        <Notice tone="alarm" role="alert">
           Nie udało się zapisać decyzji: {actionError}. Spróbuj ponownie przyciskiem decyzji.
-        </p>
+        </Notice>
       )}
-      {visibleDrafts.length === 0 && (
-        <p role="status" className="border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-8 text-center text-sm text-[#70756f]">
-          {filter === 'pending'
-            ? 'Nie ma szkiców czekających na decyzję. Dotychczasowe decyzje znajdziesz w filtrze Rozpatrzone.'
-            : 'Nie ma jeszcze rozpatrzonych szkiców zamówień.'}
-        </p>
-      )}
-      {visibleDrafts.map((draft) => (
-        <article key={draft.id} className="border border-[#e8e5de] bg-white p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold">{draft.item_name}</h3>
-              <p className="mt-1 text-sm text-[#646b64]">
-                Zamówić <strong>{draft.quantity} {draft.unit}</strong> · dostawa: {formatDeliveryDate(draft.deliver_on)}
-              </p>
-            </div>
-            <span className={
-              'px-3 py-1 text-xs font-bold ' +
-              (draft.status === 'pending'
-                ? 'bg-[#fbf3db] text-[#805c12]'
-                : draft.status === 'approved'
-                  ? 'bg-[#edf3ec] text-[#315b37]'
-                  : 'bg-[#f0efe9] text-[#646b64]')
-            }>
-              {STATUS_LABEL[draft.status]}
-            </span>
-          </div>
-          {draft.status === 'pending' && (
-            <div className="mt-4">
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => void decide(draft, 'approve')}
-                  disabled={busyId !== null || !canDecide}
-                  title={canDecide ? undefined : DECISION_LOCKED}
-                  aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
-                  className="bg-[#315b37] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-50"
+
+      {visibleDrafts.length === 0 ? (
+        filter === 'pending' ? (
+          <EmptyState title="Nie ma szkiców czekających na decyzję.">
+            Dotychczasowe decyzje znajdziesz w filtrze Rozpatrzone.
+          </EmptyState>
+        ) : (
+          <EmptyState title="Nie ma jeszcze rozpatrzonych szkiców zamówień." />
+        )
+      ) : (
+        <ul className={panelClass + ' divide-y divide-line'}>
+          {visibleDrafts.map((draft) =>
+            draft.status === 'pending' ? (
+              <li key={draft.id} className="px-5 py-6 sm:px-6">
+                <article aria-labelledby={`reorder-draft-${draft.id}`}>
+                  <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <StateShape kind="decision" size={12} />
+                        <h3 id={`reorder-draft-${draft.id}`} className="text-lg font-semibold leading-snug text-ink">
+                          {draft.item_name}
+                        </h3>
+                        <span className="narrow text-sm tabular-nums text-mute">#{draft.id}</span>
+                        <span className={'text-[13px] font-semibold ' + stateTextClass('decision')}>{STATUS_LABEL.pending}</span>
+                      </div>
+                      <dl className="mt-4 flex flex-wrap gap-x-12 gap-y-4 pl-[24px]">
+                        <div>
+                          <dt className="label-caps">Zamówić</dt>
+                          <dd className="mt-1.5 flex items-baseline gap-1.5">
+                            <span className="text-[32px] font-semibold leading-none tracking-[-0.01em] tabular-nums text-ink">
+                              {draft.quantity}
+                            </span>
+                            <span className="text-base text-ink-2">{draft.unit}</span>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="label-caps">Dostawa</dt>
+                          <dd className="mt-1.5 text-base font-medium text-ink">{formatDeliveryDate(draft.deliver_on)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void decide(draft, 'approve')}
+                        disabled={busyId !== null || !canDecide}
+                        title={canDecide ? undefined : DECISION_LOCKED}
+                        aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
+                        className={buttonClass('action')}
+                      >
+                        <CheckIcon size={18} />
+                        {busyId === draft.id ? 'Zapisuję…' : 'Zatwierdź szkic'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void decide(draft, 'reject')}
+                        disabled={busyId !== null || !canDecide}
+                        title={canDecide ? undefined : DECISION_LOCKED}
+                        aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
+                        className={buttonClass('danger')}
+                      >
+                        {busyId === draft.id ? 'Zapisuję…' : 'Odrzuć'}
+                      </button>
+                    </div>
+                  </div>
+                  {!canDecide && (
+                    <p id={`reorder-locked-${draft.id}`} className="mt-4 text-[13px] text-mute sm:text-right">
+                      {DECISION_LOCKED} — szkic czeka w kolejce na jego zatwierdzenie.
+                    </p>
+                  )}
+                </article>
+              </li>
+            ) : (
+              <li key={draft.id} className="px-5 py-4 sm:px-6">
+                <article
+                  aria-labelledby={`reorder-draft-${draft.id}`}
+                  className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2"
                 >
-                  {busyId === draft.id ? 'Zapisuję…' : 'Zatwierdź szkic'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void decide(draft, 'reject')}
-                  disabled={busyId !== null || !canDecide}
-                  title={canDecide ? undefined : DECISION_LOCKED}
-                  aria-describedby={canDecide ? undefined : `reorder-locked-${draft.id}`}
-                  className="border border-[#d8d6cf] bg-white px-5 py-2.5 text-sm font-semibold text-[#646b64] hover:bg-[#f8f7f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {busyId === draft.id ? 'Zapisuję…' : 'Odrzuć'}
-                </button>
-              </div>
-              {!canDecide && (
-                <p id={`reorder-locked-${draft.id}`} className="mt-2 text-xs text-[#70756f]">
-                  {DECISION_LOCKED} — szkic czeka w kolejce na jego zatwierdzenie.
-                </p>
-              )}
-            </div>
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h3 id={`reorder-draft-${draft.id}`} className="font-semibold text-ink-2">
+                      {draft.item_name}
+                    </h3>
+                    <span className="narrow text-sm tabular-nums text-mute">#{draft.id}</span>
+                    <span className="text-sm text-mute">
+                      Zamówić <span className="tabular-nums">{draft.quantity}</span> {draft.unit} · dostawa: {formatDeliveryDate(draft.deliver_on)}
+                    </span>
+                  </div>
+                  <StateMark kind={draft.status === 'approved' ? 'ok' : 'alarm'}>{STATUS_LABEL[draft.status]}</StateMark>
+                </article>
+              </li>
+            ),
           )}
-        </article>
-      ))}
+        </ul>
+      )}
     </div>
   )
 }
