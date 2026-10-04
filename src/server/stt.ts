@@ -51,15 +51,27 @@ export function sttVocabulary(parts: { prefix?: string; items?: string[]; zones?
   const seen = new Set<string>()
   const words: string[] = []
   let length = 0
-  // Prefix, zones and procedure topics are few and easy to mishear; items fill the remaining budget.
-  for (const word of [parts.prefix ?? '', ...(parts.zones ?? []), ...(parts.topics ?? []), ...(parts.items ?? []), ...DOMAIN_WORDS]) {
-    const clean = word.replace(/\s+/g, ' ').trim()
-    const key = clean.toLocaleLowerCase('pl')
-    if (!clean || seen.has(key) || length + clean.length + 2 > MAX_VOCABULARY_CHARS) continue
-    seen.add(key)
-    words.push(clean)
-    length += clean.length + 2
+  const append = (candidates: string[], budget: number) => {
+    let used = 0
+    for (const word of candidates) {
+      const clean = word.replace(/\s+/g, ' ').trim()
+      const key = clean.toLocaleLowerCase('pl')
+      const size = clean.length + 2
+      if (!clean || seen.has(key) || used + size > budget || length + size > MAX_VOCABULARY_CHARS) continue
+      seen.add(key)
+      words.push(clean)
+      used += size
+      length += size
+    }
   }
+  // Reserve space for both item names and command vocabulary: hundreds of zones
+  // or procedure titles must not consume the entire recognition hint.
+  const domainBudget = DOMAIN_WORDS.reduce((total, word) => total + word.length + 2, 0)
+  append([parts.prefix ?? ''], 32)
+  append(parts.zones ?? [], 90)
+  append(parts.topics ?? [], 90)
+  append(parts.items ?? [], MAX_VOCABULARY_CHARS - length - domainBudget)
+  append(DOMAIN_WORDS, MAX_VOCABULARY_CHARS - length)
   return words
 }
 

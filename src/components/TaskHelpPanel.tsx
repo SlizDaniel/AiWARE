@@ -20,8 +20,8 @@ export default function TaskHelpPanel({id}:{id:string}) {
     {help && <section aria-label="Pomoc do zadania" className="mt-3 space-y-3">
       <h3 className="font-semibold">{help.mode === 'llm' ? 'Kroki wybrane przez AI' : help.mode === 'missing' ? 'Brak instrukcji do zadania' : 'Procedury do sprawdzenia (bez AI)'}</h3>
       <p role="status" className="text-sm">{help.warning}</p>
-      <ol className="list-decimal space-y-2 pl-5">{help.steps.map((step,index) => <li key={index}><p className="whitespace-pre-wrap">{step.text}</p><p className="text-xs text-ink-2">Źródło: {step.procedure_topic} (#{step.procedure_id})</p></li>)}</ol>
-      {help.sources.map(source => <details key={source.id} className="rounded border border-line p-3"><summary>Pełna procedura: {source.topic} (#{source.id})</summary><p className="mt-2 whitespace-pre-wrap text-sm">{source.text}</p></details>)}
+      <ol className="list-decimal space-y-2 pl-5">{help.steps.map((step,index) => <li key={index}><p className="whitespace-pre-wrap">{step.text}</p><p className="text-xs text-ink-2">Źródło: {step.procedure_topic} ({step.procedure_id < 0 ? 'reguła pakowania ' : '#'}{Math.abs(step.procedure_id)})</p></li>)}</ol>
+      {help.sources.map(source => <details key={source.id} className="rounded border border-line p-3"><summary>{source.kind === 'packing_rule' ? 'Reguła pakowania' : 'Pełna procedura'}: {source.topic} (#{Math.abs(source.id)})</summary><p className="mt-2 whitespace-pre-wrap text-sm">{source.text}</p></details>)}
     </section>}
   </div>
 }

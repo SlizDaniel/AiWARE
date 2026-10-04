@@ -86,15 +86,14 @@ describe('parseCommand behaviour', () => {
     expect(parsed!.missingItem).toBe('śrubek')
   })
 
-  it('take without palette returns null', () => {
-    expect(parseCommand('wzięliśmy kartony', ITEMS)).toBeNull()
+  it('take without a quantity asks instead of guessing', () => {
+    expect(parseCommand('wzięliśmy kartony', ITEMS)).toMatchObject({ clarification: expect.any(String) })
   })
 
   it('word counts and digits multiply the palette', () => {
     expect(delta(parseCommand('doszły trzy palety szkła', ITEMS)!)).toBe(6)
     expect(delta(parseCommand('wzięliśmy dwa palety kartonów', ITEMS)!)).toBe(-4)
-    // Python quirk kept on purpose: „dwie” does not match dw[oa]w* → one palette
-    expect(delta(parseCommand('doszły dwie palety szkła', ITEMS)!)).toBe(2)
+    expect(delta(parseCommand('doszły dwie palety szkła', ITEMS)!)).toBe(4)
     expect(delta(parseCommand('wzięliśmy cztery palety kartonów', ITEMS)!)).toBe(-8)
     expect(delta(parseCommand('wzięliśmy pięć palet kartonów', ITEMS)!)).toBe(-10)
     expect(delta(parseCommand('wzięliśmy 12 palet kartonów', ITEMS)!)).toBe(-24)
@@ -104,7 +103,7 @@ describe('parseCommand behaviour', () => {
     // „ąile" — preceded by a Polish letter, so „ile mamy" is not a separate word
     expect(parseCommand('ąile mamy szkła?', ITEMS)).toBeNull()
     // „ępaleta" is not the word „paleta"
-    expect(parseCommand('wzięliśmy ępaletę kartonów', ITEMS)).toBeNull()
+    expect(parseCommand('wzięliśmy ępaletę kartonów', ITEMS)?.args.delta).toBeUndefined()
     // punctuation is a boundary
     expect(parseCommand('no, ile mamy szkła?', ITEMS)?.args).toEqual({ item_id: 2 })
   })
@@ -141,6 +140,38 @@ describe('parseCommand behaviour', () => {
       { id: 2, name: 'Foliowe worki' },
     ]
     expect(parseCommand('ile mamy foliowych worków?', items)?.itemId).toBe(2)
+  })
+})
+
+describe('warehouse command reliability', () => {
+  it.each([
+    ['gdzie znajdę szkło?', 'get_location', {item_id:2}],
+    ['podaj aktualny stan kartonów', 'get_stock', {item_id:1}],
+    ['jak zapakować szkło?', 'recall_procedure', {topic:'szkło'}],
+  ])('supports a natural read command: %s', (text, tool, args) => {
+    expect(parseCommand(text, ITEMS)).toMatchObject({ tool, args })
+  })
+  it.each([
+    ['wziąłem 3 sztuki kartonów', 1, -3],
+    ['przyjęliśmy dziesięć sztuk szkła', 2, 10],
+    ['doszło sześć palet kartonów', 1, 12],
+    ['pobrałam dwie rolki folii stretch', 3, -2],
+  ])('understands %s without guessing quantities', (text, itemId, change) => {
+    expect(parseCommand(text, ITEMS)).toMatchObject({ itemId, args: { item_id: itemId, delta: change } })
+  })
+
+  it.each(['nie wzięliśmy palety kartonów', 'jutro wzięliśmy paletę kartonów',
+    'wzięliśmy pół palety kartonów', 'wzięliśmy 1,5 palety kartonów',
+    'wzięliśmy 0 palet kartonów', 'wzięliśmy paletę kartonów i paletę szkła'])('does not propose a guessed stock change: %s', text => {
+    const parsed = parseCommand(text, ITEMS)
+    expect(parsed?.args.delta).toBeUndefined()
+  })
+
+  it('matches the whole item name and asks when only a shared name is spoken', () => {
+    const items = [{ id: 4, name: 'Kartony małe' }, { id: 5, name: 'Kartony duże' }]
+    expect(parseCommand('wzięliśmy paletę kartonów dużych', items)).toMatchObject({ itemId: 5 })
+    expect(parseCommand('wzięliśmy paletę kartonów', items)).toMatchObject({ clarification: expect.any(String) })
+    expect(parseCommand('ile mamy kartonów czerwonych?', items)?.itemId).toBeNull()
   })
 })
 

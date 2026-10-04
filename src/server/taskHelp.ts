@@ -40,7 +40,16 @@ export async function taskHelp(db: Db, user: AppUser, id: string): Promise<TaskH
   await enforceRateLimit(db,`task-help:${user.id}`,{limit:10,windowSeconds:60})
   const terms = [...new Set(normalize(`${task.title} ${task.description}`).match(/[a-z]{4,}/g) ?? [])].slice(0,100).map(word => word.slice(0,4))
   // Bound server-side retrieval too, and rank before limiting to avoid hiding a relevant new document.
-  const documents = await db.query<Procedure>(`SELECT id,topic,text FROM procedures
+  const documents = await db.query<Procedure>(`WITH documents AS (
+    SELECT p.id, p.topic, p.text, 'procedure' AS kind FROM procedures p
+    WHERE NOT EXISTS (SELECT 1 FROM packing_rules r JOIN items i ON i.id = r.item_id
+      WHERE translate(lower(i.name),'ąćęłńóśźż','acelnoszz') = translate(lower(p.topic),'ąćęłńóśźż','acelnoszz'))
+    UNION ALL
+    SELECT -r.id AS id, i.name AS topic,
+      i.name || ': ' || r.quantity_per_package || ' ' || i.unit || ' na opakowanie „' || p.name || '”.' ||
+      CASE WHEN r.notes <> '' THEN ' ' || r.notes ELSE '' END AS text, 'packing_rule' AS kind
+    FROM packing_rules r JOIN items i ON i.id = r.item_id JOIN packaging_types p ON p.id = r.packaging_id
+  ) SELECT id,topic,text,kind FROM documents
     WHERE length(text) <= 24000 AND length(topic) <= 1000
       AND EXISTS (SELECT 1 FROM unnest($1::text[]) term WHERE
         translate(lower(topic || ' ' || text),'ąćęłńóśźż','acelnoszz') LIKE '%' || term || '%')

@@ -30,3 +30,5 @@ venv/
 *.log
 .vercel
 .env*
+
+.next-demo/

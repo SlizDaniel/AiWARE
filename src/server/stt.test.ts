@@ -320,6 +320,16 @@ describe('transcribe — warehouse vocabulary and robustness', () => {
     expect(whisperPrompt([])).toBe('')
   })
 
+  it('keeps product names and domain commands when many zone/procedure names exist', () => {
+    const vocabulary = sttVocabulary({ prefix: 'Magu', items: ['Bułki', 'Kartony'],
+      zones: Array.from({ length: 100 }, (_, index) => `Strefa magazynu numer ${index}`),
+      topics: Array.from({ length: 100 }, (_, index) => `Procedura magazynu numer ${index}`) })
+    expect(vocabulary).toContain('Bułki')
+    expect(vocabulary).toContain('Kartony')
+    expect(vocabulary).toContain('ile mamy')
+    expect(vocabulary.join(', ').length).toBeLessThanOrEqual(600)
+  })
+
   it('sends the vocabulary as the Whisper prompt with temperature 0', async () => {
     vi.stubEnv('STT_API_KEY', WHISPER_KEY)
     const fetchMock = stubFetch(() => jsonResponse({ text: 'Magu, wzięliśmy paletę kartonów' }))

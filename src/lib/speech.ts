@@ -122,7 +122,7 @@ export function resultEntries(event: SpeechRecognitionEventLike, prefix = ''): {
 /** Only repair a wake word when an alternative keeps the entire command intact. */
 export function preferredSpeechTranscript(result: SpeechResultLike | undefined, prefix = ''): string {
   const top = result?.[0]?.transcript ?? ''
-  if (!result?.isFinal || !prefix || matchWakeWord(top, prefix).matched || isConfirmPhrase(top) || isRejectPhrase(top)) return top
+  if (!result || !prefix || matchWakeWord(top, prefix).matched || isConfirmPhrase(top) || isRejectPhrase(top)) return top
   for (let index = 1; index < Math.min(result.length, 3); index++) {
     const alternative = result[index]
     if (!alternative || alternative.confidence < 0.5) continue
@@ -205,8 +205,12 @@ export function matchWakeWord(transcript: string, prefix: string): { matched: bo
   if (!wanted || words.length === 0) return { matched: false, rest: '' }
   const first = wakeAt(transcript, words, 0, wanted)
   if (first.matched) return first
-  return WAKE_FILLERS.has(normalizeSpeech(words[0][0]))
-    ? wakeAt(transcript, words, 1, wanted) : { matched: false, rest: '' }
+  for (let index = 0; index < Math.min(2, words.length - 1); index++) {
+    if (!WAKE_FILLERS.has(normalizeSpeech(words[index][0]))) break
+    const match = wakeAt(transcript, words, index + 1, wanted)
+    if (match.matched) return match
+  }
+  return { matched: false, rest: '' }
 }
 
 /**
@@ -315,7 +319,7 @@ export type WakeAction =
   | { type: 'submit'; text: string }
   | { type: 'confirm' }
   | { type: 'reject' }
-  /** decyzja w wyniku pośrednim — wykonać, jeśli tekst nie zmieni się przez chwilę */
+  /** Podgląd decyzji; wykonanie dopiero po wyniku końcowym rozpoznawania. */
   | { type: 'tentative'; decision: 'confirm' | 'reject' }
 
 /**

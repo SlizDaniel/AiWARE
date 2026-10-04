@@ -8,7 +8,9 @@ import { normalizeCall, toolSchemas } from './agentContract'
 import { DEFAULT_ACTOR, StaleStockProposalError, getItem, listItems, logEvent, saveProposal, takeProposal, type Actor, type Item, type StockSnapshot } from './db'
 import { HttpError } from './http'
 import { GeminiRequestError } from './llm'
-import { delta, parseCommand, SZT_NA_PALETE, type ParsedCommand } from './parser'
+import { delta, parseCommand, stockCommandConcern, SZT_NA_PALETE, type ParsedCommand } from './parser'
+import { levenshtein } from '@/lib/speech'
+import { sameInventoryWord } from '@/lib/inventoryNames'
 import { commandText, getAgentModeStatus, getAppSettings } from './settings'
 import type { Db } from './sql'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
@@ -106,6 +108,12 @@ export function contextItems(rows: Item[], command: string): Item[] {
       for (const token of commandWords) {
         const shared = commonPrefix(word, token)
         if (shared >= Math.min(MIN_PREFIX, word.length, token.length)) best = Math.max(best, shared)
+        if (sameInventoryWord(word, token)) best = Math.max(best, 10)
+        // A misheard first consonant should not hide the item beyond the 40-row context.
+        if (word.length >= 4 && token.length >= 4 && word.length <= 100 && token.length <= 100 &&
+          Math.abs(word.length - token.length) <= 2 && levenshtein(word, token) <= (Math.min(word.length, token.length) >= 5 ? 2 : 1)) {
+          best = Math.max(best, 2)
+        }
       }
       score += best
     }
@@ -137,20 +145,21 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   const command = interpreted || text.trim()
   const { default_minimum: defaultMinimum } = await getAppSettings(db)
   const rows = await listItems(db)
-  const items: ItemRef[] = rows.map((row) => ({ id: row.id, name: row.name }))
+  const items: ItemRef[] = rows.map((row) => ({ id: row.id, name: row.name, unit: row.unit }))
   let warning: string | null = null
   let parsed: ParsedCommand | null
 
   if (status.mode === 'llm' && options.provider !== null) {
     const relatedText = [...conversation.map((turn) => turn.userText), command].join(' ')
-    const context = JSON.stringify({ ...JSON.parse(inventoryContext(contextItems(rows, relatedText), conversation)),
+    const suppliedItems = contextItems(rows, relatedText)
+    const context = JSON.stringify({ ...JSON.parse(inventoryContext(suppliedItems, conversation)),
       role: options.role ?? 'pracownik', packaging_catalogue: await listPackaging(db) })
     try {
       const interpretation = await options.provider.interpret(command, toolSchemas(), context)
       if (interpretation.toolCall === null) {
         return { type: 'clarify', text, message: interpretation.clarification || 'Doprecyzuj polecenie.' }
       }
-      parsed = normalizeCall(interpretation.toolCall, command, items)
+      parsed = normalizeCall(interpretation.toolCall, command, suppliedItems)
     } catch (error) {
       // LLMProviderError (or any provider failure): never block the warehouse — use the offline parser.
       parsed = parseCommand(command, items)
@@ -160,6 +169,24 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
     parsed = parseCommand(command, items)
     if (status.mode === 'llm') warning = NO_KEY_COMMAND_WARNING
     else if (status.mode === 'mock') warning = status.warning
+  }
+
+  const deterministic = parseCommand(command, items)
+  if (parsed && deterministic && parsed.tool !== deterministic.tool) {
+    return { type: 'clarify', text, message: 'Rozpoznana intencja nie zgadza się z operacją zaproponowaną przez model. Powtórz pełne polecenie.' }
+  }
+  // The model's valid JSON is not proof that its quantity/direction matches the words.
+  if (parsed?.tool === 'update_stock') {
+    const concern = stockCommandConcern(command)
+    const message = concern ?? deterministic?.clarification
+    if (message) return { type: 'clarify', text, message, ...(warning ? { warning } : {}) }
+    if (deterministic?.missingItem && !parsed.missingItem) {
+      return { type: 'clarify', text, message: 'Nazwa towaru nie pasuje do istniejącej pozycji. Podaj dokładną nazwę z magazynu.' }
+    }
+    if (deterministic?.tool === 'update_stock' && deterministic.itemId != null &&
+      (deterministic.itemId !== parsed.itemId || delta(deterministic) !== delta(parsed))) {
+      return { type: 'clarify', text, message: 'Rozpoznana operacja nie zgadza się z podanym towarem lub ilością. Powtórz pełne polecenie.' }
+    }
   }
 
   const sourceText = [...conversation.map((turn) => turn.userText), text].join(' → ')
@@ -193,6 +220,8 @@ async function dispatchCommand(
     // unknown command → ask to rephrase, never guess silently
     return { type: 'unknown', text, hints: [...HINTS] }
   }
+
+  if (parsed.clarification) return { type: 'clarify', text, message: parsed.clarification }
 
   if (parsed.missingItem && parsed.tool === 'update_stock') {
     // item not in the database → proposal to ADD it (change card)

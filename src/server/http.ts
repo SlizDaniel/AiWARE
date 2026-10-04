@@ -30,7 +30,9 @@ export function route<A extends unknown[]>(handler: (...args: A) => Promise<Resp
 
 export async function readJson<T>(request: Request): Promise<T> {
   try {
-    return (await request.json()) as T
+    const body: unknown = await request.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Expected a JSON object')
+    return body as T
   } catch {
     throw new HttpError(422, 'Nieprawidłowy JSON w treści żądania.')
   }
@@ -47,6 +49,6 @@ export async function readBody(request: Request, maxBytes: number, tooLarge: str
 
 /** Positive integer path parameter or 422. */
 export function intParam(value: string, label = 'id'): number {
-  if (!/^\d+$/.test(value)) throw new HttpError(422, `Nieprawidłowy parametr ${label}.`)
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) throw new HttpError(422, `Nieprawidłowy parametr ${label}.`)
   return Number(value)
 }

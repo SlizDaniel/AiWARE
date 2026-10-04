@@ -16,7 +16,7 @@ export type AppUser = {
 }
 
 /** Minimal inventory reference used by the intent → tool seam. */
-export type ItemRef = { id: number; name: string }
+export type ItemRef = { id: number; name: string; unit?: string }
 
 export type ImportField = 'name' | 'quantity' | 'minimum' | 'location' | 'unit'
 
