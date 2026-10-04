@@ -1,53 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Item } from '@/lib/api'
+import RangeIndicator from './ui/RangeIndicator'
+import { ChangeFlash, EmptyState, LoadError, Notice, RollingNumber, Skeleton } from './ui/feedback'
+import { EditIcon, SearchIcon } from './ui/icons'
+import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
+import { STOCK_LEVEL, rangePercent, rangeScale, stockLevel, type StockLevel } from './ui/stockLevel'
+import { buttonClass, fieldClass, panelClass } from './ui/styles'
 
 type StockState = 'loading' | 'ready' | 'error'
-type StockLevel = 'ok' | 'last-chance' | 'below-minimum'
 
-const STOCK_LEVELS: Record<StockLevel, { label: string; badge: string }> = {
-  ok: { label: 'OK', badge: 'bg-[#edf3ec] text-[#315b37]' },
-  'last-chance': {
-    label: 'Ostatnia szansa',
-    badge: 'bg-[#fbf3db] text-[#805c12]',
-  },
-  'below-minimum': {
-    label: 'Poniżej minimum',
-    badge: 'bg-[#fdebec] text-[#8f3936]',
-  },
-}
+const EDIT_FIELDS = [
+  ['name', 'Nazwa', 'text', 'sm:col-span-3'],
+  ['quantity', 'Ilość', 'number', 'sm:col-span-1'],
+  ['minimum', 'Minimum', 'number', 'sm:col-span-1'],
+  ['unit', 'Jednostka', 'text', 'sm:col-span-1'],
+  ['location', 'Lokalizacja', 'text', 'sm:col-span-3'],
+] as const
 
-function getStockLevel(item: Item): StockLevel {
-  if (item.quantity < item.minimum) return 'below-minimum'
-  if (item.minimum > 0 && item.quantity <= item.minimum * 1.5) return 'last-chance'
-  return 'ok'
-}
-
-function StockLevelBar({ item, level }: { item: Item; level: StockLevel }) {
-  const scale = Math.max(item.minimum * 2, 1)
-  const redEnd = Math.min((item.minimum / scale) * 100, 100)
-  const yellowEnd = Math.min(((item.minimum * 1.5) / scale) * 100, 100)
-  const value = Math.min(Math.max((item.quantity / scale) * 100, 0), 100)
-  const segments = `#f2dada 0% ${redEnd}%, #f3e7c3 ${redEnd}% ${yellowEnd}%, #dce9dc ${yellowEnd}% 100%`
-
-  return (
-    <div
-      className="relative h-2.5 overflow-visible rounded-sm"
-      role="progressbar"
-      aria-label={`Stan ${item.name}: ${item.quantity} ${item.unit}, minimum ${item.minimum}. ${STOCK_LEVELS[level].label}.`}
-      aria-valuemin={0}
-      aria-valuemax={scale}
-      aria-valuenow={Math.min(Math.max(item.quantity, 0), scale)}
-      aria-valuetext={`${item.quantity} ${item.unit}; minimum ${item.minimum}; ${STOCK_LEVELS[level].label}`}
-      style={{ background: `linear-gradient(to right, ${segments})` }}
-    >
-      <span
-        aria-hidden="true"
-        className="absolute top-[-3px] h-4 w-0.5 bg-[#454b46]"
-        style={{ left: `${value}%` }}
-      />
-    </div>
-  )
-}
+const LEGEND_LEVELS: StockLevel[] = ['empty', 'below', 'near', 'ok']
 
 export default function StockTable({
   items,
@@ -56,6 +26,8 @@ export default function StockTable({
   onRetry,
   canManage = false,
   onSave,
+  toolbar,
+  pending = null,
 }: {
   items: Item[]
   state?: StockState
@@ -63,6 +35,10 @@ export default function StockTable({
   onRetry?: () => void
   canManage?: boolean
   onSave?: (id: number, changes: Partial<Omit<Item, 'id'>>) => Promise<void>
+  /** akcje w pasku nad tabelą (import, eksport) */
+  toolbar?: ReactNode
+  /** zmiana czekająca na zatwierdzenie w panelu agenta — podgląd skutku w wierszu */
+  pending?: { itemId: number; after: number } | null
 }) {
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<number | null>(null)
@@ -74,78 +50,81 @@ export default function StockTable({
     () => items.filter((item) => item.name.toLocaleLowerCase('pl-PL').includes(normalizedQuery)),
     [items, normalizedQuery],
   )
+  const columnCount = canManage ? 5 : 4
 
   if (state === 'loading') {
-    return (
-      <div className="border border-[#e8e5de] bg-white p-6 text-sm text-[#646b64]" role="status" aria-live="polite">
-        Pobieram stany magazynowe…
-      </div>
-    )
+    return <Skeleton rows={6} label="Pobieram stany magazynowe…" />
   }
 
   if (state === 'error') {
+    return <LoadError title="Nie udało się pobrać stanów magazynowych." detail={error || undefined} onRetry={onRetry} />
+  }
+
+  if (items.length === 0) {
     return (
-      <div className="border border-[#edc8c5] bg-[#fff7f6] p-6" role="alert">
-        <p className="font-semibold text-[#8f3936]">Nie udało się pobrać stanów magazynowych.</p>
-        {error && <p className="mt-1 text-sm text-[#8f3936]">{error}</p>}
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-4 border border-[#d8a9a5] bg-white px-4 py-2 text-sm font-semibold text-[#8f3936] hover:bg-[#fdebec] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3936]"
-          >
-            Spróbuj ponownie
-          </button>
-        )}
-      </div>
+      <section aria-label="Pozycje magazynowe" className="space-y-4">
+        {toolbar && <div className="flex flex-wrap justify-end gap-2">{toolbar}</div>}
+        <Empty text="Brak pozycji magazynowych" hint="Zaimportuj plik lub dodaj dane, aby zobaczyć stany." />
+      </section>
     )
   }
 
   return (
-    <section aria-label="Pozycje magazynowe">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <label className="w-full max-w-sm text-sm font-semibold text-[#454b46]">
-          Szukaj pozycji
+    <section aria-label="Pozycje magazynowe" className={panelClass}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
+        <label className="relative block min-w-48 max-w-64 flex-1">
+          <SearchIcon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
           <input
             aria-label="Szukaj pozycji magazynowej"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Wpisz nazwę, np. kartony"
-            className="mt-1.5 block w-full border border-[#d8d6cf] bg-white px-3 py-2.5 font-normal text-[#292d2b] placeholder:text-[#70756f] focus-visible:border-[#536b56] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]"
+            className={`${fieldClass} h-10 pl-10`}
           />
         </label>
-        <p className="text-sm text-[#777b74]" aria-live="polite">
-          {filteredItems.length} z {items.length} pozycji
+        <p className="whitespace-nowrap text-sm text-ink-2" aria-live="polite">
+          <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
+          <span className="tabular-nums">{items.length}</span> pozycji
         </p>
+        {toolbar && <div className="ml-auto flex flex-wrap items-center gap-2">{toolbar}</div>}
       </div>
 
-      {items.length === 0 ? (
-        <Empty text="Brak pozycji magazynowych. Zaimportuj plik lub dodaj dane, aby zobaczyć stany." />
-      ) : filteredItems.length === 0 ? (
-        <Empty text={`Nie znaleziono pozycji dla „${query.trim()}”.`} />
+      {filteredItems.length === 0 ? (
+        <div className="border-t border-line p-5">
+          <Empty
+            text={`Nie znaleziono pozycji dla „${query.trim()}”.`}
+            action={
+              <button type="button" onClick={() => setQuery('')} className={buttonClass('secondary', 'sm')}>
+                Wyczyść wyszukiwanie
+              </button>
+            }
+          />
+        </div>
       ) : (
-        <div className="overflow-x-auto border border-[#e8e5de] bg-white">
-          <table className="w-full min-w-[760px] text-left">
+        // Szerokości kolumn mieszczą się w ~600 px (laptop 1280 px z kolumną agenta); przewijanie tylko awaryjnie.
+        <div className="relative overflow-x-auto border-t border-line">
+          <table className="w-full min-w-[37rem] table-fixed text-left">
             <thead>
-              <tr className="border-b border-[#e8e5de] bg-[#f8f7f3] text-[11px] font-semibold uppercase tracking-[0.1em] text-[#70756f]">
-                <th scope="col" className="px-5 py-4">Pozycja</th>
-                <th scope="col" className="px-5 py-4 text-right">Stan</th>
-                <th scope="col" className="px-5 py-4 text-right">Minimum</th>
-                <th scope="col" className="px-5 py-4">Poziom zapasu</th>
-                <th scope="col" className="px-5 py-4">Lokalizacja</th>
-              <th scope="col" className="px-5 py-4">Status</th>
-              {canManage && <th scope="col" className="px-5 py-4">Edycja</th>}
+              <tr>
+                <th scope="col" className="label-caps py-3 pl-5 pr-3 text-left">Pozycja</th>
+                <th scope="col" className="label-caps w-28 px-3 py-3 text-right">Stan</th>
+                <th scope="col" className="label-caps w-36 px-3 py-3 text-left">Poziom</th>
+                <th scope="col" className={`label-caps w-38 py-3 pl-3 text-left ${canManage ? 'pr-3' : 'pr-5'}`}>Status</th>
+                {canManage && (
+                  <th scope="col" className="w-14 py-3 pl-1 pr-3">
+                    <span className="sr-only">Edycja</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((item) => {
-                const level = getStockLevel(item)
                 if (editing === item.id) {
                   return (
-                    <tr key={item.id} className="border-b border-[#f0efe9] bg-[#fbfaf7]">
-                      <td colSpan={canManage ? 7 : 6} className="p-4">
-                        <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={async (event) => {
+                    <tr key={item.id} className="border-t border-line bg-ground/60">
+                      <td colSpan={columnCount} className="px-5 py-5">
+                        <form className="grid gap-x-4 gap-y-4 sm:grid-cols-6" onSubmit={async (event) => {
                           event.preventDefault()
                           if (!onSave) return
                           setSaving(true)
@@ -162,52 +141,133 @@ export default function StockTable({
                             setSaving(false)
                           }
                         }}>
-                          {([
-                            ['name', 'Nazwa', 'text'], ['quantity', 'Ilość', 'number'], ['minimum', 'Minimum', 'number'],
-                            ['unit', 'Jednostka', 'text'], ['location', 'Lokalizacja', 'text'],
-                          ] as const).map(([field, label, type]) => (
-                            <label key={field} className="text-xs font-semibold text-[#646b64]">
-                              {label}
+                          {EDIT_FIELDS.map(([field, label, type, span]) => (
+                            <label key={field} className={`block ${span}`}>
+                              <span className="label-caps mb-1.5 block">{label}</span>
                               <input
                                 aria-label={`${label} produktu ${item.name}`}
                                 required={field === 'name'} type={type} min={type === 'number' ? 0 : undefined}
                                 max={type === 'number' ? 2147483647 : undefined} step={type === 'number' ? 1 : undefined}
                                 value={draft[field]} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
-                                className="mt-1 block w-full border border-[#d8d6cf] bg-white px-3 py-2 text-sm text-[#292d2b] focus-visible:outline-2 focus-visible:outline-[#536b56]"
+                                className={`${fieldClass} ${type === 'number' ? 'tabular-nums' : ''}`}
                               />
                             </label>
                           ))}
-                          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-5">
-                            <button type="submit" disabled={saving} className="bg-[#315b37] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Zapisuję…' : 'Zapisz produkt'}</button>
-                            <button type="button" disabled={saving} onClick={() => { setEditing(null); setSaveError('') }} className="border border-[#d8d6cf] bg-white px-4 py-2 text-sm font-semibold text-[#454b46]">Anuluj</button>
-                            {saveError && <p className="text-sm text-[#8f3936]" role="alert">{saveError}</p>}
+                          <div className="flex flex-wrap items-end gap-2 sm:col-span-3">
+                            <button type="submit" disabled={saving} className={buttonClass('action')}>
+                              {saving ? 'Zapisuję…' : 'Zapisz produkt'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => { setEditing(null); setSaveError('') }}
+                              className={buttonClass('secondary')}
+                            >
+                              Anuluj
+                            </button>
                           </div>
+                          {saveError && (
+                            <Notice tone="alarm" role="alert" className="sm:col-span-6">{saveError}</Notice>
+                          )}
                         </form>
                       </td>
                     </tr>
                   )
                 }
+
+                const level = stockLevel(item.quantity, item.minimum)
+                const { label, kind } = STOCK_LEVEL[level]
+                const pendingAfter = pending && pending.itemId === item.id ? pending.after : null
+                const deviation = level === 'empty' || level === 'below'
+                const minPct = item.minimum > 0 ? rangePercent(item.minimum, rangeScale(item.minimum, [item.quantity])) : null
+                // każda komórka ma własne podświetlenie (pozycjonowanie `tr` nie jest pewne we wszystkich przeglądarkach)
+                const flash = <ChangeFlash value={`${item.quantity}/${item.minimum}`} />
                 return (
-                  <tr key={item.id} className="border-b border-[#f0efe9] last:border-0 hover:bg-[#fbfaf7]">
-                    <th scope="row" className="px-5 py-4 text-left font-semibold text-[#292d2b]">{item.name}</th>
-                    <td className="px-5 py-4 text-right text-lg font-bold tabular-nums text-[#292d2b]">
-                      {item.quantity} <span className="text-sm font-normal text-[#777b74]">{item.unit}</span>
+                  <tr
+                    key={item.id}
+                    className={
+                      'border-t border-line align-top transition-colors duration-150 ' +
+                      (pendingAfter !== null ? 'bg-act-soft/60' : 'hover:bg-ground/50')
+                    }
+                  >
+                    <th scope="row" className="relative py-4 pl-5 pr-3 text-left font-normal">
+                      {flash}
+                      <div className="relative min-w-0">
+                        <div className="hyphens-auto break-normal py-[3px] text-[15px] font-semibold leading-snug text-ink">{item.name}</div>
+                        <div className={`narrow mt-1 truncate text-[13px] ${item.location ? 'text-ink-2' : 'text-mute'}`} title={item.location || undefined}>
+                          {item.location || 'Bez lokalizacji'}
+                        </div>
+                      </div>
+                    </th>
+                    <td className="relative px-3 py-4 text-right">
+                      {flash}
+                      <div className="relative flex h-7 items-baseline justify-end gap-1 whitespace-nowrap">
+                        <RollingNumber
+                          value={item.quantity}
+                          className={`text-lg font-semibold tabular-nums ${deviation ? stateTextClass(kind) : 'text-ink'}`}
+                        />
+                        <span className="truncate text-sm text-ink-2">{item.unit}</span>
+                      </div>
+                      {pendingAfter !== null && (
+                        <div className="relative mt-1 whitespace-nowrap text-[13px] font-semibold tabular-nums text-act-ink">
+                          → {pendingAfter} {item.unit}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-5 py-4 text-right tabular-nums text-[#646b64]">{item.minimum}</td>
-                    <td className="px-5 py-4"><StockLevelBar item={item} level={level} /></td>
-                    <td className="px-5 py-4 text-sm text-[#646b64]">{item.location || '—'}</td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex px-2.5 py-1 text-xs font-semibold ${STOCK_LEVELS[level].badge}`}>
-                        {STOCK_LEVELS[level].label}
-                      </span>
+                    <td className="relative px-3 py-4">
+                      {flash}
+                      <div className="relative">
+                        <div className="flex h-7 items-center">
+                          <RangeIndicator
+                            value={item.quantity}
+                            minimum={item.minimum}
+                            after={pendingAfter}
+                            label={item.name}
+                            unit={item.unit}
+                            size="md"
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="relative mt-1 h-5" aria-hidden="true">
+                          <span
+                            className={`narrow absolute top-0 whitespace-nowrap text-[13px] tabular-nums text-ink-2 ${minPct === null ? '' : '-translate-x-1/2'}`}
+                            style={{ left: `${minPct ?? 0}%` }}
+                          >
+                            min. {item.minimum}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    {canManage && <td className="px-5 py-4">
-                      <button type="button" onClick={() => {
-                        setDraft({ name: item.name, quantity: String(item.quantity), minimum: String(item.minimum), unit: item.unit, location: item.location })
-                        setEditing(item.id)
-                        setSaveError('')
-                      }} className="border border-[#d8d6cf] bg-white px-3 py-1.5 text-sm font-semibold text-[#454b46] hover:bg-[#f8f7f3]">Edytuj</button>
-                    </td>}
+                    <td className={`relative py-4 pl-3 ${canManage ? 'pr-3' : 'pr-5'}`}>
+                      {flash}
+                      <div className="relative flex h-7 items-center">
+                        {pendingAfter !== null ? (
+                          <StateMark kind="decision" className="whitespace-nowrap">Czeka na decyzję</StateMark>
+                        ) : (
+                          <StateMark kind={kind} className="whitespace-nowrap">{label}</StateMark>
+                        )}
+                      </div>
+                    </td>
+                    {canManage && (
+                      <td className="relative py-4 pl-1 pr-3 text-right">
+                        {flash}
+                        <div className="relative flex h-7 items-center justify-end">
+                          <button
+                            type="button"
+                            aria-label={`Edytuj ${item.name}`}
+                            title="Edytuj"
+                            onClick={() => {
+                              setDraft({ name: item.name, quantity: String(item.quantity), minimum: String(item.minimum), unit: item.unit, location: item.location })
+                              setEditing(item.id)
+                              setSaveError('')
+                            }}
+                            className={buttonClass('ghost', 'sm')}
+                          >
+                            <EditIcon size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -216,19 +276,31 @@ export default function StockTable({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#646b64]" aria-label="Legenda poziomów zapasu">
-        <span className="inline-flex items-center gap-2"><i className="h-2.5 w-2.5 bg-[#edc8c5]" aria-hidden="true" />Poniżej minimum</span>
-        <span className="inline-flex items-center gap-2"><i className="h-2.5 w-2.5 bg-[#ead9a9]" aria-hidden="true" />Ostatnia szansa</span>
-        <span className="inline-flex items-center gap-2"><i className="h-2.5 w-2.5 bg-[#cbd8c9]" aria-hidden="true" />OK</span>
-      </div>
+      <ul
+        aria-label="Legenda poziomów zapasu"
+        className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line px-5 py-3 text-xs text-ink-2"
+      >
+        <li className="inline-flex items-center gap-2">
+          <span aria-hidden="true" className="h-3.5 w-0.5 rounded-full bg-ink" />
+          Kreska — minimum
+        </li>
+        {LEGEND_LEVELS.map((level) => (
+          <li key={level} className="inline-flex items-center gap-1.5">
+            <StateShape kind={STOCK_LEVEL[level].kind} />
+            {STOCK_LEVEL[level].label}
+            {level === 'near' && <span className="text-mute">(do 1,5 × minimum)</span>}
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
 
-export function Empty({ text }: { text: string }) {
+/** Pusty stan listy (używany też przez HistoryList): `text` to tytuł, `hint` uczy następnego kroku. */
+export function Empty({ text, hint, action }: { text: string; hint?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="border border-dashed border-[#d8d6cf] bg-[#fbfaf7] p-8 text-center text-[#70756f] sm:p-12" role="status">
-      {text}
-    </div>
+    <EmptyState title={text} action={action}>
+      {hint}
+    </EmptyState>
   )
 }

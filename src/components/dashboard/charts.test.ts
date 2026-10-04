@@ -69,11 +69,11 @@ test('empty history with a known opening is a flat line; without it nothing is d
 
 test('axis helpers', () => {
   expect(niceMax(0)).toBe(1)
-  expect(niceMax(3)).toBe(5)
-  expect(niceMax(12)).toBe(20)
-  expect(niceMax(57)).toBe(100)
+  expect(niceMax(3)).toBe(3)
+  expect(niceMax(12)).toBe(15)
+  expect(niceMax(57)).toBe(60)
   expect(labelStep(7, 8)).toBe(1)
   expect(labelStep(30, 8)).toBe(4)
-  expect(valueDomain([13, 11, 30, 12])).toEqual({ min: 0, max: 50 })
-  expect(valueDomain([-3, 4])).toEqual({ min: -5, max: 5 })
+  expect(valueDomain([13, 11, 30, 12])).toEqual({ min: 0, max: 40 })
+  expect(valueDomain([-3, 4])).toEqual({ min: -3, max: 5 })
 })

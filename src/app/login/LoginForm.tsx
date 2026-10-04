@@ -3,6 +3,10 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { BrandLockup } from '@/components/SessionScreens'
+import { Notice } from '@/components/ui/feedback'
+import { StateShape } from '@/components/ui/StateMark'
+import { buttonClass, fieldClass, panelClass, segmentClass, segmentGroupClass } from '@/components/ui/styles'
 import { createClient, isSupabaseConfiguredInBrowser } from '@/lib/supabase/client'
 
 type Tab = 'login' | 'signup'
@@ -48,25 +52,23 @@ function describeAuthError(error: AuthErrorLike, tab: Tab): string {
 
 export default function LoginForm({ callbackError, next }: { callbackError: string | null; next: string }) {
   return (
-    <main className="flex min-h-dvh justify-center bg-[#f5f4f0] px-4 py-8 text-[#292d2b] sm:items-center sm:py-16">
-      <div className="w-full max-w-[420px]">
-        <header className="flex items-center gap-3">
-          <img
-            src="/brand/mascot.jpg"
-            alt="Maskot MAGAZYNIER"
-            width={56}
-            height={56}
-            className="h-14 w-14 shrink-0 border border-[#e8e5de] bg-white object-cover"
-          />
-          <div className="min-w-0">
-            <div className="text-lg font-bold tracking-[0.09em]">MAGAZYNIER</div>
-            <div className="mt-0.5 text-sm text-[#777b74]">Głosowy agent magazynowy</div>
-          </div>
-        </header>
-
+    <main className="flex min-h-dvh justify-center bg-ground px-4 py-8 text-ink sm:items-center sm:py-16">
+      <div className="w-full max-w-md">
         {isSupabaseConfiguredInBrowser() ? <AuthCard callbackError={callbackError} next={next} /> : <NotConfigured />}
       </div>
     </main>
+  )
+}
+
+/** Jedna karta na środku spokojnego tła: znak MAGAZYNIER, potem treść. */
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <div className={panelClass + ' p-6 sm:p-8'}>
+      <header>
+        <BrandLockup />
+      </header>
+      {children}
+    </div>
   )
 }
 
@@ -149,8 +151,12 @@ function AuthCard({ callbackError, next }: { callbackError: string | null; next:
 
   return (
     <>
-      <section className="mt-6 border border-[#e8e5de] bg-[#fbfaf7]">
-        <div role="tablist" aria-label="Logowanie lub rejestracja" className="grid grid-cols-2 border-b border-[#e8e5de]">
+      <Card>
+        <div
+          role="tablist"
+          aria-label="Logowanie lub rejestracja"
+          className={segmentGroupClass + ' mt-8 w-full'}
+        >
           <TabButton active={!signup} onClick={() => switchTab('login')}>
             Zaloguj
           </TabButton>
@@ -159,10 +165,10 @@ function AuthCard({ callbackError, next }: { callbackError: string | null; next:
           </TabButton>
         </div>
 
-        <form id="auth-panel" role="tabpanel" onSubmit={handleSubmit} className="space-y-4 p-5 sm:p-6">
+        <form id="auth-panel" role="tabpanel" onSubmit={handleSubmit} className="mt-7 space-y-5">
           <div>
-            <h1 className="text-xl font-bold">{signup ? 'Załóż konto' : 'Zaloguj się'}</h1>
-            <p className="mt-1 text-sm text-[#646b64]">
+            <h1 className="text-xl font-semibold leading-snug text-ink">{signup ? 'Załóż konto' : 'Zaloguj się'}</h1>
+            <p className="mt-1 text-sm text-ink-2">
               {signup ? 'Konto zakładasz adresem e-mail i hasłem.' : 'Użyj adresu e-mail i hasła swojego konta.'}
             </p>
           </div>
@@ -214,7 +220,7 @@ function AuthCard({ callbackError, next }: { callbackError: string | null; next:
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
                 aria-pressed={showPassword}
-                className="absolute inset-y-0 right-0 px-3 text-sm font-semibold text-[#315b37] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#536b56]"
+                className={buttonClass('ghost', 'sm') + ' absolute right-1 top-1/2 -translate-y-1/2'}
               >
                 {showPassword ? 'Ukryj' : 'Pokaż'}
               </button>
@@ -222,32 +228,25 @@ function AuthCard({ callbackError, next }: { callbackError: string | null; next:
           </Field>
 
           {error && (
-            <p role="alert" className="border border-[#e9c9c3] bg-[#fbefec] px-3 py-2.5 text-sm leading-relaxed text-[#8a2f22]">
+            <Notice tone="alarm" role="alert" className="leading-relaxed">
               {error}
-            </p>
+            </Notice>
           )}
 
           {notice && (
-            <div role="status" className="border border-[#d8e2d5] bg-[#edf3ec] px-3 py-2.5 text-sm leading-relaxed text-[#315b37]">
-              <p className="font-semibold">Sprawdź skrzynkę e-mail, aby potwierdzić konto.</p>
-              <p className="mt-1 text-[#46624a]">
-                Link wysłaliśmy na adres <span className="font-semibold break-all">{notice}</span>. Po potwierdzeniu zaloguj się tutaj.
-              </p>
-            </div>
+            <Notice tone="ok" role="status" title="Sprawdź skrzynkę e-mail, aby potwierdzić konto." className="leading-relaxed">
+              Link wysłaliśmy na adres <span className="font-semibold break-all">{notice}</span>. Po potwierdzeniu zaloguj się tutaj.
+            </Notice>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-[#315b37] px-6 py-3 text-base font-bold text-white transition-colors hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56] disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy} className={buttonClass('primary', 'lg') + ' w-full'}>
             {busy ? (signup ? 'Tworzenie konta…' : 'Logowanie…') : signup ? 'Załóż konto' : 'Zaloguj'}
           </button>
         </form>
-      </section>
+      </Card>
 
-      <aside className="mt-4 border border-[#e8e5de] bg-[#fbfaf7] px-4 py-3 text-sm leading-relaxed text-[#646b64]">
-        <span className="font-semibold text-[#292d2b]">Role w zespole. </span>
+      <aside className="mt-5 px-1 text-sm leading-relaxed text-ink-2">
+        <span className="font-semibold text-ink">Role w zespole. </span>
         Pierwsze konto w systemie otrzymuje rolę kierownika. Kolejne osoby zaczynają jako pracownicy — kierownik nadaje
         role w sekcji Ustawienia.
       </aside>
@@ -255,14 +254,13 @@ function AuthCard({ callbackError, next }: { callbackError: string | null; next:
   )
 }
 
-const INPUT =
-  'block w-full border border-[#d9d5cc] bg-white px-3 py-2.5 text-base text-[#292d2b] placeholder:text-[#a3a69f] transition-colors focus:border-[#527b58] focus:outline-none focus:ring-2 focus:ring-[#dce9dc] disabled:bg-[#f0efe9] disabled:text-[#777b74]'
+const INPUT = fieldClass + ' h-11'
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-[#292d2b]">{label}</span>
-      {hint && <span className="ml-1.5 text-xs text-[#777b74]">({hint})</span>}
+      <span className="text-sm font-medium text-ink">{label}</span>
+      {hint && <span className="ml-1.5 text-xs text-mute">({hint})</span>}
       <span className="mt-1.5 block">{children}</span>
     </label>
   )
@@ -276,12 +274,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       aria-selected={active}
       aria-controls="auth-panel"
       onClick={onClick}
-      className={
-        'px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#536b56] ' +
-        (active
-          ? 'bg-[#fbfaf7] text-[#315b37] shadow-[inset_0_-2px_0_#315b37]'
-          : 'bg-[#f0efe9] text-[#646b64] hover:text-[#292d2b]')
-      }
+      className={segmentClass(active) + ' flex-1'}
     >
       {children}
     </button>
@@ -290,19 +283,21 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 function NotConfigured() {
   return (
-    <section className="mt-6 border border-[#ead9a9] bg-[#fdf8ea] p-5 sm:p-6">
-      <h1 className="text-lg font-bold">Logowanie nie jest skonfigurowane</h1>
-      <p className="mt-2 text-sm leading-relaxed text-[#5c4a1c]">
-        Ta instalacja nie ma kluczy Supabase (<code className="break-all">NEXT_PUBLIC_SUPABASE_URL</code>,{' '}
-        <code className="break-all">NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>). Lokalnie aplikacja działa bez logowania —
-        jako kierownik.
-      </p>
-      <Link
-        href="/"
-        className="mt-4 inline-block bg-[#315b37] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#274a2d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536b56]"
-      >
-        Przejdź do aplikacji
-      </Link>
-    </section>
+    <Card>
+      <section className="mt-8 border-t border-line pt-6">
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold leading-snug text-ink">
+          <StateShape kind="warn" size={12} />
+          Logowanie nie jest skonfigurowane
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-ink-2">
+          Ta instalacja nie ma kluczy Supabase (<code className="break-all text-[13px] text-ink">NEXT_PUBLIC_SUPABASE_URL</code>,{' '}
+          <code className="break-all text-[13px] text-ink">NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code>). Lokalnie aplikacja działa bez logowania —
+          jako kierownik.
+        </p>
+        <Link href="/" className={buttonClass('primary', 'lg') + ' mt-6 w-full'}>
+          Przejdź do aplikacji
+        </Link>
+      </section>
+    </Card>
   )
 }

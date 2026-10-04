@@ -5,12 +5,15 @@ export type TrendPoint = StockTrendResponse['points'][number]
 export type StepVertex = { t: number; v: number }
 export type TrendGap = { t: number; from: number; to: number; auditId: number }
 
-/** Zaokrąglenie maksimum osi w górę do „ładnej” wartości (1, 2, 5 × 10^n), minimum 1. */
+// Gęstsze „ładne” kroki niż 1/2/5: maksimum tuż nad progiem (np. 52) nie podwaja osi, więc wykres wypełnia pole.
+const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+
+/** Zaokrąglenie maksimum osi w górę do „ładnej” wartości (1–1,5–2–2,5–3–4–5–6–8 × 10^n), minimum 1. */
 export function niceMax(value: number): number {
   if (!(value > 0)) return 1
   const power = 10 ** Math.floor(Math.log10(value))
   const fraction = value / power
-  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10
+  const nice = NICE_STEPS.find((step) => fraction <= step + 1e-9) ?? 10
   return nice * power
 }
 

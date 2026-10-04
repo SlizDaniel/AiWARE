@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-04T00:18:36.270Z",
+  "title": "Design System: MAGAZYNIER",
+  "extensions": {
+    "colorMeta": {
+      "act": {
+        "role": "primary",
+        "displayName": "Operator Cyan-Blue",
+        "canonical": "oklch(0.52 0.135 240)",
+        "tonalRamp": [
+          "oklch(0.15 0.135 240)",
+          "oklch(0.26 0.135 240)",
+          "oklch(0.37 0.135 240)",
+          "oklch(0.48 0.135 240)",
+          "oklch(0.59 0.135 240)",
+          "oklch(0.7 0.135 240)",
+          "oklch(0.83 0.135 240)",
+          "oklch(0.95 0.135 240)"
+        ]
+      },
+      "act-ink": {
+        "role": "primary",
+        "displayName": "Operator Blue Ink",
+        "canonical": "oklch(0.43 0.12 242)",
+        "tonalRamp": [
+          "oklch(0.15 0.12 242)",
+          "oklch(0.26 0.12 242)",
+          "oklch(0.37 0.12 242)",
+          "oklch(0.48 0.12 242)",
+          "oklch(0.59 0.12 242)",
+          "oklch(0.7 0.12 242)",
+          "oklch(0.83 0.12 242)",
+          "oklch(0.95 0.12 242)"
+        ]
+      },
+      "act-soft": {
+        "role": "primary",
+        "displayName": "Operator Wash",
+        "canonical": "oklch(0.95 0.022 240)",
+        "tonalRamp": [
+          "oklch(0.15 0.022 240)",
+          "oklch(0.26 0.022 240)",
+          "oklch(0.37 0.022 240)",
+          "oklch(0.48 0.022 240)",
+          "oklch(0.59 0.022 240)",
+          "oklch(0.7 0.022 240)",
+          "oklch(0.83 0.022 240)",
+          "oklch(0.95 0.022 240)"
+        ]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "Signal Amber",
+        "canonical": "oklch(0.72 0.15 62)",
+        "tonalRamp": [
+          "oklch(0.15 0.15 62)",
+          "oklch(0.26 0.15 62)",
+          "oklch(0.37 0.15 62)",
+          "oklch(0.48 0.15 62)",
+          "oklch(0.59 0.15 62)",
+          "oklch(0.7 0.15 62)",
+          "oklch(0.83 0.15 62)",
+          "oklch(0.95 0.15 62)"
+        ]
+      },
+      "warn-ink": {
+        "role": "secondary",
+        "displayName": "Amber Ink",
+        "canonical": "oklch(0.49 0.115 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.115 55)",
+          "oklch(0.26 0.115 55)",
+          "oklch(0.37 0.115 55)",
+          "oklch(0.48 0.115 55)",
+          "oklch(0.59 0.115 55)",
+          "oklch(0.7 0.115 55)",
+          "oklch(0.83 0.115 55)",
+          "oklch(0.95 0.115 55)"
+        ]
+      },
+      "warn-soft": {
+        "role": "secondary",
+        "displayName": "Amber Wash",
+        "canonical": "oklch(0.96 0.035 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.035 75)",
+          "oklch(0.26 0.035 75)",
+          "oklch(0.37 0.035 75)",
+          "oklch(0.48 0.035 75)",
+          "oklch(0.59 0.035 75)",
+          "oklch(0.7 0.035 75)",
+          "oklch(0.83 0.035 75)",
+          "oklch(0.95 0.035 75)"
+        ]
+      },
+      "alarm": {
+        "role": "secondary",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(0.56 0.19 27)",
+        "tonalRamp": [
+          "oklch(0.15 0.19 27)",
+          "oklch(0.26 0.19 27)",
+          "oklch(0.37 0.19 27)",
+          "oklch(0.48 0.19 27)",
+          "oklch(0.59 0.19 27)",
+          "oklch(0.7 0.19 27)",
+          "oklch(0.83 0.19 27)",
+          "oklch(0.95 0.19 27)"
+        ]
+      },
+      "alarm-ink": {
+        "role": "secondary",
+        "displayName": "Alarm Ink",
+        "canonical": "oklch(0.47 0.16 27)",
+        "tonalRamp": [
+          "oklch(0.15 0.16 27)",
+          "oklch(0.26 0.16 27)",
+          "oklch(0.37 0.16 27)",
+          "oklch(0.48 0.16 27)",
+          "oklch(0.59 0.16 27)",
+          "oklch(0.7 0.16 27)",
+          "oklch(0.83 0.16 27)",
+          "oklch(0.95 0.16 27)"
+        ]
+      },
+      "alarm-soft": {
+        "role": "secondary",
+        "displayName": "Alarm Wash",
+        "canonical": "oklch(0.96 0.022 25)",
+        "tonalRamp": [
+          "oklch(0.15 0.022 25)",
+          "oklch(0.26 0.022 25)",
+          "oklch(0.37 0.022 25)",
+          "oklch(0.48 0.022 25)",
+          "oklch(0.59 0.022 25)",
+          "oklch(0.7 0.022 25)",
+          "oklch(0.83 0.022 25)",
+          "oklch(0.95 0.022 25)"
+        ]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Ledger Green",
+        "canonical": "oklch(0.56 0.1 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.1 160)",
+          "oklch(0.26 0.1 160)",
+          "oklch(0.37 0.1 160)",
+          "oklch(0.48 0.1 160)",
+          "oklch(0.59 0.1 160)",
+          "oklch(0.7 0.1 160)",
+          "oklch(0.83 0.1 160)",
+          "oklch(0.95 0.1 160)"
+        ]
+      },
+      "ok-ink": {
+        "role": "tertiary",
+        "displayName": "Ledger Green Ink",
+        "canonical": "oklch(0.43 0.085 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.085 160)",
+          "oklch(0.26 0.085 160)",
+          "oklch(0.37 0.085 160)",
+          "oklch(0.48 0.085 160)",
+          "oklch(0.59 0.085 160)",
+          "oklch(0.7 0.085 160)",
+          "oklch(0.83 0.085 160)",
+          "oklch(0.95 0.085 160)"
+        ]
+      },
+      "ok-soft": {
+        "role": "tertiary",
+        "displayName": "Ledger Green Wash",
+        "canonical": "oklch(0.955 0.025 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.025 160)",
+          "oklch(0.26 0.025 160)",
+          "oklch(0.37 0.025 160)",
+          "oklch(0.48 0.025 160)",
+          "oklch(0.59 0.025 160)",
+          "oklch(0.7 0.025 160)",
+          "oklch(0.83 0.025 160)",
+          "oklch(0.95 0.025 160)"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "oklch(0.962 0.003 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.003 250)",
+          "oklch(0.26 0.003 250)",
+          "oklch(0.37 0.003 250)",
+          "oklch(0.48 0.003 250)",
+          "oklch(0.59 0.003 250)",
+          "oklch(0.7 0.003 250)",
+          "oklch(0.83 0.003 250)",
+          "oklch(0.95 0.003 250)"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Sheet",
+        "canonical": "oklch(0.994 0.001 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.001 250)",
+          "oklch(0.26 0.001 250)",
+          "oklch(0.37 0.001 250)",
+          "oklch(0.48 0.001 250)",
+          "oklch(0.59 0.001 250)",
+          "oklch(0.7 0.001 250)",
+          "oklch(0.83 0.001 250)",
+          "oklch(0.95 0.001 250)"
+        ]
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Rail",
+        "canonical": "oklch(0.93 0.005 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.005 250)",
+          "oklch(0.26 0.005 250)",
+          "oklch(0.37 0.005 250)",
+          "oklch(0.48 0.005 250)",
+          "oklch(0.59 0.005 250)",
+          "oklch(0.7 0.005 250)",
+          "oklch(0.83 0.005 250)",
+          "oklch(0.95 0.005 250)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.89 0.006 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.006 250)",
+          "oklch(0.26 0.006 250)",
+          "oklch(0.37 0.006 250)",
+          "oklch(0.48 0.006 250)",
+          "oklch(0.59 0.006 250)",
+          "oklch(0.7 0.006 250)",
+          "oklch(0.83 0.006 250)",
+          "oklch(0.95 0.006 250)"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "oklch(0.79 0.008 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.008 250)",
+          "oklch(0.26 0.008 250)",
+          "oklch(0.37 0.008 250)",
+          "oklch(0.48 0.008 250)",
+          "oklch(0.59 0.008 250)",
+          "oklch(0.7 0.008 250)",
+          "oklch(0.83 0.008 250)",
+          "oklch(0.95 0.008 250)"
+        ]
+      },
+      "track": {
+        "role": "neutral",
+        "displayName": "Track",
+        "canonical": "oklch(0.912 0.005 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.005 250)",
+          "oklch(0.26 0.005 250)",
+          "oklch(0.37 0.005 250)",
+          "oklch(0.48 0.005 250)",
+          "oklch(0.59 0.005 250)",
+          "oklch(0.7 0.005 250)",
+          "oklch(0.83 0.005 250)",
+          "oklch(0.95 0.005 250)"
+        ]
+      },
+      "band": {
+        "role": "neutral",
+        "displayName": "Band",
+        "canonical": "oklch(0.845 0.008 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.008 250)",
+          "oklch(0.26 0.008 250)",
+          "oklch(0.37 0.008 250)",
+          "oklch(0.48 0.008 250)",
+          "oklch(0.59 0.008 250)",
+          "oklch(0.7 0.008 250)",
+          "oklch(0.83 0.008 250)",
+          "oklch(0.95 0.008 250)"
+        ]
+      },
+      "norm": {
+        "role": "neutral",
+        "displayName": "Norm Grey",
+        "canonical": "oklch(0.68 0.012 255)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 255)",
+          "oklch(0.26 0.012 255)",
+          "oklch(0.37 0.012 255)",
+          "oklch(0.48 0.012 255)",
+          "oklch(0.59 0.012 255)",
+          "oklch(0.7 0.012 255)",
+          "oklch(0.83 0.012 255)",
+          "oklch(0.95 0.012 255)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "oklch(0.235 0.012 255)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 255)",
+          "oklch(0.26 0.012 255)",
+          "oklch(0.37 0.012 255)",
+          "oklch(0.48 0.012 255)",
+          "oklch(0.59 0.012 255)",
+          "oklch(0.7 0.012 255)",
+          "oklch(0.83 0.012 255)",
+          "oklch(0.95 0.012 255)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Graphite Two",
+        "canonical": "oklch(0.42 0.012 255)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 255)",
+          "oklch(0.26 0.012 255)",
+          "oklch(0.37 0.012 255)",
+          "oklch(0.48 0.012 255)",
+          "oklch(0.59 0.012 255)",
+          "oklch(0.7 0.012 255)",
+          "oklch(0.83 0.012 255)",
+          "oklch(0.95 0.012 255)"
+        ]
+      },
+      "mute": {
+        "role": "neutral",
+        "displayName": "Mute",
+        "canonical": "oklch(0.49 0.011 255)",
+        "tonalRamp": [
+          "oklch(0.15 0.011 255)",
+          "oklch(0.26 0.011 255)",
+          "oklch(0.37 0.011 255)",
+          "oklch(0.48 0.011 255)",
+          "oklch(0.59 0.011 255)",
+          "oklch(0.7 0.011 255)",
+          "oklch(0.83 0.011 255)",
+          "oklch(0.95 0.011 255)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title, one per section (28px below 640px)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Block headings: dashboard Card, settings groups, agent column, map, queue drafts."
+      },
+      "headword": {
+        "displayName": "Headword",
+        "purpose": "The single bold name in a stock row (lexicon headword)."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Quantities in rows, tabular figures; large readouts 32px/44px live in their components."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default UI text; long prose 15px/28px at 70ch."
+      },
+      "mark": {
+        "displayName": "Mark",
+        "purpose": "StateMark labels, header state chips, small buttons and segments."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Legends, connection status, voice help, meta lines."
+      },
+      "label": {
+        "displayName": "Label (caps)",
+        "purpose": "label-caps utility: uppercase, condensed wdth 82, mute; column headers, field labels, zone names."
+      },
+      "data": {
+        "displayName": "Data (narrow)",
+        "purpose": "narrow utility: condensed wdth 85 tabular figures for #codes, locations, timestamps."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "MAGAZYNIER lockup only, wide wdth 112, tracked +0.12em."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raise",
+        "value": "0 1px 2px oklch(0.2 0.01 255 / 0.06), 0 10px 28px -12px oklch(0.2 0.01 255 / 0.22)",
+        "purpose": "Token --shadow-raise. Only for the pending change card, the toast and the chart tooltip."
+      },
+      {
+        "name": "select-lift",
+        "value": "0 1px 2px oklch(0.2 0.01 255 / 0.12)",
+        "purpose": "Active segment in a segmented control and active rail item: pressed-in selection."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Token --ease-out-expo; drives roll, flash and arrive."
+      },
+      {
+        "name": "animate-roll",
+        "value": "roll 420ms var(--ease-out-expo)",
+        "purpose": "RollingNumber: a changed value slides in from -55% with fade (Solari board)."
+      },
+      {
+        "name": "animate-flash",
+        "value": "flash 1600ms var(--ease-out-expo)",
+        "purpose": "ChangeFlash: cell background fades from act-soft to transparent after a change."
+      },
+      {
+        "name": "animate-arrive",
+        "value": "arrive 260ms var(--ease-out-expo)",
+        "purpose": "New agent blocks, change card and toast rise 6px and fade in."
+      },
+      {
+        "name": "animate-breathe",
+        "value": "breathe 1800ms ease-in-out infinite",
+        "purpose": "Opacity pulse 1 to 0.35: listening, working, waiting."
+      },
+      {
+        "name": "state-transition",
+        "value": "150ms (background-color, border-color, color, opacity)",
+        "purpose": "Hover/active state changes on buttons, nav, segments, rows."
+      },
+      {
+        "name": "range-fill",
+        "value": "width 500ms ease-out",
+        "purpose": "Range indicator fill moving to a new value."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) → 1ms, 1 iteration",
+        "purpose": "Global collapse of all animations and transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      },
+      {
+        "name": "2xl",
+        "value": "1536px"
+      },
+      {
+        "name": "@2xl (container)",
+        "value": "672px"
+      },
+      {
+        "name": "@4xl (container)",
+        "value": "896px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Graphite fill for the main neutral action (Wyślij, Zaloguj). buttonClass('primary').",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Wyślij <svg width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3.5 10h11M10.5 5.5 15 10l-4.5 4.5\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 6px; border: 0; font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms; } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; } .ds-btn-primary { background: var(--color-ink, oklch(0.235 0.012 255)); color: var(--color-sheet, oklch(0.994 0.001 250)); } .ds-btn-primary:hover { background: var(--color-ink-2, oklch(0.42 0.012 255)); }"
+    },
+    {
+      "name": "Action Button",
+      "kind": "button",
+      "refersTo": "button-action-lg",
+      "description": "Operator-blue fill for writes: Zatwierdź on the change card, approve, confirm undo. buttonClass('action', 'lg').",
+      "html": "<button class=\"ds-btn-action\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m4 10.5 3.8 3.8L16 6\"/></svg> Zatwierdź</button>",
+      "css": ".ds-btn-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 24px; border-radius: 6px; border: 0; font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 16px; font-weight: 600; cursor: pointer; transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms; } .ds-btn-action:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-btn-action:disabled { opacity: 0.4; cursor: not-allowed; } .ds-btn-action { background: var(--color-act, oklch(0.52 0.135 240)); color: #fff; } .ds-btn-action:hover { background: var(--color-act-ink, oklch(0.43 0.12 242)); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Sheet fill with a strong hairline; default for non-writing actions (Odrzuć, Wyczyść wyszukiwanie).",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">Odrzuć</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 6px; border: 0; font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms; } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; } .ds-btn-secondary { background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); border: 1px solid var(--color-line-strong, oklch(0.79 0.008 250)); } .ds-btn-secondary:hover { background: var(--color-ground, oklch(0.962 0.003 250)); border-color: var(--color-ink-2, oklch(0.42 0.012 255)); }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Alarm-ink outline for reject and retry-after-error; turns alarm-soft on hover. buttonClass('danger', 'sm').",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">Spróbuj ponownie</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 6px; border: 0; font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms; } .ds-btn-danger:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-btn-danger:disabled { opacity: 0.4; cursor: not-allowed; } .ds-btn-danger { background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-alarm-ink, oklch(0.47 0.16 27)); border: 1px solid color-mix(in oklch, var(--color-alarm, oklch(0.56 0.19 27)) 35%, transparent); } .ds-btn-danger:hover { background: var(--color-alarm-soft, oklch(0.96 0.022 25)); border-color: var(--color-alarm, oklch(0.56 0.19 27)); }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "fieldClass with an inset search icon: sheet, strong hairline, act border and 25% act outline on focus.",
+      "html": "<label class=\"ds-search\"><svg class=\"ds-search-icon\" width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"9\" r=\"5.5\"/><path d=\"m13 13 4 4\"/></svg><input class=\"ds-field\" type=\"search\" placeholder=\"Wpisz nazwę, np. kartony\" aria-label=\"Szukaj pozycji magazynowej\"></label>",
+      "css": ".ds-search { position: relative; display: block; max-width: 256px; } .ds-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--color-mute, oklch(0.49 0.011 255)); pointer-events: none; } .ds-field { display: block; width: 100%; height: 40px; padding: 8px 12px 8px 40px; border-radius: 6px; border: 1px solid var(--color-line-strong, oklch(0.79 0.008 250)); background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); caret-color: var(--color-act, oklch(0.52 0.135 240)); font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 14px; transition: border-color 150ms; } .ds-field::placeholder { color: var(--color-mute, oklch(0.49 0.011 255)); opacity: 1; } .ds-field:hover { border-color: color-mix(in oklch, var(--color-ink-2, oklch(0.42 0.012 255)) 60%, transparent); } .ds-field:focus-visible { border-color: var(--color-act, oklch(0.52 0.135 240)); outline: 2px solid color-mix(in oklch, var(--color-act, oklch(0.52 0.135 240)) 25%, transparent); outline-offset: 0; } .ds-field:disabled { background: var(--color-ground, oklch(0.962 0.003 250)); color: var(--color-mute, oklch(0.49 0.011 255)); cursor: not-allowed; }"
+    },
+    {
+      "name": "Rail Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar rail: 40px items, active item on sheet with select lift and an act icon, state-shape count badges.",
+      "html": "<nav class=\"ds-rail\" aria-label=\"Główna nawigacja\"><button class=\"ds-nav-item\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"2.5\" y=\"3.5\" width=\"15\" height=\"13\" rx=\"1.5\"/><path d=\"M6 7v6M10 7v6M14 7v3\"/></svg><span class=\"ds-nav-label\">Mapa</span></button><button class=\"ds-nav-item\" type=\"button\" aria-current=\"page\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3.5 2.5v15M16.5 2.5v15M3.5 7h13M3.5 12h13\"/><rect x=\"5.5\" y=\"3.8\" width=\"3.5\" height=\"3.2\"/><rect x=\"10\" y=\"8.8\" width=\"4.5\" height=\"3.2\"/><rect x=\"5.5\" y=\"13.8\" width=\"4\" height=\"3.2\"/></svg><span class=\"ds-nav-label\">Stany</span><span class=\"ds-nav-badge\"><svg class=\"ds-nav-warn\" width=\"8\" height=\"8\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.6 9.6 9.2H0.4Z\" fill=\"currentColor\"/></svg>1</span></button><button class=\"ds-nav-item\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 3.5H5.5a1.5 1.5 0 0 0-1.5 1.5v11a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5V5a1.5 1.5 0 0 0-1.5-1.5H13\"/><rect x=\"7\" y=\"2.5\" width=\"6\" height=\"2.5\" rx=\"0.8\"/><path d=\"m7.3 11.2 1.9 1.9 3.6-3.8\"/></svg><span class=\"ds-nav-label\">Kolejka zatwierdzeń</span><span class=\"ds-nav-badge\"><svg class=\"ds-nav-decision\" width=\"8\" height=\"8\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.3 9.7 5 5 9.7 0.3 5Z\" fill=\"currentColor\"/></svg>1</span></button></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 12px; background: var(--color-rail, oklch(0.93 0.005 250)); font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); } .ds-nav-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--color-ink-2, oklch(0.42 0.012 255)); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-nav-item svg:first-child { color: var(--color-mute, oklch(0.49 0.011 255)); flex-shrink: 0; } .ds-nav-item:hover { background: color-mix(in oklch, var(--color-sheet, oklch(0.994 0.001 250)) 60%, transparent); color: var(--color-ink, oklch(0.235 0.012 255)); } .ds-nav-item[aria-current=\"page\"] { background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); box-shadow: 0 1px 2px oklch(0.2 0.01 255 / 0.12); } .ds-nav-item[aria-current=\"page\"] svg:first-child { color: var(--color-act, oklch(0.52 0.135 240)); } .ds-nav-item:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-nav-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--color-ink-2, oklch(0.42 0.012 255)); } .ds-nav-warn { color: var(--color-warn, oklch(0.72 0.15 62)); } .ds-nav-decision { color: var(--color-act, oklch(0.52 0.135 240)); }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segment-active",
+      "description": "segmentGroupClass + segmentClass: rail housing, 32px segments, active segment on sheet with select lift.",
+      "html": "<div class=\"ds-segments\" role=\"group\" aria-label=\"Okres\"><button class=\"ds-segment\" type=\"button\" aria-pressed=\"false\">Dziś</button><button class=\"ds-segment\" type=\"button\" aria-pressed=\"true\">7 dni</button><button class=\"ds-segment\" type=\"button\" aria-pressed=\"false\">30 dni</button><button class=\"ds-segment\" type=\"button\" aria-pressed=\"false\">Własny</button></div>",
+      "css": ".ds-segments { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 6px; background: var(--color-rail, oklch(0.93 0.005 250)); } .ds-segment { height: 32px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: var(--color-ink-2, oklch(0.42 0.012 255)); font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color 150ms, color 150ms; } .ds-segment:hover { color: var(--color-ink, oklch(0.235 0.012 255)); } .ds-segment[aria-pressed=\"true\"] { background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); box-shadow: 0 1px 2px oklch(0.2 0.01 255 / 0.12); } .ds-segment:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; }"
+    },
+    {
+      "name": "State Chips (alarm strip)",
+      "kind": "chip",
+      "refersTo": "state-chip",
+      "description": "Header pills that show only what deviates or awaits a human: state shape + tabular count + Polish noun, label in the state ink.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-chip-warn\" type=\"button\"><svg class=\"ds-chip-shape-warn\" width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.6 9.6 9.2H0.4Z\" fill=\"currentColor\"/></svg><span class=\"ds-chip-n\">1</span> poniżej minimum</button><button class=\"ds-chip ds-chip-decision\" type=\"button\"><svg class=\"ds-chip-shape-decision\" width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.3 9.7 5 5 9.7 0.3 5Z\" fill=\"currentColor\"/></svg><span class=\"ds-chip-n\">1</span> szkic czeka</button></div>",
+      "css": ".ds-chips { display: flex; flex-wrap: wrap; gap: 8px; } .ds-chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 0; border-radius: 9999px; background: var(--color-sheet, oklch(0.994 0.001 250)); box-shadow: 0 0 0 1px var(--color-line, oklch(0.89 0.006 250)); font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); font-size: 13px; font-weight: 600; cursor: pointer; transition: box-shadow 150ms; } .ds-chip:hover { box-shadow: 0 0 0 1px var(--color-line-strong, oklch(0.79 0.008 250)); } .ds-chip:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-chip-n { font-variant-numeric: tabular-nums; } .ds-chip-warn { color: var(--color-warn-ink, oklch(0.49 0.115 55)); } .ds-chip-decision { color: var(--color-act-ink, oklch(0.43 0.12 242)); } .ds-chip-shape-warn { color: var(--color-warn, oklch(0.72 0.15 62)); } .ds-chip-shape-decision { color: var(--color-act, oklch(0.52 0.135 240)); }"
+    },
+    {
+      "name": "Range Indicator",
+      "kind": "custom",
+      "refersTo": "range-track",
+      "description": "Signature analog gauge: scale = 3 × minimum so the minimum tick sits at 1/3; norm fill when normal, warn below, act for a proposed change with a caret on the after value.",
+      "html": "<div class=\"ds-ranges\"><div class=\"ds-range\" role=\"meter\" aria-label=\"Folia stretch: 15 rolka, minimum 6\" aria-valuemin=\"0\" aria-valuemax=\"18\" aria-valuenow=\"15\"><div class=\"ds-range-track\"><div class=\"ds-range-low\"></div><div class=\"ds-range-fill\" style=\"width:83.3%\"></div></div><span class=\"ds-range-tick\"></span></div><div class=\"ds-range\" role=\"meter\" aria-label=\"Kartony: 4 szt, minimum 12\" aria-valuemin=\"0\" aria-valuemax=\"36\" aria-valuenow=\"4\"><div class=\"ds-range-track\"><div class=\"ds-range-low\"></div><div class=\"ds-range-fill ds-range-fill-below\" style=\"width:11.1%\"></div></div><span class=\"ds-range-tick\"></span></div><div class=\"ds-range\" role=\"meter\" aria-label=\"Kartony: 11 szt → 9 szt, minimum 12\" aria-valuemin=\"0\" aria-valuemax=\"36\" aria-valuenow=\"9\"><div class=\"ds-range-track\"><div class=\"ds-range-low\"></div><div class=\"ds-range-fill ds-range-fill-below\" style=\"width:25%\"></div><div class=\"ds-range-removed\" style=\"left:25%;width:5.6%\"></div></div><span class=\"ds-range-tick\"></span><span class=\"ds-range-caret\" style=\"left:25%\"></span></div></div>",
+      "css": ".ds-ranges { display: grid; gap: 20px; width: 220px; } .ds-range { position: relative; display: flex; align-items: center; height: 16px; } .ds-range-track { position: relative; width: 100%; height: 8px; overflow: hidden; border-radius: 9999px; background: var(--color-track, oklch(0.912 0.005 250)); } .ds-range-low { position: absolute; inset: 0 auto 0 0; width: 33.333%; background-image: repeating-linear-gradient(135deg, var(--color-band, oklch(0.845 0.008 250)) 0 1px, transparent 1px 4px); } .ds-range-fill { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; background: var(--color-norm, oklch(0.68 0.012 255)); transition: width 500ms ease-out; } .ds-range-fill-below { background: var(--color-warn, oklch(0.72 0.15 62)); } .ds-range-removed { position: absolute; top: 0; bottom: 0; opacity: 0.8; background-image: repeating-linear-gradient(135deg, var(--color-act, oklch(0.52 0.135 240)) 0 1.5px, transparent 1.5px 4px); } .ds-range-tick { position: absolute; top: 0; left: 33.333%; width: 2px; height: 16px; transform: translateX(-50%); border-radius: 9999px; background: var(--color-ink, oklch(0.235 0.012 255)); } .ds-range-caret { position: absolute; top: -6px; width: 0; height: 0; transform: translateX(-50%); border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-act, oklch(0.52 0.135 240)); }"
+    },
+    {
+      "name": "Change Card",
+      "kind": "card",
+      "refersTo": "change-card",
+      "description": "Signature confirm-before-write card on top of the agent column: decision mark, before → after readout, range indicator, heard sentence, Zatwierdź / Odrzuć.",
+      "html": "<div class=\"ds-change\"><p class=\"ds-change-mark\"><svg class=\"ds-change-diamond\" width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.3 9.7 5 5 9.7 0.3 5Z\" fill=\"currentColor\"/></svg>Karta zmiany · do zatwierdzenia</p><p class=\"ds-change-name\">Kartony</p><div class=\"ds-change-readout\"><span class=\"ds-change-before\">11</span><span class=\"ds-change-arrow\" aria-hidden=\"true\">→</span><span class=\"ds-change-after\">9</span><span class=\"ds-change-unit\">szt</span><span class=\"ds-change-delta\">-2 szt</span></div><div class=\"ds-change-range\" role=\"meter\" aria-label=\"Kartony: 11 szt → 9 szt, minimum 12\" aria-valuemin=\"0\" aria-valuemax=\"36\" aria-valuenow=\"9\"><div class=\"ds-change-track\"><div class=\"ds-change-low\"></div><div class=\"ds-change-fill\" style=\"width:25%\"></div><div class=\"ds-change-removed\" style=\"left:25%;width:5.6%\"></div></div><span class=\"ds-change-tick\"></span><span class=\"ds-change-caret\" style=\"left:25%\"></span></div><div class=\"ds-change-meta\"><span>minimum 12 szt</span><span class=\"ds-change-warn\"><svg class=\"ds-change-tri\" width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" aria-hidden=\"true\"><path d=\"M5 0.6 9.6 9.2H0.4Z\" fill=\"currentColor\"/></svg>Poniżej minimum po zmianie</span></div><p class=\"ds-change-heard\">Usłyszałem: <b>„Magu, wzięliśmy paletę kartonów”</b>. Nic nie zostało zapisane — zatwierdź, aby wykonać zmianę i dodać wpis w historii.</p><div class=\"ds-change-actions\"><button class=\"ds-change-confirm\" type=\"button\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m4 10.5 3.8 3.8L16 6\"/></svg> Zatwierdź</button><button class=\"ds-change-reject\" type=\"button\">Odrzuć</button></div><p class=\"ds-change-hint\">albo powiedz „zatwierdź” lub „odrzuć”</p></div>",
+      "css": ".ds-change { width: 320px; padding: 20px; border-radius: 8px; background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); font-family: var(--font-sans, Archivo, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-act, oklch(0.52 0.135 240)) 45%, transparent), 0 1px 2px oklch(0.2 0.01 255 / 0.06), 0 10px 28px -12px oklch(0.2 0.01 255 / 0.22); } .ds-change p { margin: 0; } .ds-change-mark { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-act-ink, oklch(0.43 0.12 242)); } .ds-change-diamond { color: var(--color-act, oklch(0.52 0.135 240)); } .ds-change-name { margin-top: 16px !important; font-size: 20px; font-weight: 600; line-height: 1.25; } .ds-change-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 12px; font-variant-numeric: tabular-nums; } .ds-change-before { font-size: 28px; font-weight: 600; line-height: 1; color: var(--color-mute, oklch(0.49 0.011 255)); } .ds-change-arrow { font-size: 20px; line-height: 1; color: var(--color-mute, oklch(0.49 0.011 255)); } .ds-change-after { font-size: 44px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; color: var(--color-warn-ink, oklch(0.49 0.115 55)); } .ds-change-unit { font-size: 16px; color: var(--color-ink-2, oklch(0.42 0.012 255)); } .ds-change-delta { margin-left: auto; padding: 4px 10px; border-radius: 9999px; background: var(--color-ground, oklch(0.962 0.003 250)); font-size: 14px; font-weight: 600; } .ds-change-range { position: relative; display: flex; align-items: center; height: 24px; margin-top: 20px; } .ds-change-track { position: relative; width: 100%; height: 12px; overflow: hidden; border-radius: 9999px; background: var(--color-track, oklch(0.912 0.005 250)); } .ds-change-low { position: absolute; inset: 0 auto 0 0; width: 33.333%; background-image: repeating-linear-gradient(135deg, var(--color-band, oklch(0.845 0.008 250)) 0 1px, transparent 1px 4px); } .ds-change-fill { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; background: var(--color-warn, oklch(0.72 0.15 62)); } .ds-change-removed { position: absolute; top: 0; bottom: 0; opacity: 0.8; background-image: repeating-linear-gradient(135deg, var(--color-act, oklch(0.52 0.135 240)) 0 1.5px, transparent 1.5px 4px); } .ds-change-tick { position: absolute; top: 0; left: 33.333%; width: 2px; height: 24px; transform: translateX(-50%); border-radius: 9999px; background: var(--color-ink, oklch(0.235 0.012 255)); } .ds-change-caret { position: absolute; top: -6px; width: 0; height: 0; transform: translateX(-50%); border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-act, oklch(0.52 0.135 240)); } .ds-change-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--color-ink-2, oklch(0.42 0.012 255)); font-variant-numeric: tabular-nums; } .ds-change-warn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-warn-ink, oklch(0.49 0.115 55)); } .ds-change-tri { color: var(--color-warn, oklch(0.72 0.15 62)); } .ds-change-heard { margin-top: 16px !important; font-size: 14px; line-height: 1.625; color: var(--color-ink-2, oklch(0.42 0.012 255)); } .ds-change-heard b { font-weight: 500; color: var(--color-ink, oklch(0.235 0.012 255)); } .ds-change-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 20px; } .ds-change-confirm, .ds-change-reject { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 24px; border-radius: 6px; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer; transition: background-color 150ms, border-color 150ms; } .ds-change-confirm { border: 0; background: var(--color-act, oklch(0.52 0.135 240)); color: #fff; } .ds-change-confirm:hover { background: var(--color-act-ink, oklch(0.43 0.12 242)); } .ds-change-reject { border: 1px solid var(--color-line-strong, oklch(0.79 0.008 250)); background: var(--color-sheet, oklch(0.994 0.001 250)); color: var(--color-ink, oklch(0.235 0.012 255)); } .ds-change-reject:hover { background: var(--color-ground, oklch(0.962 0.003 250)); border-color: var(--color-ink-2, oklch(0.42 0.012 255)); } .ds-change-confirm:focus-visible, .ds-change-reject:focus-visible { outline: 2px solid var(--color-act, oklch(0.52 0.135 240)); outline-offset: 2px; } .ds-change-hint { margin-top: 12px !important; text-align: center; font-size: 12px; color: var(--color-ink-2, oklch(0.42 0.012 255)); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Operator Screen",
+    "overview": "MAGAZYNIER's web app is built as an ISA-101 high-performance HMI for a small warehouse: grey is the sound of nothing being wrong. The normal state is graphite ink on cool grey paper. Colour appears only where something deviates from the norm (amber below minimum, red empty or failed) or where something waits for a human (cyan-blue operator action). Every state carries a shape as well as a colour (square, triangle, diamond, circle), so the screen still reads in greyscale, on a washed-out demo projector, and for colour-blind operators.\n\nThe density is that of a control-room panel seen from a desk: laptop-first (1280 to 1920 px), three columns (navigation rail, work column, agent column), generous row heights and big tabular numbers. Structure comes from type and hairlines, not boxes: one sheet panel per block, hairline dividers inside it, one bold headword per row. Five borrowed devices give it its specifics. From the Solari board, numbers roll into place and changed rows flash (`RollingNumber`, `ChangeFlash`). From the vertical feed, the pending change card sits on top of the agent column, one decision at a time. From Metro, type does the work boxes usually do. From the lexicon, each row has one headword. From the factory catalog, every object carries its `#code` in condensed tabular figures.\n\nThe system refuses the KPI-tile SaaS dashboard: counts sit in sentences (`ReadoutLine`: \"4 towary · ▲ 1 poniżej minimum · ◆ 1 oczekujący szkic\") and on range indicators, never in big-number tiles. Panels carry no shadows, gradients or glass. All UI copy is Polish, with Polish typographic quotes („…”) and the middle dot (·) as the readout separator. Code comments in the source are Polish too. Tokens live in `src/app/globals.css` (`@theme`), and primitives live in `src/components/ui/`.",
+    "keyCharacteristics": [
+      "Cool achromatic field (hue 250–255, chroma 0.012 or less) with four functional hues, each in three steps: base, `-ink`, `-soft`.",
+      "State is always colour plus shape (`StateShape`), never colour alone.",
+      "The analog range indicator, with its minimum tick fixed at one third, is the signature data element.",
+      "One typeface (Archivo). Its width axis provides the condensed caps labels and dense data.",
+      "Flat panels with hairlines. Elevation means \"floating over the work\" or \"pending decision\".",
+      "Motion only announces a change in place: roll, flash, arrive, breathe."
+    ],
+    "rules": [
+      {
+        "name": "The Quiet Normal Rule",
+        "body": "A value in the normal range is set in `ink`, and its range fill is `norm`. Colour has to be earned, either by a deviation (`warn`, `alarm`) or by a decision awaiting a human (`act`). Nothing else gets a hue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three-Step Hue Rule",
+        "body": "Base steps paint shapes, fills and rings. Any text in a state uses the `-ink` step. Washes use `-soft`. Body text is never set in a base state colour (`StateMark` maps `COLOR` to the shape and `TEXT` to the label).",
+        "section": "colors"
+      },
+      {
+        "name": "The Colour-Plus-Shape Rule",
+        "body": "A state colour never appears alone. alarm = filled square, warn = filled triangle, near = hollow triangle, decision = diamond, ok = filled circle, idle = hollow circle (`StateShape`). Nav badges, header chips, legends, notices and toasts all carry the shape.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "Archivo only. The `wdth` axis (82 / 85 / 112) replaces a second typeface. Don't add a display face or use monospace as costume.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "body": "Every quantity, minimum, count, delta, `#code` and timestamp uses `tabular-nums`. Codes and timestamps are also set `narrow`, and codes are prefixed `#` (`#142`, `Szkic #7`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Caps-Are-Labels Rule",
+        "body": "Uppercase belongs only to `label-caps`: column headers, field labels, zone and aisle names on the map (\"REGAŁY A\", \"CIĄG KOMUNIKACYJNY\"), the history day-group band, readout labels (\"TERAZ\", \"MINIMUM\") and the command buffer status. Page and block headings stay sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Agent-In-Reach Rule",
+        "body": "`CommandPanel` is mounted in every section, because hands-free listening runs everywhere. At `xl` it is a docked column. Below `xl` it is the first panel under the header. Never hide it behind a toggle.",
+        "section": "layout"
+      },
+      {
+        "name": "The One-Decision Rule",
+        "body": "Only one change card exists at a time. It stands at the top of the agent column, above the listening status and the command field. While it is pending, its stock row mirrors it in place.",
+        "section": "layout"
+      },
+      {
+        "name": "The Hairline Rule",
+        "body": "A `panelClass` surface is `sheet` with a 1px `line` border and an 8px corner, and it has no shadow. Inside it, `divide-y divide-line` and type do the structuring. A panel never sits inside a panel; nested blocks go `bare` or use a `ground` well.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Lift-Means-Pending Rule",
+        "body": "`shadow-raise` marks a surface that floats (toast, tooltip) or the one decision awaiting a human (change card, which also gets a 1px `act` ring at 45%). If it neither floats nor waits for a person, it lies flat.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Dashed-Means-Empty Rule",
+        "body": "A dashed border means \"nothing here yet\": the `EmptyState` box, empty map slots, the \"Dodaj strefę\" slot and the aisle centreline. A solid border means a real object.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** set every normal value in `ink` and fill every normal range with `norm`. Reserve `act`, `warn`, `alarm` and `ok` for their states.",
+      "**Do** pair every state colour with its `StateShape`, using `StateMark` for labelled states and `stateTextClass` for bare numbers.",
+      "**Do** show stock against minimum with `RangeIndicator`. The scale is 3 × minimum, so the 2px tick stands at one third in every row.",
+      "**Do** keep one pending decision on top of the agent column and mirror it in its stock row: an `act-soft` row, a \"→ after\" line, the caret, and \"Czeka na decyzję\".",
+      "**Do** announce a changed value in place with `RollingNumber` and `ChangeFlash`. New agent blocks may `animate-arrive`, and nothing else gets entrance choreography.",
+      "**Do** build controls from `buttonClass`, `fieldClass`, `panelClass`, `segmentGroupClass` and `segmentClass`.",
+      "**Do** set quantities, counts, deltas, `#codes` and timestamps in tabular figures. Set codes and timestamps `narrow` too.",
+      "**Do** write UI copy in Polish with „…” quotes and · separators. Empty states should teach the next step.",
+      "**Do** keep `prefers-reduced-motion` honoured, as the global rule in `globals.css` does."
+    ],
+    "donts": [
+      "**Don't** build KPI tiles (a big number over a small label, repeated in a uniform grid). Counts go in a `ReadoutLine` sentence or a labelled readout row without boxes.",
+      "**Don't** put a shadow on a `panelClass` surface. `shadow-raise` belongs to the pending change card, the toast and the chart tooltip only.",
+      "**Don't** nest a panel inside a panel. Use `bare`, hairlines or a `ground` well.",
+      "**Don't** signal state with colour alone, and don't add coloured edge stripes to notices or rows.",
+      "**Don't** use raw hex, `rgb()` or Tailwind palette colours (`slate-*`, `amber-*`). Use only the `@theme` tokens.",
+      "**Don't** add a second typeface or use monospace for decoration.",
+      "**Don't** use emoji or unicode glyphs as icons. Icons are 1.6px single-stroke SVG on a 20×20 grid. An arrow inside a readout (`11 → 9`) is notation, not an icon.",
+      "**Don't** put a caps line above a heading as an eyebrow. `label-caps` names fields, columns, zones and readouts, and nothing else."
+    ]
+  }
+}
