@@ -1,5 +1,6 @@
 import type { AppSettings, CommandResponse, ConfirmResult, Health, HistoryEntry, ImportField, ImportPreview, Item, MapPath, MapSector, Me, PathMarker, PathPoint, Procedure, ReorderDraft, UndoResult, Zone } from './contracts'
 import { withTimeout } from './withTimeout'
+import type { ClarificationTurn } from '../../../src/lib/commandConversation'
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); this.name = 'ApiError' }
@@ -52,7 +53,7 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     procedures: () => request<{ procedures: Procedure[] }>('/api/procedures').then(d => d.procedures),
     orders: () => request<{ drafts: ReorderDraft[] }>('/api/reorder-drafts').then(d => d.drafts),
     version: () => request<{ version: number }>('/api/version').then(d => d.version),
-    command: (text: string) => request<CommandResponse>('/api/command', json('POST', { text })),
+    command: (text: string, conversation: ClarificationTurn[] = []) => request<CommandResponse>('/api/command', json('POST', { text, conversation })),
     confirm: (id: string) => request<ConfirmResult>(`/api/proposals/${encodeURIComponent(id)}/confirm`, { method: 'POST' }),
     undo: (id: number) => request<UndoResult>(`/api/history/${id}/undo`, { method: 'POST' }),
     decideOrder: (id: number, approve: boolean) => request(`/api/reorder-drafts/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),

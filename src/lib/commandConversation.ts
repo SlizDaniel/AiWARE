@@ -1,4 +1,4 @@
-/** Short, tab-local memory of an unresolved web command. */
+/** Short, client-local memory of an unresolved command. */
 export type ClarificationTurn = { userText: string; question: string }
 export const MAX_CLARIFICATION_TURNS = 4
 export const CLARIFICATION_TTL_MS = 5 * 60_000

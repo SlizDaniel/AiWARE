@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError, createApi } from '../mobile/src/lib/client'
+import { createCommandConversation } from '../src/lib/commandConversation'
 
 describe('mobile API transport', () => {
   it('sends the current bearer token on each request', async () => {
@@ -31,7 +32,7 @@ describe('mobile API transport', () => {
     const api = createApi('https://warehouse.example', async () => 'token', fetcher)
     expect(await api.command('wzięliśmy paletę kartonów')).toEqual(response)
     expect(fetcher).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ text: 'wzięliśmy paletę kartonów' })
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ text: 'wzięliśmy paletę kartonów', conversation: [] })
   })
 
   it('encodes proposal ids and sends explicit confirmation', async () => {
@@ -39,6 +40,24 @@ describe('mobile API transport', () => {
     await createApi('https://warehouse.example', async () => 'token', fetcher).confirm('id/with spaces')
     expect(fetcher.mock.calls[0][0]).toBe('https://warehouse.example/api/proposals/id%2Fwith%20spaces/confirm')
     expect(fetcher.mock.calls[0][1]?.method).toBe('POST')
+  })
+
+  it('sends successive clarification answers with the original command and questions', async () => {
+    const conversation = createCommandConversation()
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({ type: 'proposal', proposal: { id: 'pending' } }))
+    const api = createApi('https://warehouse.example', async () => 'token', fetcher)
+    conversation.remember('dodaj folię stretch', 'Ile rolek?')
+    await api.command('10', conversation.context())
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      text: '10', conversation: [{ userText: 'dodaj folię stretch', question: 'Ile rolek?' }],
+    })
+    conversation.remember('10', 'W jakiej strefie?')
+    await api.command('A2', conversation.context())
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ text: 'A2', conversation: [
+      { userText: 'dodaj folię stretch', question: 'Ile rolek?' },
+      { userText: '10', question: 'W jakiej strefie?' },
+    ] })
+    expect(fetcher.mock.calls.every(([url]) => String(url).endsWith('/api/command'))).toBe(true)
   })
 
   it('sends recorded audio as raw bytes with its MIME type', async () => {

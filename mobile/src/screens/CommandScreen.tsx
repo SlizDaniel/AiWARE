@@ -8,6 +8,7 @@ import type { CommandResponse } from '../lib/contracts'
 import type { Warehouse } from '../hooks/useWarehouse'
 import { useWakeListener, type WakePhase } from '../hooks/useWakeListener'
 import { readRecording } from '../lib/recording'
+import { createCommandConversation, CONVERSATION_LIMIT_MESSAGE } from '../../../src/lib/commandConversation'
 
 /** Jak na webie: przez tyle czasu od pokazania karty działa decyzja bez prefixu („tak”). */
 const VOICE_DECISION_MS = 60_000
@@ -21,6 +22,7 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const lock = useRef(false)
+  const conversation = useRef(createCommandConversation())
   const mounted = useRef(true)
   const activeRef = useRef(active)
   activeRef.current = active
@@ -75,8 +77,19 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
 
   async function send(command = text) {
     await run(async () => {
-      const result = await api.command(command.trim())
+      const submitted = command.trim()
+      if (!submitted) return
+      let result = await api.command(submitted, conversation.current.context())
       if (!mounted.current) return
+      if (result.type === 'clarify') {
+        if (!conversation.current.remember(submitted, result.message)) {
+          result = { ...result, message: CONVERSATION_LIMIT_MESSAGE }
+        }
+        setText('')
+        say(result.message)
+      } else {
+        conversation.current.clear()
+      }
       setResponse(result)
       if (result.type === 'proposal') proposalShownAt.current = Date.now()
       if (result.type === 'answer') {
@@ -206,7 +219,14 @@ export function CommandScreen({ active, api, data, reload, onLocation }: {
       <Text className="text-stone-600">Zmiana zostanie zapisana dopiero po zatwierdzeniu.</Text>
       <Button title={busy ? 'Zapisywanie…' : 'Zatwierdź zmianę'} onPress={() => void confirm()} disabled={busy} />
       <Button title="Odrzuć kartę" secondary onPress={() => setResponse(null)} disabled={busy} />
-    </Card> : response && response.type !== 'proposal' ? <Card><Title>Odpowiedź Magu</Title><Text className="text-base leading-6 text-ink">{response.type === 'clarify' ? response.message : response.text}</Text></Card> : null}
+    </Card> : response && response.type !== 'proposal' ? <Card><Title>Odpowiedź Magu</Title><Text className="text-base leading-6 text-ink">{response.type === 'clarify' ? response.message : response.text}</Text>
+      {response.type === 'clarify' ? <>
+        {conversation.current.context().length > 0 ? <Text className="text-sm leading-5 text-stone-600">Dotyczy: {conversation.current.context()[0].userText}. Wpisz odpowiedź lub nagraj doprecyzowanie{wakeMode ? ` z prefiksem „${prefix}”` : ''}.</Text> : null}
+        <Button title="Nowa komenda" secondary disabled={busy || recording.isRecording} onPress={() => {
+          conversation.current.clear(); setResponse(null); setText(''); setError(''); setMessage('')
+        }} />
+      </> : null}
+    </Card> : null}
     <Card><Title>Spróbuj powiedzieć</Title>
       {['wzięliśmy paletę kartonów', 'gdzie leży szkło?', 'jak pakujemy szkło?'].map(example =>
         <Button key={example} title={example} secondary disabled={busy || (!wakeMode && recording.isRecording) || !!proposal} onPress={() => setText(example)} />)}

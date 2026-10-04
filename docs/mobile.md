@@ -56,6 +56,12 @@ Na telefonie otwórz nowy adres `exp://…exp.direct` w Expo Go.
 
 - **Magu:** komenda tekstowa lub nagranie, edytowalna transkrypcja, odpowiedź albo karta zmiany.
   Zapis wymaga osobnego zatwierdzenia; przełączanie sekcji zachowuje oczekującą kartę.
+  Gdy agent pyta o brakującą informację, kolejna wiadomość uzupełnia poprzednie polecenie
+  (np. „dodaj folię stretch” → „Ile rolek?” → „10”). Panel pokazuje, czego dotyczy pytanie,
+  i przycisk „Nowa komenda”. Kontekst obejmuje do czterech doprecyzowań, wygasa po pięciu
+  minutach od ostatniego pytania i znika po wyniku, karcie, wylogowaniu lub restarcie.
+  Błąd sieci zachowuje kontekst do ponowienia. W nasłuchu doprecyzowanie wypowiedz z prefiksem,
+  np. „Magu, 10”; w trybie offline podaj pełne polecenie.
   Tryb głosu „Nasłuch na prefix” dodaje przycisk włączający pętlę nasłuchu: kolejne 6-sekundowe
   nagrania trafiają do `/api/stt`, komenda wypowiedziana po prefiksie (np. „Magu, gdzie leży szkło?”)
   wysyła się sama, sam prefix uzbraja kolejną wypowiedź (8 s), a oczekującą kartę zmiany
