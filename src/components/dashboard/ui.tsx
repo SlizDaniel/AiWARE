@@ -16,6 +16,7 @@ export const inputClass = `${fieldClass} mt-1.5`
  * (`@container`), więc układ w środku zależy od szerokości panelu, nie okna.
  * `flush` — treść bez wewnętrznych marginesów (tabela, pasek odczytów od krawędzi do krawędzi).
  * `fill` — treść rozciąga się na całą wysokość panelu (wykres obok wyższego sąsiada w siatce).
+ * `bare` — bez własnej powierzchni (blok osadzony w panelu z przełącznikiem — nigdy panel w panelu).
  */
 export function Card({
   title,
@@ -25,6 +26,7 @@ export function Card({
   busy = false,
   flush = false,
   fill = false,
+  bare = false,
   className = '',
 }: {
   title: string
@@ -34,13 +36,18 @@ export function Card({
   busy?: boolean
   flush?: boolean
   fill?: boolean
+  bare?: boolean
   className?: string
 }) {
   const headingId = useId()
   const body = fill ? 'flex flex-1 flex-col gap-5 px-6 pb-6 pt-5' : 'space-y-5 px-6 pb-6 pt-5'
   return (
-    <section className={`${panelClass} @container ${fill ? 'flex flex-col' : ''} ${className}`} aria-busy={busy} aria-labelledby={headingId}>
-      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-6 pt-6">
+    <section
+      className={`${bare ? 'min-w-0' : panelClass} @container ${fill ? 'flex flex-col' : ''} ${className}`}
+      aria-busy={busy}
+      aria-labelledby={headingId}
+    >
+      <header className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-6 ${bare ? 'pt-5' : 'pt-6'}`}>
         <div className="min-w-0 max-w-[68ch]">
           <h2 id={headingId} className="text-lg font-semibold leading-snug text-ink">
             {title}
@@ -100,39 +107,50 @@ export function BlockError({
   )
 }
 
+/** Polska odmiana liczebnika: 1 towar, 2–4 towary, 5+ towarów (12–14 towarów). */
+export function plural(count: number, one: string, few: string, many: string): string {
+  if (count === 1) return one
+  const tens = count % 100
+  const units = count % 10
+  return units >= 2 && units <= 4 && (tens < 12 || tens > 14) ? few : many
+}
+
 export type ReadoutItem = {
-  label: string
   value: number
+  /** słowo po liczbie, już w odpowiedniej formie (np. „towary”, „poniżej minimum”) */
+  label: string
+  /** krótkie dopowiedzenie w nawiasie, np. „w tym import pozycji: 4” */
   note?: ReactNode
   /** kolor i kształt tylko dla odchylenia albo decyzji; `null` = stan normalny (grafit) */
   kind?: StateKind | null
 }
 
 /**
- * Pasek odczytów (jak wiersz wartości na ekranie przeglądowym): duże liczby tabelaryczne
- * rozdzielone pionowymi liniami, podpis pod spodem. Od krawędzi do krawędzi panelu.
+ * Odczyt w jednej linii, jak zdanie: „48 towarów · ▲ 3 poniżej minimum · ◆ 2 oczekujące szkice”.
+ * Liczby tabelaryczne i pogrubione, słowa słabiej; kształt i kolor tylko przy odchyleniu.
  */
-export function ReadoutRow({ items, className = '' }: { items: ReadoutItem[]; className?: string }) {
+export function ReadoutLine({ items, className = '' }: { items: ReadoutItem[]; className?: string }) {
   return (
-    <dl className={`grid grid-cols-2 @xl:grid-cols-4 ${className}`}>
+    <ul className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 text-sm text-ink-2 ${className}`}>
       {items.map((item, index) => {
         const kind = item.kind ?? null
-        const rule =
-          (index % 2 === 1 ? ' border-l' : '') +
-          (index === 2 ? ' border-t @xl:border-t-0 @xl:border-l' : '') +
-          (index === 3 ? ' border-t @xl:border-t-0' : '')
         return (
-          <div key={item.label} className={`flex min-w-0 flex-col border-line py-5 pl-6 pr-4${rule}`}>
-            <dt className="label-caps order-2 mt-2.5">{item.label}</dt>
-            <dd className={`order-1 flex items-center gap-2 text-[28px] font-semibold leading-none tabular-nums ${kind ? stateTextClass(kind) : 'text-ink'}`}>
-              {kind && <StateShape kind={kind} size={12} />}
+          <li key={item.label} className="inline-flex items-baseline gap-1.5">
+            {index > 0 && (
+              <span aria-hidden="true" className="mr-1 text-mute">
+                ·
+              </span>
+            )}
+            {kind && <StateShape kind={kind} className="self-center" />}
+            <span className={`text-base font-semibold tabular-nums ${kind ? stateTextClass(kind) : 'text-ink'}`}>
               <RollingNumber value={item.value} />
-            </dd>
-            {item.note && <dd className="order-3 mt-1 text-xs text-mute">{item.note}</dd>}
-          </div>
+            </span>
+            <span>{item.label}</span>
+            {item.note && <span className="text-mute">({item.note})</span>}
+          </li>
         )
       })}
-    </dl>
+    </ul>
   )
 }
 

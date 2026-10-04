@@ -3,7 +3,7 @@ import type { ShiftSummaryResponse } from '@/lib/dashboard'
 import { fetchShift, formatDateTime, isoToZonedInput, shiftWindow } from '@/lib/dashboardApi'
 import { Notice } from '../ui/feedback'
 import { buttonClass, segmentClass, segmentGroupClass } from '../ui/styles'
-import { BlockError, Card, EmptyNote, Field, inputClass, Loading, ReadoutRow } from './ui'
+import { BlockError, Card, EmptyNote, Field, inputClass, Loading, plural, ReadoutLine } from './ui'
 import { useRemote } from './useRemote'
 
 type Props = {
@@ -11,10 +11,12 @@ type Props = {
   /** strefa magazynu (z podsumowania); odpowiedź zmiany niesie własną */
   timezone: string
   onForbidden: () => void
+  /** osadzony w panelu z przełącznikiem widoków (bez własnej powierzchni) */
+  embedded?: boolean
 }
 
 /** G: przekazanie zmiany — ostatnie 8 h albo własne godziny (strefa magazynu). */
-export default function ShiftSummary({ refreshToken, timezone, onForbidden }: Props) {
+export default function ShiftSummary({ refreshToken, timezone, onForbidden, embedded = false }: Props) {
   const [custom, setCustom] = useState(false)
   const [startInput, setStartInput] = useState('')
   const [endInput, setEndInput] = useState('')
@@ -63,6 +65,7 @@ export default function ShiftSummary({ refreshToken, timezone, onForbidden }: Pr
       subtitle="Podsumowanie zapisanej pracy w oknie czasu — nie jest ewidencją czasu pracy ani oceną osób."
       busy={remote.loading}
       flush
+      bare={embedded}
       actions={
         <div className={segmentGroupClass} role="group" aria-label="Okno zmiany">
           <button type="button" aria-pressed={!custom} onClick={chooseLast8h} className={segmentClass(!custom)}>
@@ -113,22 +116,26 @@ export default function ShiftSummary({ refreshToken, timezone, onForbidden }: Pr
 
       {data && (
         <div className={'transition-opacity duration-200 ' + (remote.loading ? 'opacity-60' : '')}>
-          <p className="px-6 pt-5 text-sm font-semibold tabular-nums text-ink">
-            {formatDateTime(data.window.start, zone)} – {formatDateTime(data.window.end, zone)}{' '}
-            <span className="font-normal text-mute">({zone})</span>
-          </p>
+          <div className="space-y-2 px-6 pb-5 pt-5">
+            <p className="text-sm font-semibold tabular-nums text-ink">
+              {formatDateTime(data.window.start, zone)} – {formatDateTime(data.window.end, zone)}{' '}
+              <span className="font-normal text-mute">({zone})</span>
+            </p>
+            <ReadoutLine
+              items={[
+                { value: data.metrics.withdrawals, label: plural(data.metrics.withdrawals, 'pobranie', 'pobrania', 'pobrań') },
+                { value: data.metrics.receipts, label: plural(data.metrics.receipts, 'przyjęcie', 'przyjęcia', 'przyjęć') },
+                { value: data.metrics.undo_count, label: plural(data.metrics.undo_count, 'cofnięcie', 'cofnięcia', 'cofnięć'), note: 'wpisy korygujące' },
+                {
+                  value: data.metrics.audit_events,
+                  label: plural(data.metrics.audit_events, 'wpis audytu', 'wpisy audytu', 'wpisów audytu'),
+                  note: `w tym import pozycji: ${data.metrics.import_events}`,
+                },
+              ]}
+            />
+          </div>
 
-          <ReadoutRow
-            className="mt-4 border-y border-line"
-            items={[
-              { label: 'Pobrania', value: data.metrics.withdrawals },
-              { label: 'Przyjęcia', value: data.metrics.receipts },
-              { label: 'Cofnięcia', value: data.metrics.undo_count, note: 'wpisy korygujące' },
-              { label: 'Wpisy audytu', value: data.metrics.audit_events, note: `w tym import pozycji: ${data.metrics.import_events}` },
-            ]}
-          />
-
-          <div className="grid @2xl:grid-cols-2">
+          <div className="grid border-t border-line @2xl:grid-cols-2">
             <div className="min-w-0 px-6 py-5">
               <h3 className="text-[15px] font-semibold text-ink">Autorzy zapisów</h3>
               {data.authors.length === 0 ? (

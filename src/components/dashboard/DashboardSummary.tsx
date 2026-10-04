@@ -4,7 +4,7 @@ import { formatDay, formatRange } from '@/lib/dashboardApi'
 import { stockLevel } from '../ui/stockLevel'
 import { panelClass } from '../ui/styles'
 import { labelStep, niceMax } from './charts'
-import { axisTicks, Card, ChartTooltip, EmptyNote, ReadoutRow, tickLabel, TooltipRow, type ReadoutItem } from './ui'
+import { axisTicks, Card, ChartTooltip, EmptyNote, plural, ReadoutLine, tickLabel, TooltipRow, type ReadoutItem } from './ui'
 
 /** Historia zapasu: linia schodkowa na osi (ta sama gramatyka co ikony w `ui/icons`). */
 function TrendIcon({ size = 18, ...props }: SVGProps<SVGSVGElement> & { size?: number }) {
@@ -33,59 +33,48 @@ function SeriesKey({ light = false }: { light?: boolean }) {
   return <span aria-hidden="true" className={'inline-block size-2 rounded-[2px] ' + (light ? 'bg-ink-2/40' : 'bg-ink-2')} />
 }
 
-/** B: stan teraz. C: wybrany okres. Jeden panel przeglądowy, dwa wiersze odczytów. */
+/**
+ * B: stan teraz. C: wybrany okres. Jeden panel, dwa wiersze odczytu w linii (bez kafelków).
+ * Sumy pobrań, przyjęć i cofnięć okresu są w legendzie wykresu dziennego — tu ich nie powtarzamy.
+ */
 export function SummaryTiles({ data }: { data: DashboardResponse }) {
   const { current, period, range, attention } = data
   const anyEmpty = attention.below_minimum.some((item) => stockLevel(item.quantity, item.minimum) === 'empty')
   const now: ReadoutItem[] = [
-    { label: 'Towary', value: current.total_items },
-    { label: 'Poniżej minimum', value: current.below_minimum, kind: current.below_minimum > 0 ? (anyEmpty ? 'alarm' : 'warn') : null },
-    { label: 'Oczekujące szkice', value: current.pending_drafts, kind: current.pending_drafts > 0 ? 'decision' : null },
-    { label: 'Bez lokalizacji', value: current.missing_location, kind: current.missing_location > 0 ? 'near' : null },
+    { value: current.total_items, label: plural(current.total_items, 'towar', 'towary', 'towarów') },
+    { value: current.below_minimum, label: 'poniżej minimum', kind: current.below_minimum > 0 ? (anyEmpty ? 'alarm' : 'warn') : null },
+    {
+      value: current.pending_drafts,
+      label: plural(current.pending_drafts, 'oczekujący szkic', 'oczekujące szkice', 'oczekujących szkiców'),
+      kind: current.pending_drafts > 0 ? 'decision' : null,
+    },
+    { value: current.missing_location, label: 'bez lokalizacji', kind: current.missing_location > 0 ? 'near' : null },
   ]
   const inPeriod: ReadoutItem[] = [
-    { label: 'Pobrania', value: period.withdrawals },
-    { label: 'Przyjęcia', value: period.receipts },
-    { label: 'Cofnięcia', value: period.undo_count, note: 'wpisy korygujące' },
-    { label: 'Wpisy audytu', value: period.audit_events, note: `w tym import pozycji: ${period.import_events}` },
+    {
+      value: period.audit_events,
+      label: plural(period.audit_events, 'wpis audytu', 'wpisy audytu', 'wpisów audytu'),
+      note: `w tym import pozycji: ${period.import_events}`,
+    },
   ]
   return (
     <div className={`${panelClass} @container divide-y divide-line`}>
       <ReadoutGroup id="dash-now" title="Stan teraz" description="Bieżący stan magazynu — niezależnie od wybranego okresu." items={now} />
-      <ReadoutGroup
-        id="dash-period"
-        title="W wybranym okresie"
-        description={`${formatRange(range)} · strefa ${range.timezone}`}
-        footnote="Pobrania i przyjęcia to liczby operacji, nie sztuk — różnych jednostek nie sumujemy."
-        items={inPeriod}
-      />
+      <ReadoutGroup id="dash-period" title="W wybranym okresie" description={`${formatRange(range)} · strefa ${range.timezone}`} items={inPeriod} />
     </div>
   )
 }
 
-function ReadoutGroup({
-  id,
-  title,
-  description,
-  footnote,
-  items,
-}: {
-  id: string
-  title: string
-  description: string
-  footnote?: string
-  items: ReadoutItem[]
-}) {
+function ReadoutGroup({ id, title, description, items }: { id: string; title: string; description: string; items: ReadoutItem[] }) {
   return (
-    <section aria-labelledby={id} className="grid @5xl:grid-cols-[15rem_minmax(0,1fr)]">
-      <div className="min-w-0 px-6 pt-5 @5xl:py-5">
-        <h2 id={id} className="text-lg font-semibold leading-snug text-ink">
+    <section aria-labelledby={id} className="grid gap-x-8 gap-y-2 px-6 py-4 @3xl:grid-cols-[15rem_minmax(0,1fr)] @3xl:items-center">
+      <div className="min-w-0">
+        <h2 id={id} className="text-[15px] font-semibold leading-snug text-ink">
           {title}
         </h2>
-        <p className="mt-1 text-sm text-ink-2">{description}</p>
-        {footnote && <p className="mt-2 text-xs text-mute">{footnote}</p>}
+        <p className="mt-0.5 text-xs text-mute">{description}</p>
       </div>
-      <ReadoutRow items={items} className="@5xl:border-l @5xl:border-line" />
+      <ReadoutLine items={items} />
     </section>
   )
 }
@@ -104,7 +93,10 @@ export function ActivityCharts({ data, onShowTrend }: { data: DashboardResponse;
           <EmptyNote>Brak dni w wybranym zakresie.</EmptyNote>
         ) : (
           <>
-            <Legend totals={totals} />
+            <div className="space-y-1.5">
+              <Legend totals={totals} />
+              <p className="text-xs text-mute">Pobrania i przyjęcia to liczby operacji, nie sztuk — różnych jednostek nie sumujemy.</p>
+            </div>
             <DailyChart daily={data.daily} summary={`Razem: pobrania ${totals.w}, przyjęcia ${totals.r}, cofnięcia ${totals.u}.`} />
           </>
         )}
@@ -283,6 +275,10 @@ function useBox<T extends HTMLElement>() {
   return [ref, box] as const
 }
 
+// podpis w wykresie jak `label-caps`: wersaliki, zwężony krój, kolor wyciszony, obwódka w kolorze tła
+const SIDE_LABEL = 'fill-mute stroke-sheet uppercase'
+const SIDE_LABEL_STYLE = { fontSize: 10.5, fontWeight: 600, letterSpacing: '0.07em', fontVariationSettings: "'wdth' 82" } as const
+
 const CHART_MIN_HEIGHT = 240
 const CHART_MAX_HEIGHT = 420
 
@@ -368,6 +364,14 @@ function DailyChart({ daily, summary }: { daily: DashboardResponse['daily']; sum
         })}
 
         <line x1={margin.left} x2={margin.left + plotW} y1={zero} y2={zero} className="stroke-line-strong" />
+
+        {/* podpisy stron osi: nad osią przyjęcia, pod osią pobrania (podziałka jest lustrzana) */}
+        <text x={margin.left + 6} y={margin.top + 12} className={SIDE_LABEL} style={SIDE_LABEL_STYLE} strokeWidth="3" paintOrder="stroke">
+          przyjęcia
+        </text>
+        <text x={margin.left + 6} y={margin.top + plotH - 6} className={SIDE_LABEL} style={SIDE_LABEL_STYLE} strokeWidth="3" paintOrder="stroke">
+          pobrania
+        </text>
 
         {daily.map((entry, index) => {
           if (entry.undo_count <= 0) return null

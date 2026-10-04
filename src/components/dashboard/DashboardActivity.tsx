@@ -33,38 +33,58 @@ type Props = {
   items: Item[]
   onForbidden: () => void
   onUndo: (entry: HistoryEntry) => Promise<void>
+  /** osadzony w panelu z przełącznikiem widoków (bez własnej powierzchni) */
+  embedded?: boolean
 }
 
-const COLUMNS = 7
+const COLUMNS = 4
+
+// Krótkie nazwy typów do wąskiej kolumny; pełna nazwa w podpowiedzi, dla czytnika i w szczegółach wpisu.
+const EVENT_SHORT: Record<string, string> = {
+  stock_change: 'Zmiana zapasu',
+  inventory_import: 'Import',
+  item_added: 'Nowy towar',
+  zone_added: 'Nowa strefa',
+  procedure_saved: 'Procedura',
+  reorder_draft_created: 'Nowy szkic',
+  reorder_draft_updated: 'Zmiana szkicu',
+  reorder_cancelled: 'Anulowany szkic',
+  reorder_approved: 'Zatwierdzenie',
+  reorder_rejected: 'Odrzucenie',
+}
 
 function hasStockChange(entry: DashboardActivity): boolean {
   return entry.event_type === 'stock_change' || entry.event_type === 'inventory_import'
 }
 
-/** Status wpisu bez koloru: aktywny — zwykły tekst, cofnięty — pusty krąg, korekta — ikona cofnięcia. */
-function StatusLabel({ status }: { status: DashboardActivity['status'] }) {
+/**
+ * Status pod zmianą, tylko gdy odbiega od zwykłego: cofnięty — pusty krąg, korekta — ikona cofnięcia.
+ * Wpis aktywny (stan normalny) nie dostaje widocznego podpisu — tylko dla czytnika.
+ */
+function StatusNote({ status }: { status: DashboardActivity['status'] }) {
   const label = STATUS_LABELS[status] ?? status
   if (status === 'undo') {
     return (
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-semibold text-ink">
-        <UndoIcon size={14} className="text-act" />
-        {label}
+      <span className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-ink" title={label}>
+        <UndoIcon size={13} className="shrink-0 text-act" />
+        <span aria-hidden="true">korekta</span>
+        <span className="sr-only">{label}</span>
       </span>
     )
   }
   if (status === 'undone') {
     return (
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] text-mute">
-        <StateShape kind="idle" />
+      <span className="mt-1 flex items-center justify-end gap-1.5 text-xs text-mute">
+        <StateShape kind="idle" size={8} />
         {label}
       </span>
     )
   }
-  return <span className="whitespace-nowrap text-[13px] text-ink-2">{label}</span>
+  return <span className="sr-only">{label}</span>
 }
 
 /** F: dziennik zapisanych akcji z filtrami (AND), stronami i eksportem CSV. */
-export default function DashboardActivityLog({ period, periodKey, refreshToken, updateTick, users, items, onForbidden, onUndo }: Props) {
+export default function DashboardActivityLog({ period, periodKey, refreshToken, updateTick, users, items, onForbidden, onUndo, embedded = false }: Props) {
   const [filters, setFilters] = useState<Omit<ActivityFilters, 'q'>>(DEFAULT_FILTERS)
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
@@ -140,6 +160,7 @@ export default function DashboardActivityLog({ period, periodKey, refreshToken, 
       subtitle="Zatwierdzone zmiany, importy i decyzje zapisane w audycie (bez pytań i odrzuconych kart)."
       busy={remote.loading}
       flush
+      bare={embedded}
       actions={
         <button type="button" onClick={() => void runExport()} disabled={exporting} className={buttonClass('secondary', 'sm')}>
           <DownloadIcon size={16} />
@@ -218,64 +239,70 @@ export default function DashboardActivityLog({ period, periodKey, refreshToken, 
 
       {data && data.entries.length > 0 && (
         <div className={'relative overflow-x-auto border-t border-line transition-opacity duration-200 ' + (remote.loading ? 'opacity-60' : '')}>
-          <table className="w-full min-w-[880px] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead className="bg-ground/60">
               <tr>
-                <th scope="col" className={`${head} pl-6 pr-5`}>Nr</th>
-                <th scope="col" className={`${head} px-5`}>Czas</th>
-                <th scope="col" className={`${head} px-5`}>Autor</th>
-                <th scope="col" className={`${head} px-5`}>Typ</th>
-                <th scope="col" className={`${head} px-5`}>Towar / temat</th>
-                <th scope="col" className={`${head} px-5`}>Zmiana</th>
-                <th scope="col" className={`${head} pl-5 pr-6`}>Status</th>
+                <th scope="col" className={`${head} pl-6 pr-3`}>Wpis</th>
+                <th scope="col" className={`${head} px-3`}>Typ</th>
+                <th scope="col" className={`${head} px-3`}>Towar / temat</th>
+                <th scope="col" className={`${head} pl-3 pr-6 text-right`}>Zmiana</th>
               </tr>
             </thead>
             <tbody>
               {data.entries.map((entry) => {
                 const open = expandedId === entry.id
                 const undone = entry.status === 'undone'
+                const stock = hasStockChange(entry)
+                const note = stock ? '' : entry.details || entry.text
+                const fullType = eventLabel(entry.event_type)
                 return (
                   <Fragment key={entry.id}>
                     <tr className={'border-t border-line align-top transition-colors duration-150 ' + (open ? 'bg-ground/60' : 'hover:bg-ground/50')}>
-                      <td className="whitespace-nowrap py-3.5 pl-6 pr-5 narrow tabular-nums text-mute">#{entry.id}</td>
-                      <td className="whitespace-nowrap px-5 py-2">
+                      <td className="whitespace-nowrap py-3 pl-6 pr-3">
                         <button
                           type="button"
                           aria-expanded={open}
                           onClick={() => setExpandedId(open ? null : entry.id)}
-                          className="-mx-2 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-left font-medium tabular-nums text-ink transition-colors duration-150 hover:bg-ink/6 hover:text-act-ink"
+                          className="group/when -mx-1.5 inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-ink/6"
                         >
-                          <ChevronIcon size={14} className={'shrink-0 text-mute transition-transform duration-150 ' + (open ? 'rotate-90' : '')} />
-                          {formatDateTime(entry.ts, timezone)}
+                          <span className="narrow text-xs tabular-nums text-mute">#{entry.id}</span>
+                          <span className="font-medium tabular-nums text-ink transition-colors duration-150 group-hover/when:text-act-ink">
+                            {formatDateTime(entry.ts, timezone)}
+                          </span>
+                          <ChevronIcon size={13} className={'shrink-0 self-center text-mute transition-transform duration-150 ' + (open ? 'rotate-90' : '')} />
                         </button>
-                      </td>
-                      <td className="px-5 py-3.5 text-ink-2">
-                        <span className="block max-w-[11rem] truncate" title={entry.actor}>
+                        <span className="mt-0.5 block max-w-[10rem] truncate text-xs text-ink-2" title={entry.actor}>
                           {entry.actor || 'brak autora'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-ink-2">{eventLabel(entry.event_type)}</td>
-                      <td className={'px-5 py-3.5 font-semibold ' + (undone ? 'text-ink-2' : 'text-ink')}>
-                        <span className="block max-w-[14rem] truncate" title={entry.item_name}>
+                      <td className="whitespace-nowrap px-3 py-3.5 text-[13px] text-ink-2">
+                        <span aria-hidden="true" title={fullType}>
+                          {EVENT_SHORT[entry.event_type] ?? 'Inne'}
+                        </span>
+                        <span className="sr-only">{fullType}</span>
+                      </td>
+                      <td className="w-full max-w-0 px-3 py-3.5">
+                        <span className={'block truncate font-semibold ' + (undone ? 'text-ink-2' : 'text-ink')} title={entry.item_name}>
                           {entry.item_name || '—'}
                         </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        {hasStockChange(entry) ? (
-                          <span className="inline-flex items-baseline gap-2 whitespace-nowrap tabular-nums">
-                            <span className={undone ? 'text-mute line-through' : 'text-ink'}>
-                              {entry.before} → {entry.after}
-                            </span>
-                            <span className="text-[13px] font-semibold text-ink-2">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}</span>
-                          </span>
-                        ) : (
-                          <span className="block max-w-[15rem] truncate text-ink-2" title={entry.details || entry.text}>
-                            {entry.details || entry.text || '—'}
+                        {note && (
+                          <span className="mt-0.5 block truncate text-xs text-ink-2" title={note}>
+                            {note}
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 pl-5 pr-6">
-                        <StatusLabel status={entry.status} />
+                      <td className="whitespace-nowrap py-3.5 pl-3 pr-6 text-right tabular-nums">
+                        {stock ? (
+                          <span className="inline-flex items-baseline justify-end gap-2">
+                            <span className={undone ? 'text-mute line-through' : 'text-ink'}>
+                              {entry.before} → {entry.after}
+                            </span>
+                            <span className="min-w-[3ch] text-[13px] font-semibold text-ink-2">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}</span>
+                          </span>
+                        ) : (
+                          <span className="text-mute">—</span>
+                        )}
+                        <StatusNote status={entry.status} />
                       </td>
                     </tr>
                     {open && (
@@ -356,6 +383,7 @@ function EntryDetails({ entry, timezone, onUndo }: { entry: DashboardActivity; t
     <div className="space-y-4 text-sm">
       <dl className="grid gap-x-8 gap-y-4 @2xl:grid-cols-2">
         <Detail label="Wpis audytu" value={`#${entry.id} · ${formatDateTime(entry.ts, timezone, true)} (${timezone})`} />
+        <Detail label="Typ zdarzenia" value={eventLabel(entry.event_type)} />
         <Detail label="Autor" value={entry.actor_id ? `${entry.actor} (konto ${entry.actor_id})` : `${entry.actor || 'brak autora'} · bez przypisanego konta`} />
         <Detail label="Komenda / opis" value={entry.text || '—'} />
         <Detail label="Szczegóły" value={entry.details || '—'} />

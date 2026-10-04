@@ -19,28 +19,38 @@ type Props = {
   periodKey: string
   refreshToken: string
   onForbidden: () => void
+  /** osadzony w panelu z przełącznikiem widoków (bez własnej powierzchni) */
+  embedded?: boolean
 }
 
-/** H: historia zapasu wybranego towaru — pobierana dopiero po wyborze. */
-export default function StockTrend({ items, itemId, onItemChange, period, periodKey, refreshToken, onForbidden }: Props) {
+/**
+ * H: historia zapasu wybranego towaru. Bez wyboru pokazujemy pierwszy towar poniżej minimum
+ * (a gdy takiego nie ma — pierwszy z listy), żeby zawsze był widoczny prawdziwy przebieg z linią minimum.
+ */
+export default function StockTrend({ items, itemId, onItemChange, period, periodKey, refreshToken, onForbidden, embedded = false }: Props) {
+  const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name, 'pl'))
+  const belowMinimum = sortedItems.find((item) => {
+    const level = stockLevel(item.quantity, item.minimum)
+    return level === 'empty' || level === 'below'
+  })
+  const selectedId = itemId ?? (belowMinimum ?? sortedItems[0])?.id ?? null
   const remote = useRemote<StockTrendResponse>(
-    itemId === null ? null : (signal) => fetchTrend(itemId, period, signal),
-    JSON.stringify({ itemId, periodKey }),
+    selectedId === null ? null : (signal) => fetchTrend(selectedId, period, signal),
+    JSON.stringify({ itemId: selectedId, periodKey }),
     refreshToken,
     onForbidden,
   )
-  const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name, 'pl'))
   const data = remote.data
 
   return (
-    <Card title="Historia zapasu" subtitle="Stan towaru po każdej zapisanej zmianie w wybranym okresie." busy={remote.loading}>
+    <Card title="Historia zapasu" subtitle="Stan towaru po każdej zapisanej zmianie w wybranym okresie." busy={remote.loading} bare={embedded}>
       <Field label="Towar" className="max-w-sm">
         <select
-          value={itemId === null ? '' : String(itemId)}
+          value={selectedId === null ? '' : String(selectedId)}
           onChange={(event) => onItemChange(event.target.value ? Number(event.target.value) : null)}
           className={inputClass}
         >
-          <option value="">Wybierz towar…</option>
+          {selectedId === null && <option value="">Wybierz towar…</option>}
           {sortedItems.map((item) => (
             <option key={item.id} value={String(item.id)}>
               {item.name}
@@ -49,11 +59,11 @@ export default function StockTrend({ items, itemId, onItemChange, period, period
         </select>
       </Field>
 
-      {itemId === null && <EmptyNote>Wybierz towar, aby zobaczyć historię jego zapasu.</EmptyNote>}
-      {itemId !== null && remote.error !== null && (
+      {selectedId === null && <EmptyNote>Wybierz towar, aby zobaczyć historię jego zapasu.</EmptyNote>}
+      {selectedId !== null && remote.error !== null && (
         <BlockError error={remote.error} fallback="Nie udało się pobrać historii zapasu." onRetry={remote.retry} kept={Boolean(data)} />
       )}
-      {itemId !== null && !data && remote.loading && <Loading text="Pobieram historię zapasu…" rows={4} />}
+      {selectedId !== null && !data && remote.loading && <Loading text="Pobieram historię zapasu…" rows={4} />}
       {data && <TrendView data={data} dimmed={remote.loading} fetchedAt={remote.fetchedAt} />}
     </Card>
   )

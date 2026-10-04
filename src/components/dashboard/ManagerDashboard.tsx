@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { fetchUsers, type HistoryEntry, type Item, type UserAccount } from '@/lib/api'
 import type { DashboardResponse } from '@/lib/dashboard'
 import { customRangeError, fetchDashboard, type PeriodSelection, type PresetPeriod } from '@/lib/dashboardApi'
@@ -20,6 +20,14 @@ const PRESETS: { id: PresetPeriod; label: string }[] = [
   { id: 'today', label: 'Dziś' },
   { id: '7d', label: '7 dni' },
   { id: '30d', label: '30 dni' },
+]
+
+/** Dolny panel: jeden widok szczegółów naraz (jedno zadanie na widok). */
+type DetailView = 'log' | 'shift' | 'trend'
+const DETAIL_VIEWS: { id: DetailView; label: string }[] = [
+  { id: 'log', label: 'Dziennik akcji' },
+  { id: 'shift', label: 'Przekazanie zmiany' },
+  { id: 'trend', label: 'Historia zapasu' },
 ]
 
 type Props = {
@@ -51,7 +59,9 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
   const [manualTick, setManualTick] = useState(0)
   const [timerTick, setTimerTick] = useState(0)
   const [trendItemId, setTrendItemId] = useState<number | null>(null)
-  const trendRef = useRef<HTMLDivElement>(null)
+  const [detailView, setDetailView] = useState<DetailView>('log')
+  const detailRef = useRef<HTMLElement>(null)
+  const tabsId = useId()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -85,7 +95,25 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
 
   const showTrend = (itemId: number) => {
     setTrendItemId(itemId)
-    trendRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setDetailView('trend')
+    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const tabId = (view: DetailView) => `${tabsId}-${view}-tab`
+  const panelId = (view: DetailView) => `${tabsId}-${view}-panel`
+
+  // strzałki między zakładkami (wzorzec ARIA tabs); aktywna zakładka jest jedynym przystankiem Tab
+  const onTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+    if (!keys.includes(event.key)) return
+    event.preventDefault()
+    const index = DETAIL_VIEWS.findIndex((view) => view.id === detailView)
+    const last = DETAIL_VIEWS.length - 1
+    const nextIndex =
+      event.key === 'Home' ? 0 : event.key === 'End' ? last : (index + (event.key === 'ArrowRight' ? 1 : -1) + DETAIL_VIEWS.length) % DETAIL_VIEWS.length
+    const next = DETAIL_VIEWS[nextIndex].id
+    setDetailView(next)
+    document.getElementById(tabId(next))?.focus()
   }
 
   const data = summary.data
@@ -167,25 +195,54 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
       {data && (
         <div className={'space-y-6 transition-opacity duration-200 ' + (summary.loading && summary.stale ? 'opacity-60' : '')}>
           <SummaryTiles data={data} />
-          <ActivityCharts data={data} onShowTrend={showTrend} />
+          {/* odchylenia najpierw, potem przebieg okresu */}
           <DashboardAttention data={data} onNavigate={onNavigate} />
+          <ActivityCharts data={data} onShowTrend={showTrend} />
         </div>
       )}
 
-      <DashboardActivityLog
-        period={period}
-        periodKey={periodKey}
-        refreshToken={refreshToken}
-        updateTick={updateTick}
-        users={users.data ?? []}
-        items={items}
-        onForbidden={onForbidden}
-        onUndo={onUndo}
-      />
+      {/* E–H: jeden panel, jeden widok naraz; ukryte widoki zostają zamontowane (filtry i strona dziennika nie giną) */}
+      <section ref={detailRef} className={`${panelClass} scroll-mt-6`} aria-label="Dziennik, zmiana i historia zapasu">
+        <div className="border-b border-line px-6 py-4">
+          <div role="tablist" aria-label="Widok" className={segmentGroupClass} onKeyDown={onTabsKeyDown}>
+            {DETAIL_VIEWS.map((view) => {
+              const active = view.id === detailView
+              return (
+                <button
+                  key={view.id}
+                  id={tabId(view.id)}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={panelId(view.id)}
+                  tabIndex={active ? 0 : -1}
+                  onClick={() => setDetailView(view.id)}
+                  className={segmentClass(active)}
+                >
+                  {view.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
-      <div className="grid items-start gap-6 @4xl:grid-cols-2">
-        <ShiftSummary refreshToken={refreshToken} timezone={timezone} onForbidden={onForbidden} />
-        <div ref={trendRef} className="min-w-0 scroll-mt-6">
+        <div role="tabpanel" id={panelId('log')} aria-labelledby={tabId('log')} hidden={detailView !== 'log'}>
+          <DashboardActivityLog
+            period={period}
+            periodKey={periodKey}
+            refreshToken={refreshToken}
+            updateTick={updateTick}
+            users={users.data ?? []}
+            items={items}
+            onForbidden={onForbidden}
+            onUndo={onUndo}
+            embedded
+          />
+        </div>
+        <div role="tabpanel" id={panelId('shift')} aria-labelledby={tabId('shift')} hidden={detailView !== 'shift'}>
+          <ShiftSummary refreshToken={refreshToken} timezone={timezone} onForbidden={onForbidden} embedded />
+        </div>
+        <div role="tabpanel" id={panelId('trend')} aria-labelledby={tabId('trend')} hidden={detailView !== 'trend'}>
           <StockTrend
             items={items}
             itemId={trendItemId}
@@ -194,9 +251,10 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
             periodKey={periodKey}
             refreshToken={refreshToken}
             onForbidden={onForbidden}
+            embedded
           />
         </div>
-      </div>
+      </section>
     </div>
   )
 }
