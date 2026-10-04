@@ -33,6 +33,7 @@ import {
   fetchSettings,
   fetchStock,
   fetchZones,
+  ApiError,
   onApiForbidden,
   undoHistoryEntry,
   updateStockItem,
@@ -112,6 +113,8 @@ export default function AppShell() {
       return fetchMe().then(
         (me) => { setStartupError(''); setSession({ loaded: true, me }) },
         (reason: unknown) => {
+          // 401 → trwa przekierowanie do /login; nie pokazujemy w tym czasie ekranu błędu
+          if (reason instanceof ApiError && reason.status === 401) return
           setStartupError(errorMessage(reason, 'Nie udało się sprawdzić konta. Spróbuj ponownie.'))
         },
       )
@@ -130,6 +133,7 @@ export default function AppShell() {
 
 function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promise<unknown> }) {
   const [section, setSection] = useState<SectionId>('stany')
+  const sectionRef = useRef<SectionId>(section)
   const stock = useLoader<Item[]>(fetchStock, [], 'Nie udało się pobrać stanów magazynowych.')
   const zones = useLoader<Zone[]>(fetchZones, [], 'Nie udało się pobrać stref magazynu.')
   const mapPaths = useLoader<MapPath[]>(fetchMapPaths, [], 'Nie udało się pobrać ścieżek mapy.')
@@ -168,13 +172,24 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   const refresh = useCallback(() => {
     void reloadStock()
     void reloadZones()
-    void reloadMapPaths()
-    void reloadMapSectors()
+    // ścieżki niosą pełne tablice punktów — pobieramy je tylko przy otwartej Mapie
+    if (sectionRef.current === 'mapa') {
+      void reloadMapPaths()
+      void reloadMapSectors()
+    }
     void reloadHistory()
     void reloadQueue()
     void reloadProcedures()
     void reloadSettings()
   }, [reloadHistory, reloadMapPaths, reloadMapSectors, reloadProcedures, reloadQueue, reloadSettings, reloadStock, reloadZones])
+
+  // Wejście na Mapę pobiera aktualne ścieżki i sektory (poza Mapą nie są odświeżane).
+  useEffect(() => {
+    sectionRef.current = section
+    if (section !== 'mapa') return
+    void reloadMapPaths()
+    void reloadMapSectors()
+  }, [section, reloadMapPaths, reloadMapSectors])
 
   // Dane magazynu + odświeżanie na żywo (polling /api/version zamiast WebSocketu).
   useEffect(() => {
