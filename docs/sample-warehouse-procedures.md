@@ -26,6 +26,28 @@ niezmienioną, fabryczną regułę szkła. Ponowienie nie tworzy duplikatów.
 Instrukcje zawierają jawne kroki dla sytuacji wyjątkowych. Procedura jest
 informacją dla pracownika: nie wykonuje automatycznie korekt ani zamówień.
 
+## Przygotowanie sytuacji wyjątkowych
+
+Same opisy zadań są hipotetyczne, dopóki nie przygotujesz danych demo.
+Importer zmienia tylko reguły. Przed ćwiczeniem sprawdź bieżące ilości,
+bo poprzednie próby mogły już zmienić stan.
+
+- **Brak kartonów:** „Ile mamy kartonów?” → odczytaj N. Jeżeli N > 0,
+  wpisz „Wzięliśmy N sztuk kartonów” z rzeczywistą liczbą zamiast N,
+  sprawdź kartę (stan po zmianie 0) i zatwierdź. Dla 11 sztuk: „wzięliśmy
+  11 sztuk kartonów”. Jeżeli stan już wynosi 0, nie odejmuj ponownie.
+- **Ostatnia rolka:** „Ile mamy folii stretch?” → odczytaj N. Jeśli N > 1,
+  wpisz „Pobrałem M rolek folii stretch”, gdzie M = N − 1. Dla 15 rolek
+  wpisz „pobrałem 14 rolek folii stretch”, sprawdź kartę 15 → 1 i zatwierdź.
+  Przy stanie 1 jest gotowe; przy stanie 0 najpierw zasymuluj przyjęcie jednej
+  rolki przez „doszła 1 rolka folii stretch” i zatwierdź właściwą kartę.
+- **Brak opakowania / uszkodzenie / rozbieżność:** są opisem zdarzenia w zadaniu.
+  Obecne opakowania demo nie mają powiązanego zapasu, więc aplikacja nie
+  wykryje automatycznie ich fizycznego braku. Nie wpisuj fikcyjnych korekt
+  tylko po to, by dopasować dane do opisu; to ćwiczenie odpowiedzi z procedury.
+- Po ćwiczeniu zapasu możesz użyć **Historia → Cofnij** dla swojej zmiany.
+  Odrzucone szkice nie stają się rzeczywistym zamówieniem.
+
 ## Sześć scenariuszy do próby
 
 1. **Normalne pakowanie:** „Jak pakujemy szkło?” → reguła 1 szt / duży karton,

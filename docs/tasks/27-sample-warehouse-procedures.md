@@ -14,3 +14,6 @@ Owner A. Branch `feat/sample-warehouse-procedures`.
 W działającym demo dodano 3 reguły przez proposal + confirm; ponowienie: 0 nowych,
 3 bez zmian. GUI pokazuje trzy reguły, wyszukuje „brak”, a „jak pakujemy szkło?”
 zwraca pełną instrukcję z przypadkami wyjątkowymi. Nie zmieniano stanów.
+
+Review Standards: bez uwag. Review Spec: dodano przygotowanie braków przez
+kartę i confirm oraz wyraźne oznaczenie hipotetycznych zdarzeń bez zmiany zapasu.
