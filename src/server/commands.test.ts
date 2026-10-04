@@ -10,17 +10,17 @@ import {
   listProcedures,
   listReorderDrafts,
   listZones,
-  rememberProcedure,
   saveProposal,
 } from './db'
 import { HttpError } from './http'
 import { GeminiRequestError } from './llm'
+import { listPackingRules, previewPacking, savePacking } from './packing'
 import { MOCK_WARNING, setAgentMode, updateAppSettings } from './settings'
 import { createPgliteDb, type Db } from './sql'
 import { TOOL_REGISTRY } from './tools'
 import { LLMProviderError, type Interpretation, type LLMProvider, type ToolSchema } from './types'
 
-const TABLES = 'items, audit_log, reorder_drafts, zones, procedures, proposals, pending_imports, settings, app_meta'
+const TABLES = 'items, audit_log, reorder_drafts, zones, procedures, packing_rules, proposals, pending_imports, settings, app_meta'
 const WORKER = { name: 'Jan Magazynier', id: '33333333-3333-3333-3333-333333333333' }
 
 let db: Db
@@ -44,14 +44,20 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-async function command(text: string, provider: LLMProvider | null = null): Promise<CommandResponse> {
-  return runCommand(db, text, { provider, actor: WORKER })
+async function command(text: string, provider: LLMProvider | null = null, role?: 'kierownik'): Promise<CommandResponse> {
+  return runCommand(db, text, { provider, actor: WORKER, role })
 }
 
-async function proposalFor(text: string, provider: LLMProvider | null = null) {
-  const response = await command(text, provider)
+async function proposalFor(text: string, provider: LLMProvider | null = null, role?: 'kierownik') {
+  const response = await command(text, provider, role)
   if (response.type !== 'proposal') throw new Error(`expected proposal for ${text}, got ${JSON.stringify(response)}`)
   return response.proposal
+}
+
+/** Reguły pakowania wymagają roli kierownika i katalogu opakowań. */
+async function packagingId(name: string): Promise<number> {
+  const rows = await db.query<{ id: number }>('SELECT id FROM packaging_types WHERE name = $1', [name])
+  return rows[0]!.id
 }
 
 async function stock(name: string): Promise<number> {
@@ -175,22 +181,23 @@ describe('offline command pipeline (test_api.py)', () => {
     expect(response).toMatchObject({ type: 'answer', tool: 'get_location', text: 'Szkło leży w: Strefa B-2.' })
   })
 
-  it('recall of a missing procedure is clarify, not a hallucination', async () => {
+  it('recall of a missing rule is clarify, not a hallucination', async () => {
     const response = await command('jak pakujemy szkło?')
     expect(response.type).toBe('clarify')
     const message = (response as { message: string }).message
-    expect(message).toBe('Nie mam zapisanej procedury dla «szkło». Zapamiętaj ją mówiąc: „zapamiętaj: szkło pakujemy w…”')
+    expect(message).toBe('Nie mam zapisanej procedury dla «szkło». Kierownik może utworzyć regułę w zakładce Procedury, wybierając produkt, opakowanie i ilość.')
     expect(await listAudit(db)).toEqual([])
   })
 
-  it('recall of a saved procedure returns an answer', async () => {
-    await rememberProcedure(db, { topic: 'szkło', text: 'szkło pakujemy w kartony Y, strefa C2' })
+  it('recall of a saved packing rule returns an answer', async () => {
+    const preview = await previewPacking(db, { item_id: 2, packaging_id: await packagingId('Duży karton'), quantity_per_package: 2, notes: 'kartony Y, strefa C2' }, 'kierownik')
+    await savePacking(db, preview.args, WORKER, 'kierownik')
     const response = await command('jak pakujemy szkło?')
     expect(response).toMatchObject({
       type: 'answer',
       tool: 'recall_procedure',
-      text: 'Procedura „szkło”: szkło pakujemy w kartony Y, strefa C2',
     })
+    expect((response as { text: string }).text).toContain('Procedura „Szkło”: Szkło: 2 szt na opakowanie „Duży karton”. kartony Y, strefa C2')
   })
 
   it('zone proposal then confirm writes zone and audit', async () => {
@@ -243,58 +250,56 @@ describe('offline command pipeline (test_api.py)', () => {
     expect(await listAudit(db)).toEqual([])
   })
 
-  it('the suggested remember command round-trips', async () => {
+  it('the structured remember command round-trips into a packing rule', async () => {
     expect((await command('jak pakujemy szkło?')).type).toBe('clarify')
 
-    const proposal = await proposalFor('zapamiętaj: szkło pakujemy w kartony Y, strefa C2')
+    const proposal = await proposalFor('zapamiętaj: Szkło pakujemy po 2 w Duży karton', null, 'kierownik')
     expect(proposal.tool).toBe('remember_procedure')
-    expect(proposal.summary).toBe('Zapamiętaj procedurę: szkło')
+    expect(proposal.summary).toBe('Nowa reguła: Szkło — 2 szt na opakowanie „Duży karton”')
     expect(await listProcedures(db)).toEqual([])
     expect((await command('jak pakujemy szkło?')).type).toBe('clarify')
 
-    await confirmProposal(db, proposal.id)
+    await confirmProposal(db, proposal.id, WORKER, 'kierownik')
     const answer = await command('jak pakujemy szkło?')
     expect(answer.type).toBe('answer')
-    expect((answer as { text: string }).text).toContain('kartony Y')
-    const procedures = await listProcedures(db)
-    expect(procedures).toHaveLength(1)
-    expect(procedures[0].topic).toBe('szkło')
-    expect(procedures[0].text).toBe('szkło pakujemy w kartony Y, strefa C2')
-    expect(procedures[0].created).toBeTruthy()
+    expect((answer as { text: string }).text).toContain('na opakowanie „Duży karton”')
+    // legacy free-text notes stay unpublished — rules live in packing_rules (schema v4)
+    expect(await listProcedures(db)).toEqual([])
+    const rules = await listPackingRules(db)
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toMatchObject({ topic: 'Szkło', quantity_per_package: 2, version: 1 })
     expect((await listAudit(db))[0].event_type).toBe('procedure_saved')
   })
 
-  it('procedure update requires confirmation and recall searches the content', async () => {
-    const original = await proposalFor('zapamiętaj: szkło pakujemy w kartony Y, strefa C2')
-    await confirmProposal(db, original.id)
-    const before = await listProcedures(db)
+  it('rule update requires a fresh card and bumps the version', async () => {
+    const original = await proposalFor('zapamiętaj: Szkło pakujemy po 2 w Duży karton', null, 'kierownik')
+    await confirmProposal(db, original.id, WORKER, 'kierownik')
+    const before = await listPackingRules(db)
 
-    const replacement = await proposalFor('zapamiętaj: szkło pakujemy z przekładkami, strefa B-2')
-    expect(await listProcedures(db)).toEqual(before)
-    await confirmProposal(db, replacement.id)
-    const after = await listProcedures(db)
+    const replacement = await proposalFor('zapamiętaj: Szkło pakujemy po 3 w Duży karton', null, 'kierownik')
+    expect(await listPackingRules(db)).toEqual(before) // karta niczego nie zapisuje
+    await confirmProposal(db, replacement.id, WORKER, 'kierownik')
+    const after = await listPackingRules(db)
     expect(after).toHaveLength(1)
     expect(after[0].id).toBe(before[0].id)
-    expect(after[0].text).toBe('szkło pakujemy z przekładkami, strefa B-2')
+    expect(after[0].quantity_per_package).toBe(3)
+    expect(after[0].version).toBe(2)
 
-    const answer = await command('jak pakujemy przekładkami?')
+    const answer = await command('jak pakujemy szkło?')
     expect(answer.type).toBe('answer')
-    expect((answer as unknown as { data: { procedures: { text: string }[] } }).data.procedures[0].text).toBe(after[0].text)
+    expect((answer as { text: string }).text).toContain('3 szt')
+    expect((await listAudit(db)).map((entry) => entry.event_type)).toEqual(['procedure_saved', 'procedure_saved'])
   })
 
-  it('procedure from an uppercase transcription keeps the topic and is recalled', async () => {
-    const proposal = await proposalFor('Zapamiętaj: SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2')
-    expect(proposal.args.topic).toBe('szkło')
+  it('uppercase transcription still creates and recalls the rule', async () => {
+    const proposal = await proposalFor('Zapamiętaj: SZKŁO pakujemy po 2 w DUŻY KARTON', null, 'kierownik')
+    expect(proposal.tool).toBe('remember_procedure')
     expect(await listProcedures(db)).toEqual([])
-    await confirmProposal(db, proposal.id)
+    await confirmProposal(db, proposal.id, WORKER, 'kierownik')
 
-    const answer = (await command('jak pakujemy szkło?')) as unknown as { type: string; data: { procedures: { text: string; topic: string }[] } }
+    const answer = await command('jak pakujemy SZKŁO?')
     expect(answer.type).toBe('answer')
-    expect(answer.data.procedures[0].text).toBe('SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2')
-
-    const fragment = (await command('jak pakujemy przekładkami?')) as unknown as typeof answer
-    expect(fragment.type).toBe('answer')
-    expect(fragment.data.procedures[0].topic).toBe('szkło')
+    expect((answer as { text: string }).text).toContain('na opakowanie „Duży karton”')
   })
 
   it('a draft_order proposal confirms into the queue', async () => {
@@ -517,6 +522,13 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
     expect(new Set(call.tools.map((tool) => tool.function.name))).toEqual(new Set(Object.keys(TOOL_REGISTRY)))
     expect(JSON.parse(call.context)).toEqual({
       units_per_pallet: 2,
+      role: 'pracownik',
+      packaging_catalogue: [
+        { id: 1, name: 'Koperta', inventory_item_id: null },
+        { id: 2, name: 'Mały karton', inventory_item_id: null },
+        { id: 3, name: 'Duży karton', inventory_item_id: null },
+        { id: 4, name: 'Folia stretch', inventory_item_id: null },
+      ],
       items: [
         { id: 3, name: 'Folia stretch', quantity: 15, unit: 'rolka', minimum: 6, location: 'Strefa C-1' },
         { id: 1, name: 'Kartony', quantity: 54, unit: 'szt', minimum: 12, location: 'Strefa A-1' },
@@ -541,21 +553,22 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
     expect(response).toMatchObject({ type: 'answer', tool: 'check_reorder', text: 'Kartony: 54 (minimum 12) — minimum zachowane.' })
   })
 
-  const writeCases: [string, Record<string, unknown>, () => Promise<unknown>][] = [
-    ['add_zone', { name: 'Strefa testowa' }, () => listZones(db)],
-    ['remember_procedure', { topic: 'szkło', text: 'Pakujemy w kartony' }, () => listProcedures(db)],
-    ['add_item', { name: 'Taśma', quantity: 7 }, () => listItems(db)],
-    ['draft_order', { item_id: 1, quantity: 50 }, () => listReorderDrafts(db)],
+  const writeCases: [string, Record<string, unknown>, () => Promise<unknown>, 'kierownik' | undefined][] = [
+    ['add_zone', { name: 'Strefa testowa' }, () => listZones(db), undefined],
+    // reguła pakowania: karta i confirm wymagają roli kierownika (schema v4)
+    ['remember_procedure', { item_id: 2, packaging_id: 3, quantity_per_package: 2 }, () => listPackingRules(db), 'kierownik'],
+    ['add_item', { name: 'Taśma', quantity: 7 }, () => listItems(db), undefined],
+    ['draft_order', { item_id: 1, quantity: 50 }, () => listReorderDrafts(db), undefined],
   ]
 
-  it.each(writeCases)('write tool %s waits for confirmation', async (tool, args, read) => {
+  it.each(writeCases)('write tool %s waits for confirmation', async (tool, args, read, role) => {
     const before = await read()
-    const proposal = await proposalFor('naturalne polecenie', respond(tool, args))
+    const proposal = await proposalFor('naturalne polecenie', respond(tool, args), role)
     expect(proposal.tool).toBe(tool)
     expect(await read()).toEqual(before)
     expect(await listAudit(db)).toEqual([])
 
-    const confirmed = await confirmProposal(db, proposal.id, WORKER)
+    const confirmed = await confirmProposal(db, proposal.id, WORKER, role)
     expect(confirmed.applied).toBe(true)
     expect(await read()).not.toEqual(before)
     expect(await listAudit(db)).toHaveLength(1)

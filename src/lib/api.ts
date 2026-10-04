@@ -2,6 +2,20 @@
 // Błędy mają kształt {"detail": "..."}; 401 → /login (tylko gdy logowanie jest włączone),
 // 403 → komunikat serwera trafia do nasłuchujących (AppShell pokazuje go w toaście).
 import type { ClarificationTurn } from './commandConversation'
+import type { PathMarker, PathPoint } from './pdr'
+
+export type { PathMarker, PathPoint }
+
+/** Zapisana ścieżka z mapowania hali (kontrakt GET/POST /api/map-paths). */
+export type MapPath = {
+  id: number
+  name: string
+  points: PathPoint[]
+  markers: PathMarker[]
+  step_length: number
+  actor: string
+  created: string
+}
 
 export type Item = {
   id: number
@@ -23,7 +37,18 @@ export type Procedure = {
   topic: string
   text: string
   created: string
+  item_id?: number
+  packaging_id?: number
+  quantity_per_package?: number
+  notes?: string
+  packaging_name?: string
+  version?: number
+  updated_by?: string
+  packaging_stock?: { name: string; quantity: number; unit: string } | null
 }
+
+export type Packaging = { id: number; name: string; inventory_item_id: number | null }
+export type PackingInput = { item_id: number; packaging_id: number; quantity_per_package: number; notes: string }
 
 export type HistoryEntry = {
   id: number
@@ -307,8 +332,75 @@ export function fetchZones(): Promise<Zone[]> {
   return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
 }
 
+// --- mapowanie hali (ścieżki z telefonu, PDR) --------------------------------------
+
+export function fetchMapPaths(): Promise<MapPath[]> {
+  return fetch('/api/map-paths', { cache: 'no-store' })
+    .then((r) => json<{ paths: MapPath[] }>(r))
+    .then((d) => d.paths)
+}
+
+export function saveMapPath(input: { name: string; step_length: number; points: PathPoint[]; markers: PathMarker[] }): Promise<MapPath> {
+  return fetch('/api/map-paths', sendJson('POST', input)).then((r) => json<{ path: MapPath }>(r)).then((d) => d.path)
+}
+
+export function deleteMapPath(id: number): Promise<void> {
+  return fetch(`/api/map-paths/${id}`, { method: 'DELETE' }).then((r) => json<{ deleted: number }>(r)).then(() => undefined)
+}
+
+// --- sektory na zmapowanej mapie -----------------------------------------------
+
+/** Przypisanie przedmiotu do sektora (rozmieszczenie — nie zmienia stanu magazynu). */
+export type MapSectorItem = { item_id: number; item_name: string; unit: string; quantity: number }
+
+export type MapSector = {
+  id: number
+  name: string
+  x: number
+  y: number
+  actor: string
+  created: string
+  items: MapSectorItem[]
+}
+
+export function fetchMapSectors(): Promise<MapSector[]> {
+  return fetch('/api/map-sectors', { cache: 'no-store' })
+    .then((r) => json<{ sectors: MapSector[] }>(r))
+    .then((d) => d.sectors)
+}
+
+export function createMapSector(input: { name: string; x: number; y: number }): Promise<MapSector> {
+  return fetch('/api/map-sectors', sendJson('POST', input)).then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
+export function deleteMapSector(id: number): Promise<void> {
+  return fetch(`/api/map-sectors/${id}`, { method: 'DELETE' }).then((r) => json<{ deleted: number }>(r)).then(() => undefined)
+}
+
+export function assignSectorItem(sectorId: number, input: { item_id: number; quantity: number }): Promise<MapSector> {
+  return fetch(`/api/map-sectors/${sectorId}/items`, sendJson('PUT', input)).then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
+export function unassignSectorItem(sectorId: number, itemId: number): Promise<MapSector> {
+  return fetch(`/api/map-sectors/${sectorId}/items/${itemId}`, { method: 'DELETE' })
+    .then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
 export function fetchProcedures(): Promise<Procedure[]> {
   return fetch('/api/procedures').then((r) => json<{ procedures: Procedure[] }>(r)).then((d) => d.procedures)
+}
+
+export function fetchPackaging(): Promise<Packaging[]> {
+  return fetch('/api/packaging', { cache: 'no-store' }).then((r) => json<{ packaging: Packaging[] }>(r)).then((d) => d.packaging)
+}
+
+export function linkPackaging(id: number, inventory_item_id: number | null): Promise<Packaging[]> {
+  return fetch('/api/packaging', sendJson('PATCH', { id, inventory_item_id }))
+    .then((r) => json<{ packaging: Packaging[] }>(r)).then((d) => d.packaging)
+}
+
+export function proposePackingRule(input: PackingInput & { expected_version?: number }): Promise<Proposal> {
+  return fetch('/api/procedures', sendJson('POST', input)).then((r) => json<{ proposal: Proposal }>(r)).then((d) => d.proposal)
 }
 
 export function fetchHistory(): Promise<HistoryEntry[]> {

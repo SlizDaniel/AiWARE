@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '@/lib/api'
+import {
+  confirmProposal,
+  createMapSector,
+  sendCommand,
+  type Item,
+  type MapPath,
+  type MapSector,
+  type Proposal,
+  type Zone,
+} from '@/lib/api'
 import RangeIndicator from './ui/RangeIndicator'
 import { LoadError, Notice, RollingNumber, Skeleton } from './ui/feedback'
 import { CheckIcon, CloseIcon, PinIcon, PlusIcon } from './ui/icons'
 import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
 import { STOCK_LEVEL, countDeviations, stockLevel } from './ui/stockLevel'
 import { buttonClass, fieldClass, panelClass } from './ui/styles'
+import { formatMeters, pathDistanceM } from '@/lib/pdr'
+import PathMap, { PATH_COLORS, type SectorShape } from './PathMap'
+import SectorPanel from './SectorPanel'
 import { findZoneByName, itemsForZone, zoneForItem, type MapTarget } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -13,6 +25,15 @@ type LoadState = 'loading' | 'ready' | 'error'
 type Props = {
   zones: Zone[]
   items: Item[]
+  /** Ścieżki nagrane telefonem — gdy istnieją, stają się główną mapą magazynu. */
+  paths?: MapPath[]
+  /** Sektory wyznaczone na zmapowanym rzucie. */
+  sectors?: MapSector[]
+  /** Usuwanie sektorów — tylko kierownik. */
+  canDecide?: boolean
+  /** Toast + odświeżenie po zmianie sektorów. */
+  onSectorsChanged?: (message: string) => void
+  onSectorsError?: (message: string) => void
   locationTarget: MapTarget | null
   selectedId: number | null
   onSelectZone: (id: number | null) => void
@@ -36,8 +57,15 @@ function zoneStats(zone: Zone, items: Item[], zones: Zone[]): ZoneStats {
 
 const SLOT = 'min-h-[5.5rem] rounded-md'
 
-export default function WarehouseMap({ zones, items, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
+export default function WarehouseMap({ zones, items, paths = [], sectors = [], canDecide = false, onSectorsChanged, onSectorsError, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
+  const [showSchematic, setShowSchematic] = useState<boolean | null>(null)
+  const [addSectorMode, setAddSectorMode] = useState(false)
+  const [pendingSector, setPendingSector] = useState<{ x: number; y: number } | null>(null)
+  const [sectorName, setSectorName] = useState('')
+  const [sectorBusy, setSectorBusy] = useState(false)
+  const [sectorError, setSectorError] = useState('')
+  const [selectedSectorId, setSelectedSectorId] = useState<number | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
@@ -46,6 +74,36 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
   const nameInputRef = useRef<HTMLInputElement>(null)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
   const mapRef = useRef<HTMLElement>(null)
+
+  const schematicVisible = showSchematic ?? paths.length === 0
+
+  // Highlight „gdzie leży X?" żyje na schemacie stref — pokaż go, gdy przychodzi cel.
+  useEffect(() => {
+    if (locationTarget) setShowSchematic(true)
+  }, [locationTarget])
+
+  const pickSectorPoint = (meters: { x: number; y: number }) => {
+    setPendingSector({ x: Math.round(meters.x * 10) / 10, y: Math.round(meters.y * 10) / 10 })
+  }
+
+  const saveSector = async () => {
+    const name = sectorName.trim()
+    if (!name || !pendingSector || sectorBusy) return
+    setSectorBusy(true)
+    setSectorError('')
+    try {
+      const sector = await createMapSector({ name, x: pendingSector.x, y: pendingSector.y })
+      setSelectedSectorId(sector.id)
+      setSectorName('')
+      setPendingSector(null)
+      setAddSectorMode(false)
+      onSectorsChanged?.(`Dodano sektor: ${sector.name}`)
+    } catch (reason) {
+      setSectorError(reason instanceof Error ? reason.message : 'Nie udało się dodać sektora.')
+    } finally {
+      setSectorBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (locationTarget && state === 'ready') mapRef.current?.focus()
@@ -126,6 +184,91 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
   const rows = Math.max(3, Math.ceil((orderedZones.length + 1) / 2))
   const targetLabel = locationTarget ? `${locationTarget.name} · ${locationTarget.location || 'Brak zapisanej lokalizacji'}` : ''
 
+  const sectorShapes: SectorShape[] = sectors.map((sector) => ({
+    id: sector.id,
+    name: sector.name,
+    x: sector.x,
+    y: sector.y,
+    active: sector.id === selectedSectorId,
+  }))
+
+  const mappedMapCard = paths.length === 0 ? null : (
+    <div className="rounded-lg border border-line-strong bg-sheet px-3 pb-4 pt-4 sm:px-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <span className="label-caps">Rzeczywisty rzut · kratka w metrach</span>
+        <button
+          type="button"
+          onClick={() => {
+            setAddSectorMode((value) => !value)
+            setPendingSector(null)
+            setSectorError('')
+          }}
+          aria-pressed={addSectorMode}
+          className={buttonClass(addSectorMode ? 'ghost' : 'primary', 'sm')}
+        >
+          <PlusIcon size={16} />
+          {addSectorMode ? 'Anuluj dodawanie' : 'Dodaj sektor'}
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <PathMap
+          width={880}
+          height={560}
+          shapes={paths.map((path, index) => ({
+            points: path.points,
+            markers: path.markers,
+            color: PATH_COLORS[index % PATH_COLORS.length],
+            label: path.name,
+          }))}
+          sectors={sectorShapes}
+          onPick={addSectorMode ? pickSectorPoint : undefined}
+          pickHint="dodawanie sektora · kliknij miejsce na mapie"
+          onSectorClick={(sector) => setSelectedSectorId((current) => (current === sector.id ? null : sector.id))}
+          onMarkerClick={(marker) => {
+            if (!marker.zone) return
+            const zone = findZoneByName(marker.zone, zones)
+            if (zone) {
+              onSelectZone(zone.id)
+              setShowSchematic(true)
+            }
+          }}
+          ariaLabel="Rzeczywista mapa magazynu w metrach"
+        />
+      </div>
+      {addSectorMode &&
+        (pendingSector ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveSector() }} className="mt-3 flex flex-wrap items-end gap-2 rounded-md bg-ground px-3 py-3">
+            <label className="min-w-0 flex-1">
+              <span className="label-caps mb-1.5 block">Nazwa sektora</span>
+              <input
+                value={sectorName}
+                onChange={(event) => setSectorName(event.target.value)}
+                placeholder="np. Sektor A1"
+                className={fieldClass}
+              />
+            </label>
+            <span className="pb-2.5 text-xs tabular-nums text-ink-2">
+              {pendingSector.x.toLocaleString('pl-PL')} m, {pendingSector.y.toLocaleString('pl-PL')} m
+            </span>
+            <button type="submit" disabled={sectorBusy || !sectorName.trim()} className={buttonClass('primary', 'sm')}>
+              <CheckIcon size={16} />
+              {sectorBusy ? 'Zapisuję…' : 'Zapisz sektor'}
+            </button>
+            <button type="button" onClick={() => setPendingSector(null)} className={buttonClass('ghost', 'sm')}>
+              Inne miejsce
+            </button>
+          </form>
+        ) : (
+          <p className="mt-3 text-xs text-ink-2" role="status">Kliknij miejsce na mapie, żeby tam umieścić sektor.</p>
+        ))}
+      {sectorError && <Notice tone="alarm" role="alert">{sectorError}</Notice>}
+      <p className="mt-3 text-xs text-mute">
+        Ścieżki z akcelerometru i kompasu (kroki × kierunek), łącznie {formatMeters(paths.reduce((sum, path) => sum + pathDistanceM(path.points), 0))}.
+        Znacznik ze strefą przenosi do schematu stref poniżej.
+      </p>
+    </div>
+  )
+
   return (
     <section ref={mapRef} tabIndex={-1} aria-label="Mapa stref magazynu" className="@container rounded-lg focus-visible:outline-offset-4">
       <div className="grid gap-x-8 gap-y-6 @4xl:grid-cols-[minmax(0,1fr)_minmax(17rem,20rem)]">
@@ -164,9 +307,17 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
         ))}
 
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h2 className="text-lg font-semibold text-ink">Rzut magazynu</h2>
-            <span className="text-sm text-ink-2">schemat · <span className="tabular-nums">{orderedZones.length}</span> stref</span>
+          {mappedMapCard}
+          {schematicVisible && (
+          <>
+          <div className={'mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1' + (paths.length > 0 ? ' mt-5' : '')}>
+            <h2 className="text-lg font-semibold text-ink">{paths.length > 0 ? 'Schemat zastępczy (strefy)' : 'Rzut magazynu'}</h2>
+            <span className="flex items-center gap-3 text-sm text-ink-2">
+              <span>schemat · <span className="tabular-nums">{orderedZones.length}</span> stref</span>
+              {paths.length > 0 && (
+                <button type="button" onClick={() => setShowSchematic(false)} className={buttonClass('ghost', 'sm')}>Ukryj</button>
+              )}
+            </span>
           </div>
 
           {/* Rzut hali: obrys ściany, brama (przerwa w ścianie), ciąg komunikacyjny i dwa rzędy regałów. */}
@@ -250,6 +401,13 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
             </div>
           </div>
           <p className="mt-3 text-xs text-mute">Układ schematyczny. Położenie stref na rzucie nie oznacza fizycznych współrzędnych.</p>
+          </>
+          )}
+          {paths.length === 0 && (
+            <div className="mt-4 rounded-md bg-ground px-4 py-3 text-sm text-ink-2">
+              Zmapuj halę telefonem (nagrywanie ścieżek poniżej), a ten schemat zastąpi rzeczywisty rzut z sektorami.
+            </div>
+          )}
         </div>
 
         <aside
@@ -395,6 +553,16 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
               )}
             </div>
           )}
+
+          <SectorPanel
+            sectors={sectors}
+            items={items}
+            selectedId={selectedSectorId}
+            onSelect={setSelectedSectorId}
+            canDecide={canDecide}
+            onChanged={onSectorsChanged ?? (() => {})}
+            onError={onSectorsError ?? (() => {})}
+          />
         </aside>
       </div>
     </section>
