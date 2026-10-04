@@ -81,7 +81,7 @@ Transporty chmurowe w testach są kontrolowane; żadna próba fizycznym mikrofon
 ani pomiar prawdziwego Gemini nie jest przedstawiana jako wykonana.
 Wyniki końcowe (2026-10-04):
 
-- Vitest: 50 plików, 880 testów przeszło, 2 pominięte.
+- Vitest: 51 plików, 893 testy przeszły, 2 pominięte.
 - Python: 18 testów skryptów przeszło.
 - Lint, web typecheck, mobile typecheck, git diff --check: poprawne.
 - Produkcyjny build Next przez webpack: poprawny. Webpack użyty z powodu
@@ -92,7 +92,10 @@ Wyniki końcowe (2026-10-04):
   przydział zadania szkła → pomoc pokazuje pełną bieżącą regułę pakowania.
 - Review Standards i Spec: uwagi naprawione, brak pozostałych blockerów.
 - Równoległe zmiany kolegi w mobile w głównym checkout nie zostały edytowane
-  ani dołączone. Branch przygotowany w izolowanym worktree, bez merge do main.
+  ani dołączone przed ich zatwierdzeniem przez kolegę. Po opublikowaniu jego
+  commita 1642c42 (mobilne mapowanie) zintegrowano main z naszym branchem
+  bez konfliktów; pełna regresja i oba typecheck ponownie przeszły.
+  Branch przygotowany w izolowanym worktree, bez merge do main.
 
 Nie mierzono realnej skuteczności mikrofonu, hałasu ani żywego Gemini.
 Skrypty diagnostyczne używające rzeczywistego dostawcy wymagają osobnego uruchomienia.
