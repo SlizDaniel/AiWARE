@@ -693,7 +693,7 @@ export default function CommandPanel({
           value={text}
           onChange={(e) => setText(e.target.value)}
           readOnly={micStarting || micLive || transcribing || (wake.on && (wake.phase === 'hearing' || wake.phase === 'refining'))}
-          placeholder={state?.kind === 'proposal' ? '„zatwierdź” albo „odrzuć”' : `„${prefix}, ile kartonów?”`}
+          placeholder={state?.kind === 'proposal' ? '„zatwierdź” / „odrzuć”' : `„${prefix}, ile kartonów?”`}
           className={
             fieldClass +
             ' h-11 flex-1 text-[15px] ' +

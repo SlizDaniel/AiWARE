@@ -289,7 +289,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
 
       <main className="min-w-0 flex-1 lg:overflow-y-auto xl:grid xl:grid-cols-[minmax(0,1fr)_22rem] xl:grid-rows-[auto_1fr] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
         <header className="px-5 pb-6 pt-7 sm:px-8 xl:col-start-1 xl:row-start-1 xl:pt-9 2xl:px-12">
-          <div className="mx-auto flex max-w-[1180px] flex-wrap items-end justify-between gap-x-8 gap-y-4">
+          <div className="mx-auto flex max-w-[1180px] flex-col items-start gap-4">
             <div className="min-w-0">
               <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.015em] text-ink sm:text-[32px]">{heading.title}</h1>
               <p className="mt-1.5 text-[15px] text-ink-2">{heading.subtitle}</p>

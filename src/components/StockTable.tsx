@@ -71,8 +71,8 @@ export default function StockTable({
 
   return (
     <section aria-label="Pozycje magazynowe" className={panelClass}>
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4">
-        <label className="relative block w-full max-w-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
+        <label className="relative block min-w-48 max-w-64 flex-1">
           <SearchIcon size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
           <input
             aria-label="Szukaj pozycji magazynowej"
@@ -83,13 +83,11 @@ export default function StockTable({
             className={`${fieldClass} h-10 pl-10`}
           />
         </label>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="text-sm text-ink-2" aria-live="polite">
-            <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
-            <span className="tabular-nums">{items.length}</span> pozycji
-          </p>
-          {toolbar && <div className="flex flex-wrap items-center gap-2">{toolbar}</div>}
-        </div>
+        <p className="whitespace-nowrap text-sm text-ink-2" aria-live="polite">
+          <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
+          <span className="tabular-nums">{items.length}</span> pozycji
+        </p>
+        {toolbar && <div className="ml-auto flex flex-wrap items-center gap-2">{toolbar}</div>}
       </div>
 
       {filteredItems.length === 0 ? (
