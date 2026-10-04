@@ -20,14 +20,13 @@ type Props = {
   canDecide: boolean
   onSaved: (name: string) => void
   onDeleted: (name: string) => void
-  onShowOnMap: () => void
 }
 
 const HEADING_BUFFER = 8
 
 const EMPTY_SNAPSHOT: Snapshot = { points: [{ x: 0, y: 0, t: 0 }], markers: [], startedAt: 0 }
 
-export default function MappingPanel({ paths, state, error, onRetry, zones, canDecide, onSaved, onDeleted, onShowOnMap }: Props) {
+export default function MappingPanel({ paths, state, error, onRetry, zones, canDecide, onSaved, onDeleted }: Props) {
   const [mode, setMode] = useState<Mode>('idle')
   const [manual, setManual] = useState(false)
   const [permission, setPermission] = useState<ImuPermission | null>(null)
@@ -417,13 +416,6 @@ export default function MappingPanel({ paths, state, error, onRetry, zones, canD
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={onShowOnMap}
-                    className="border border-[#d8d6cf] bg-white px-3 py-2 text-xs font-semibold text-[#454b46] hover:bg-[#f0efe9] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536b56]"
-                  >
-                    Na mapie
-                  </button>
                   {canDecide && (
                     <button
                       type="button"

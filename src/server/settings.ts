@@ -269,13 +269,13 @@ export function aiUsage(settings: AppSettings, status: AgentModeStatus): AiUsage
     ? `Mercury Decide ${llmModel} (Inception przez ${llmProvider}); lokalny parser ilości; Gemini ${geminiModel()} jako fallback ${geminiApiKey() ? 'dostępny' : 'nieskonfigurowany'}`
     : `${llmModel} (Google Gemini, ${GEMINI_HOST})`
   const disclosure =
-    'MAGAZYNIER korzysta z AI do interpretacji poleceń, transkrypcji mowy i podpowiedzi mapowania kolumn przy imporcie. ' +
+    'MAGAZYNIER korzysta z AI do interpretacji poleceń, transkrypcji mowy i podpowiedzi mapowania kolumn przy imporcie oraz doboru fragmentów procedur do przydzielonych zadań. ' +
     `Skonfigurowane integracje: komendy ${commandIntegration}, mapowanie importu Google Gemini, STT ${sttModel} (${sttProvider}). ` +
     `W bieżącym trybie LLM ${llmEnabled ? 'jest aktywne' : 'jest zastąpione parserem offline'}, ` +
     `a STT ${sttEnabled ? 'jest dostępne po naciśnięciu mikrofonu' : 'jest wyłączone lub nieskonfigurowane'}. ` +
     'Dyktowanie na żywo i nasłuch na prefix korzystają z rozpoznawania mowy wbudowanego w przeglądarkę (Web Speech API; w Chrome przetwarzane przez usługę Google). ' +
     `Nagranie trafia do STT ${settings.stt_refine ? 'po każdej komendzie (poprawa tekstu przeglądarki)' : 'tylko wtedy, gdy przeglądarka nie rozpoznaje mowy'}. ` +
-    'Polecenia, nagrania oraz nagłówki i kilka przykładowych wierszy importowanych plików są wysyłane do skonfigurowanych API tylko przy aktywnej integracji. ' +
+    'Polecenia, nagrania oraz treść zadania i pasujące procedury po kliknięciu pomocy, nagłówki i kilka przykładowych wierszy importowanych plików są wysyłane do skonfigurowanych API tylko przy aktywnej integracji. ' +
     'Zmiany stanów wymagają zatwierdzenia przez człowieka i są zapisywane w audycie z autorem zmiany. ' +
     'Przy tworzeniu projektu korzystaliśmy także z Codex/ChatGPT oraz Claude Code.'
   return {

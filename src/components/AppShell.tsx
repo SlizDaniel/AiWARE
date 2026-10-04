@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import WorkTasksPanel from './WorkTasksPanel'
+import { useNotificationCounts } from './useNotificationCounts'
 import CommandPanel, { type PendingChange } from './CommandPanel'
 import ManagerDashboard from './dashboard/ManagerDashboard'
 import HistoryList from './HistoryList'
@@ -24,6 +26,7 @@ import {
   fetchHealth,
   fetchHistory,
   fetchMapPaths,
+  fetchMapSectors,
   fetchMe,
   fetchProcedures,
   fetchReorderDrafts,
@@ -39,6 +42,7 @@ import {
   type HistoryEntry,
   type Item,
   type MapPath,
+  type MapSector,
   type Me,
   type Procedure,
   type ReorderDraft,
@@ -51,13 +55,13 @@ import { subscribeUpdates } from '@/lib/updates'
 import { zoneForItem, type MapTarget } from './zoneItems'
 
 const SECTION_TITLES: Record<SectionId, { title: string; subtitle: string }> = {
-  mapa: { title: 'Mapa magazynu', subtitle: 'Schematyczny rzut hal i stref' },
-  mapowanie: { title: 'Mapowanie hali', subtitle: 'Rzeczywisty rzut ze spaceru z telefonem (akcelerometr + kompas)' },
+  mapa: { title: 'Mapa magazynu', subtitle: 'Rzeczywisty rzut ze spaceru z telefonem, sektory i schemat stref' },
   stany: { title: 'Stany magazynowe', subtitle: 'Aktualne ilości pozycji w bazie' },
   kolejka: { title: 'Kolejka zatwierdzeń', subtitle: 'Szkice zamówień i propozycje agenta' },
   historia: { title: 'Historia zmian', subtitle: 'Audyt: kto, kiedy i co zmienił' },
   procedury: { title: 'Procedury', subtitle: 'Wiedza „jak u nas na hali”' },
   dashboard: { title: 'Dashboard kierownika', subtitle: 'Stan teraz, operacje w okresie, dziennik akcji i przekazanie zmiany' },
+  zadania: { title: 'Zadania', subtitle: 'Przydziały, nowe powiadomienia i wykonane zadania' },
   ustawienia: { title: 'Ustawienia', subtitle: 'Agent, konta, użycie AI i baza danych' },
 }
 
@@ -129,6 +133,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   const stock = useLoader<Item[]>(fetchStock, [], 'Nie udało się pobrać stanów magazynowych.')
   const zones = useLoader<Zone[]>(fetchZones, [], 'Nie udało się pobrać stref magazynu.')
   const mapPaths = useLoader<MapPath[]>(fetchMapPaths, [], 'Nie udało się pobrać ścieżek mapy.')
+  const mapSectors = useLoader<MapSector[]>(fetchMapSectors, [], 'Nie udało się pobrać sektorów mapy.')
   const history = useLoader<HistoryEntry[]>(fetchHistory, [], 'Nie udało się pobrać historii zmian.')
   const queue = useLoader<ReorderDraft[]>(fetchReorderDrafts, [], 'Nie udało się pobrać kolejki zatwierdzeń.')
   const procedures = useLoader<Procedure[]>(fetchProcedures, [], 'Nie udało się pobrać procedur.')
@@ -153,6 +158,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   const { reload: reloadStock, markLoading: markStockLoading } = stock
   const { reload: reloadZones, markLoading: markZonesLoading } = zones
   const { reload: reloadMapPaths } = mapPaths
+  const { reload: reloadMapSectors } = mapSectors
   const { reload: reloadHistory } = history
   const { reload: reloadQueue } = queue
   const { reload: reloadProcedures } = procedures
@@ -163,11 +169,12 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
     void reloadStock()
     void reloadZones()
     void reloadMapPaths()
+    void reloadMapSectors()
     void reloadHistory()
     void reloadQueue()
     void reloadProcedures()
     void reloadSettings()
-  }, [reloadHistory, reloadMapPaths, reloadProcedures, reloadQueue, reloadSettings, reloadStock, reloadZones])
+  }, [reloadHistory, reloadMapPaths, reloadMapSectors, reloadProcedures, reloadQueue, reloadSettings, reloadStock, reloadZones])
 
   // Dane magazynu + odświeżanie na żywo (polling /api/version zamiast WebSocketu).
   useEffect(() => {
@@ -215,6 +222,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
   // Bez logowania (tryb lokalny) serwer traktuje każdego jak kierownika.
   const role: Role | null = me?.user?.role ?? (authMode === 'disabled' ? 'kierownik' : null)
   const canManage = role === 'kierownik'
+  const notificationCounts = useNotificationCounts(me?.user?.id ?? (authMode === 'disabled' ? 'local' : null),role,updateTick,() => { void onReloadMe() })
   // dashboard tylko dla kierownika: bez roli (lub po jej utracie) pokazujemy Stany, a panel się odmontowuje
   const visibleSection: SectionId = section === 'dashboard' && !canManage ? 'stany' : section
   const ttsEnabled = settings.data?.tts_enabled === true && !settings.data.mode_status.demo_mode
@@ -280,6 +288,8 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
       label: `${lowTotal} poniżej minimum`,
     },
     kolejka: { count: pendingDrafts, kind: 'decision', label: `${pendingDrafts} czeka na decyzję` },
+    dashboard: { count: notificationCounts.dashboard, kind: 'alarm', label: `${notificationCounts.dashboard} nieprzeczytanych powiadomień`, notification: true },
+    zadania: { count: notificationCounts.tasks, kind: 'alarm', label: `${notificationCounts.tasks} nowych zadań`, notification: true },
   }
 
   return (
@@ -350,43 +360,48 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
             )}
 
             {visibleSection === 'mapa' && (
-              <WarehouseMap
-                zones={zones.data}
-                items={stock.data}
-                paths={mapPaths.data}
-                locationTarget={mapTarget}
-                selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones.data)?.id ?? null : null)}
-                onSelectZone={setMapSelectionId}
-                state={zones.state}
-                error={zones.error}
-                onRetry={() => void reloadZones()}
-                itemsState={stock.state}
-                onRetryItems={() => void reloadStock()}
-                onZoneAdded={(name, created) => {
-                  showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
-                  refresh()
-                }}
-              />
-            )}
-
-            {visibleSection === 'mapowanie' && (
-              <MappingPanel
-                paths={mapPaths.data}
-                state={mapPaths.state}
-                error={mapPaths.error}
-                onRetry={() => void reloadMapPaths()}
-                zones={zones.data}
-                canDecide={canManage}
-                onSaved={(name) => {
-                  showToast(`Zapisano ścieżkę: ${name}`)
-                  refresh()
-                }}
-                onDeleted={(name) => {
-                  showToast(`Usunięto ścieżkę: ${name}`)
-                  refresh()
-                }}
-                onShowOnMap={() => setSection('mapa')}
-              />
+              <>
+                <WarehouseMap
+                  zones={zones.data}
+                  items={stock.data}
+                  paths={mapPaths.data}
+                  sectors={mapSectors.data}
+                  canDecide={canManage}
+                  onSectorsChanged={(message) => {
+                    showToast(message)
+                    refresh()
+                  }}
+                  onSectorsError={(message) => showToast(message, 'error')}
+                  locationTarget={mapTarget}
+                  selectedId={mapSelectionId ?? (mapTarget ? zoneForItem(mapTarget, zones.data)?.id ?? null : null)}
+                  onSelectZone={setMapSelectionId}
+                  state={zones.state}
+                  error={zones.error}
+                  onRetry={() => void reloadZones()}
+                  itemsState={stock.state}
+                  onRetryItems={() => void reloadStock()}
+                  onZoneAdded={(name, created) => {
+                    showToast(created ? `Dodano strefę: ${name}` : `Strefa „${name}” już istnieje`)
+                    refresh()
+                  }}
+                />
+                <MappingPanel
+                  paths={mapPaths.data}
+                  state={mapPaths.state}
+                  error={mapPaths.error}
+                  onRetry={() => void reloadMapPaths()}
+                  zones={zones.data}
+                  canDecide={canManage}
+                  onSaved={(name) => {
+                    showToast(`Zapisano ścieżkę: ${name}`)
+                    refresh()
+                  }}
+                  onDeleted={(name) => {
+                    showToast(`Usunięto ścieżkę: ${name}`)
+                    refresh()
+                  }}
+                />
+              </>
             )}
 
             {visibleSection === 'stany' && (
@@ -460,6 +475,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
 
             {visibleSection === 'dashboard' && canManage && (
               <ManagerDashboard
+              key={me?.user?.id ?? 'local'}
                 updateTick={updateTick}
                 items={stock.data}
                 onNavigate={setSection}
@@ -468,7 +484,9 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
               />
             )}
 
-            {visibleSection === 'ustawienia' && (
+            {visibleSection === 'zadania' && me?.user && <WorkTasksPanel key={me.user.id} userId={me.user.id} canManage={canManage} updateTick={updateTick} />}
+
+          {visibleSection === 'ustawienia' && (
               <SettingsPanel
                 canManage={canManage}
                 me={me}

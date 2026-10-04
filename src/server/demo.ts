@@ -16,9 +16,9 @@ export const NOT_DEMO_DATABASE =
   'Baza nie jest bazą demo. Wskaż osobną bazę przez DEMO_DATABASE_URL (albo katalog PGLITE_DEMO_DIR).'
 
 /** Domain tables whose content would be wiped by a demo (re)seed. */
-const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules'] as const
+const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'work_tasks', 'packing_rules'] as const
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
-const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'map_paths', 'items']
+const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'map_sector_items', 'map_sectors', 'map_paths', 'items']
 
 async function seedDemoPacking(db: Db): Promise<void> {
   await db.exec(`INSERT INTO packaging_types (name) VALUES ('Koperta'), ('Mały karton'), ('Duży karton'), ('Folia stretch') ON CONFLICT (name) DO NOTHING`)
@@ -58,6 +58,7 @@ export async function initDemoDb(db: Db, options: { reset: boolean } = { reset: 
     await ensureSchema(tx)
     if (alreadySeeded && !options.reset) { await seedDemoPacking(tx); return false }
 
+    if (await tableExists(tx, 'work_tasks')) await tx.exec('TRUNCATE work_tasks')
     await tx.exec(`TRUNCATE ${RESET_TABLES.join(', ')} RESTART IDENTITY CASCADE`)
     for (const [name, quantity, minimum, unit, location] of DEMO_ITEMS) {
       await tx.query('INSERT INTO items (name, quantity, minimum, unit, location) VALUES ($1, $2, $3, $4, $5)', [

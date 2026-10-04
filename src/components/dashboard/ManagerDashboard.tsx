@@ -8,6 +8,7 @@ import { RefreshIcon } from '../ui/icons'
 import { buttonClass, panelClass, segmentClass, segmentGroupClass } from '../ui/styles'
 import DashboardActivityLog from './DashboardActivity'
 import DashboardAttention from './DashboardAttention'
+import ManagerNotifications from './ManagerNotifications'
 import { ActivityCharts, SummaryTiles } from './DashboardSummary'
 import ShiftSummary from './ShiftSummary'
 import StockTrend from './StockTrend'
@@ -117,6 +118,7 @@ export default function ManagerDashboard({ updateTick, items, onNavigate, onForb
   const data = summary.data
   return (
     <div className="@container space-y-6">
+      <ManagerNotifications refreshToken={refreshToken} onNavigate={onNavigate} onForbidden={onForbidden} />
       {/* A: okres, odświeżanie, czas pobrania — cienki pasek nad wszystkim, czego dotyczy */}
       <section className="space-y-4" aria-label="Okres i odświeżanie">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">

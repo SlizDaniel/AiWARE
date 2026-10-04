@@ -2,12 +2,12 @@ import { useState, type ComponentType } from 'react'
 import { ROLE_LABELS, type AuthMode, type CurrentUser } from '@/lib/api'
 import { visibleSections, type SectionId } from '@/lib/sections'
 import { signOutAndRedirect } from '@/lib/signOut'
-import { CompassIcon, GaugeIcon, HistoryIcon, LogoutIcon, MapIcon, ProcedureIcon, QueueIcon, SlidersIcon, StockIcon } from './ui/icons'
+import { GaugeIcon, HistoryIcon, LogoutIcon, MapIcon, ProcedureIcon, QueueIcon, SlidersIcon, StockIcon } from './ui/icons'
 import { StateShape, type StateKind } from './ui/StateMark'
 import { buttonClass } from './ui/styles'
 
 /** Licznik przy pozycji menu: liczba + kształt stanu (np. ▲ 3 poniżej minimum). */
-export type NavBadge = { count: number; kind: StateKind; label: string }
+export type NavBadge = { count: number; kind: StateKind; label: string; notification?: boolean }
 
 type Props = {
   current: SectionId
@@ -22,13 +22,13 @@ type Props = {
 
 const ICONS: Record<SectionId, ComponentType<{ size?: number; className?: string }>> = {
   mapa: MapIcon,
-  mapowanie: CompassIcon,
   stany: StockIcon,
   kolejka: QueueIcon,
   historia: HistoryIcon,
   procedury: ProcedureIcon,
   dashboard: GaugeIcon,
   ustawienia: SlidersIcon,
+  zadania: QueueIcon,
 }
 
 export default function Sidebar({ current, onNavigate, connected, user, authMode, canManage, badges = {} }: Props) {
@@ -116,8 +116,8 @@ function Navigation({
             <Icon size={18} className={active ? 'text-act' : 'text-mute group-hover:text-ink-2'} />
             <span className="min-w-0 flex-1 truncate">{section.label}</span>
             {badge && badge.count > 0 && (
-              <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums text-ink-2" title={badge.label}>
-                <StateShape kind={badge.kind} size={8} />
+              <span className={badge.notification ? "ml-auto inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold tabular-nums text-white" : "ml-auto inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums text-ink-2"} title={badge.label} aria-label={badge.label}>
+                {!badge.notification && <StateShape kind={badge.kind} size={8} />}
                 {badge.count}
                 <span className="sr-only">{badge.label}</span>
               </span>

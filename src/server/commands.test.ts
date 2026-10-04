@@ -20,7 +20,7 @@ import { createPgliteDb, type Db } from './sql'
 import { TOOL_REGISTRY } from './tools'
 import { LLMProviderError, type Interpretation, type LLMProvider, type ToolSchema } from './types'
 
-const TABLES = 'items, audit_log, reorder_drafts, zones, procedures, proposals, pending_imports, settings, app_meta'
+const TABLES = 'items, audit_log, reorder_drafts, zones, procedures, packing_rules, proposals, pending_imports, settings, app_meta'
 const WORKER = { name: 'Jan Magazynier', id: '33333333-3333-3333-3333-333333333333' }
 
 let db: Db
@@ -175,7 +175,7 @@ describe('offline command pipeline (test_api.py)', () => {
     expect(response).toMatchObject({ type: 'answer', tool: 'get_location', text: 'Szkło leży w: Strefa B-2.' })
   })
 
-  it('recall of a missing procedure is clarify, not a hallucination', async () => {
+  it('recall of a missing rule is clarify, not a hallucination', async () => {
     const response = await command('jak pakujemy szkło?')
     expect(response.type).toBe('clarify')
     const message = (response as { message: string }).message
