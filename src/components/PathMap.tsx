@@ -10,14 +10,28 @@ export type PathShape = {
   label?: string
 }
 
+export type SectorShape = {
+  id: number
+  name: string
+  x: number
+  y: number
+  active?: boolean
+}
+
 type Props = {
   shapes: PathShape[]
+  /** Sektory wyznaczone na zmapowanej mapie (stałe punkty z nazwą). */
+  sectors?: SectorShape[]
   width?: number
   height?: number
-  /** Tryb ręczny: klik w mapę dopisuje punkt ścieżki. */
+  /** Tryb ręczny/podnoszenie punktu: klik w mapę zwraca współrzędne w metrach. */
   onPick?: (meters: { x: number; y: number }) => void
   /** Klik w znacznik (np. znacznik ze strefą → wybór strefy na mapie). */
   onMarkerClick?: (marker: PathMarker) => void
+  /** Klik w sektor → szczegóły. */
+  onSectorClick?: (sector: SectorShape) => void
+  /** Podpowiedź nad mapą w trybie klikania punktów (domyślnie: nagrywanie ręczne). */
+  pickHint?: string
   ariaLabel?: string
   showStartLabel?: boolean
 }
@@ -27,14 +41,20 @@ export const PATH_COLORS = ['#315b37', '#a45d52', '#3a5a80', '#805c12', '#5b3a80
 /** Rzut ścieżek w metrach: siatka 1-2-5, północ u góry, START na zielonym punkcie. */
 export default function PathMap({
   shapes,
+  sectors = [],
   width = 640,
   height = 420,
   onPick,
   onMarkerClick,
+  onSectorClick,
+  pickHint,
   ariaLabel = 'Rzeczywisty rzut ścieżek w metrach',
   showStartLabel = true,
 }: Props) {
-  const proj = useMemo(() => projectionFor(boundsOf(shapes), width, height, 36), [shapes, width, height])
+  const proj = useMemo(
+    () => projectionFor(boundsOf([...shapes, ...sectors.map((sector) => ({ points: [], markers: [{ x: sector.x, y: sector.y, label: sector.name }] }))]), width, height, 36),
+    [shapes, sectors, width, height],
+  )
   const step = proj.gridStepM
   const bounds = boundsOf(shapes)
 
@@ -119,9 +139,38 @@ export default function PathMap({
           </g>
         )
       })}
+      {sectors.map((sector) => {
+        const svg = proj.toSvg(sector)
+        return (
+          <g
+            key={sector.id}
+            className={onSectorClick ? 'cursor-pointer' : undefined}
+            onClick={
+              onSectorClick
+                ? (event) => {
+                    event.stopPropagation()
+                    onSectorClick(sector)
+                  }
+                : undefined
+            }
+          >
+            <rect
+              x={svg.x - 8}
+              y={svg.y - 8}
+              width={16}
+              height={16}
+              rx={3}
+              fill="#3a5a80"
+              stroke={sector.active ? '#1d2f45' : '#ffffff'}
+              strokeWidth={sector.active ? 3 : 1.5}
+            />
+            <text x={svg.x + 12} y={svg.y + 4} fill="#1d2f45" fontSize={12} fontWeight={700}>{sector.name}</text>
+          </g>
+        )
+      })}
       {onPick && (
         <text x={width / 2} y={18} textAnchor="middle" fill="#70756f" fontSize={11}>
-          tryb ręczny · klikaj kolejne punkty przejścia · kratka = {step} m
+          {pickHint ?? 'tryb ręczny · klikaj kolejne punkty przejścia'} · kratka = {step} m
         </text>
       )}
     </svg>

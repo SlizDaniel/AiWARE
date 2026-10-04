@@ -337,6 +337,44 @@ export function deleteMapPath(id: number): Promise<void> {
   return fetch(`/api/map-paths/${id}`, { method: 'DELETE' }).then((r) => json<{ deleted: number }>(r)).then(() => undefined)
 }
 
+// --- sektory na zmapowanej mapie -----------------------------------------------
+
+/** Przypisanie przedmiotu do sektora (rozmieszczenie — nie zmienia stanu magazynu). */
+export type MapSectorItem = { item_id: number; item_name: string; unit: string; quantity: number }
+
+export type MapSector = {
+  id: number
+  name: string
+  x: number
+  y: number
+  actor: string
+  created: string
+  items: MapSectorItem[]
+}
+
+export function fetchMapSectors(): Promise<MapSector[]> {
+  return fetch('/api/map-sectors', { cache: 'no-store' })
+    .then((r) => json<{ sectors: MapSector[] }>(r))
+    .then((d) => d.sectors)
+}
+
+export function createMapSector(input: { name: string; x: number; y: number }): Promise<MapSector> {
+  return fetch('/api/map-sectors', sendJson('POST', input)).then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
+export function deleteMapSector(id: number): Promise<void> {
+  return fetch(`/api/map-sectors/${id}`, { method: 'DELETE' }).then((r) => json<{ deleted: number }>(r)).then(() => undefined)
+}
+
+export function assignSectorItem(sectorId: number, input: { item_id: number; quantity: number }): Promise<MapSector> {
+  return fetch(`/api/map-sectors/${sectorId}/items`, sendJson('PUT', input)).then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
+export function unassignSectorItem(sectorId: number, itemId: number): Promise<MapSector> {
+  return fetch(`/api/map-sectors/${sectorId}/items/${itemId}`, { method: 'DELETE' })
+    .then((r) => json<{ sector: MapSector }>(r)).then((d) => d.sector)
+}
+
 export function fetchProcedures(): Promise<Procedure[]> {
   return fetch('/api/procedures').then((r) => json<{ procedures: Procedure[] }>(r)).then((d) => d.procedures)
 }
