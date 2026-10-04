@@ -19,6 +19,11 @@ export function createSpeechCommandBuffer(onReady: (text: string, startMs: numbe
   return {
     clear,
     flush,
+    endSession() {
+      // Keep the final-result silence timer. Incomplete speech is discarded whole,
+      // so an unfinished qualifier cannot turn into a shorter stock operation.
+      if ([...segments.values()].some(segment => !segment.final)) clear()
+    },
     get pending() { return segments.size > 0 },
     update(index: number, text: string, final: boolean, startMs: number | null, startsCommand = false): string {
       // Nowy prefiks zastępuje jeszcze niewysłaną komendę. Rewizja tego samego

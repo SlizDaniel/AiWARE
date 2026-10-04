@@ -32,6 +32,25 @@ describe('bufor wypowiedzi', () => {
     expect(ready).toHaveBeenCalledExactlyOnceWith('ile mamy kartonów', 10)
   })
 
+  it('keeps the silence delay after recognition ends and discards incomplete utterances', () => {
+    const ready = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready)
+    buffer.update(0, 'wzięliśmy dwie palety kartonów', true, 10)
+    vi.advanceTimersByTime(200)
+    buffer.endSession()
+    vi.advanceTimersByTime(799)
+    expect(ready).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(ready).toHaveBeenCalledExactlyOnceWith('wzięliśmy dwie palety kartonów', 10)
+    ready.mockClear()
+    buffer.update(0, 'wzięliśmy dwie palety', true, 20)
+    buffer.update(1, 'czer', false, 30)
+    buffer.endSession()
+    vi.advanceTimersByTime(2000)
+    expect(ready).not.toHaveBeenCalled()
+    expect(buffer.pending).toBe(false)
+  })
+
   it('wyłączenie nasłuchu porzuca komendę i pozwala zacząć od nowa', () => {
     const ready = vi.fn()
     const buffer = createSpeechCommandBuffer(ready)

@@ -10,15 +10,18 @@ Poprawki powstają na osobnym branchu. Każdy zapis nadal wymaga karty i potwier
 
 1. Parser liczył „dwie palety” jako jedną, a „1,5 palety” jako pięć. Ilości
    całkowite (cyfry i słowa 1–12) oraz palety/sztuki/rolki mają poprawny kierunek
-   i wartość. Ułamki, zero, brak ilości i nieznany przelicznik wymagają pytania.
+   i wartość. Ułamki, zero, brak ilości przy jednostce mnogiej lub brak jednostki i nieznany
+   przelicznik wymagają pytania. Jednostka pojedyncza („paletę”) oznacza jedną,
+   zgodnie z istniejącą ścieżką demo PRD.
 2. Dopasowanie tylko pierwszego słowa nazwy wybierało pierwszy wariant z bazy.
    Wszystkie wypowiedziane słowa muszą pasować. Dwa warianty → doprecyzowanie;
    odmiana „kartonów dużych” → „Kartony duże”; kod produktu wymaga dokładnego dopasowania.
 3. Negacja i plan były interpretowane jako dokonane wydanie. Rozpoznane niepewne
    wypowiedzi wymagają doprecyzowania, także gdy model zwróci update_stock.
 4. Poprawny JSON LLM nie gwarantował poprawnego towaru/ilości. Dla jednoznacznych
-   poleceń obsługiwanych offline serwer porównuje ID i deltę z rozpoznaną frazą.
-   Sprzeczność → clarify, bez propozycji i zapisu. Jawne rolki/sztuki muszą być
+   poleceń obsługiwanych offline serwer porównuje intencję, ID i deltę z rozpoznaną frazą.
+   Sprzeczność → clarify, bez propozycji i zapisu. Model nie może podstawić
+   istniejącego ID, jeśli parser rozpoznał nieznaną pełną nazwę. Jawne rolki/sztuki muszą być
    zgodne z jednostką towaru. ID modelu musi występować w dostarczonym kontekście.
 5. Limit 40 towarów pomijał podobnie brzmiący towar z dalszej części listy.
    Ograniczony ranking literówek poprawia dobór kontekstu; sam ranking nie wykonuje operacji.
@@ -27,6 +30,8 @@ Poprawki powstają na osobnym branchu. Każdy zapis nadal wymaga karty i potwier
 7. Kilka wyników pośrednich trafiało do jednego indeksu, dublując słowa po finalizacji.
    Każdy wynik zachowuje indeks, kolejność i czas początku. Bufor nadal czeka na
    końcowe segmenty i pauzę 1000 ms; nowy prefiks zastępuje niewysłaną komendę.
+   Koniec sesji nie skraca pauzy; niekompletna wypowiedź jest porzucana w całości.
+   Następna sesja czeka na opróżnienie bufora, zanim zresetuje indeksy.
 8. Bezpieczna alternatywa STT z identyczną treścią komendy może rozpoznać prefiks
    również w podglądzie. Dozwolone są dwa początkowe wypełniacze („no hej Magu”);
    nadal nie reagujemy na dowolne wystąpienie prefiksu w środku rozmowy.
@@ -74,4 +79,20 @@ Regresje na istniejących seams: intencja → narzędzie, komenda → odpowiedź
 STT → tekst, decyzje i bufor wypowiedzi, zadanie → procedury, wejście HTTP.
 Transporty chmurowe w testach są kontrolowane; żadna próba fizycznym mikrofonem
 ani pomiar prawdziwego Gemini nie jest przedstawiana jako wykonana.
-Wyniki końcowe zostaną uzupełnione po testach, buildzie, GUI i review.
+Wyniki końcowe (2026-10-04):
+
+- Vitest: 50 plików, 880 testów przeszło, 2 pominięte.
+- Python: 18 testów skryptów przeszło.
+- Lint, web typecheck, mobile typecheck, git diff --check: poprawne.
+- Produkcyjny build Next przez webpack: poprawny. Webpack użyty z powodu
+  junction node_modules w izolowanym worktree.
+- GUI w izolowanym demo: dwie palety Kartony 13 → 9 dopiero po confirm;
+  negacja i ułamek → clarify bez zmiany; lokalizacja szkła → odpowiedź/mapa
+  (seed nie ma geometrycznej strefy); audyt i undo → stan 13 + osobny wpis;
+  przydział zadania szkła → pomoc pokazuje pełną bieżącą regułę pakowania.
+- Review Standards i Spec: uwagi naprawione, brak pozostałych blockerów.
+- Równoległe zmiany kolegi w mobile w głównym checkout nie zostały edytowane
+  ani dołączone. Branch przygotowany w izolowanym worktree, bez merge do main.
+
+Nie mierzono realnej skuteczności mikrofonu, hałasu ani żywego Gemini.
+Skrypty diagnostyczne używające rzeczywistego dostawcy wymagają osobnego uruchomienia.

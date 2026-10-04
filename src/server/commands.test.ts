@@ -493,6 +493,9 @@ function respond(name: string, args: Record<string, unknown>): FakeProvider {
 
 describe('LLM registry contract (test_llm_registry.py)', () => {
   it.each([
+    ['wzięliśmy dwie palety kartonów czerwonych', { item_id: 1, delta: -4 }],
+    ['ile mamy szkła?', { item_id: 2, delta: -2 }],
+    ['gdzie jest szkło?', { item_id: 2, delta: -2 }],
     ['nie wzięliśmy palety kartonów', { item_id: 1, delta: -2 }],
     ['wzięliśmy dwie palety kartonów', { item_id: 1, delta: -2 }],
     ['wzięliśmy dwie palety kartonów', { item_id: 2, delta: -4 }],
@@ -504,6 +507,10 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
   ] as const)('rejects a semantically wrong model proposal: %s', async (text, args) => {
     expect((await command(text, respond('update_stock', args))).type).toBe('clarify')
     expect(await listAudit(db)).toEqual([])
+    expect(await db.query('SELECT id FROM proposals')).toEqual([])
+  })
+  it('rejects another model write intent for a recognized stock question', async () => {
+    expect((await command('ile mamy szkła?', respond('draft_order', { item_id: 2, quantity: 50 }))).type).toBe('clarify')
     expect(await db.query('SELECT id FROM proposals')).toEqual([])
   })
   it('explains rate limiting while preserving the offline demo path', async () => {

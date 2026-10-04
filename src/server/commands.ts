@@ -171,12 +171,18 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
     else if (status.mode === 'mock') warning = status.warning
   }
 
+  const deterministic = parseCommand(command, items)
+  if (parsed && deterministic && parsed.tool !== deterministic.tool) {
+    return { type: 'clarify', text, message: 'Rozpoznana intencja nie zgadza się z operacją zaproponowaną przez model. Powtórz pełne polecenie.' }
+  }
   // The model's valid JSON is not proof that its quantity/direction matches the words.
   if (parsed?.tool === 'update_stock') {
     const concern = stockCommandConcern(command)
-    const deterministic = parseCommand(command, items)
     const message = concern ?? deterministic?.clarification
     if (message) return { type: 'clarify', text, message, ...(warning ? { warning } : {}) }
+    if (deterministic?.missingItem && !parsed.missingItem) {
+      return { type: 'clarify', text, message: 'Nazwa towaru nie pasuje do istniejącej pozycji. Podaj dokładną nazwę z magazynu.' }
+    }
     if (deterministic?.tool === 'update_stock' && deterministic.itemId != null &&
       (deterministic.itemId !== parsed.itemId || delta(deterministic) !== delta(parsed))) {
       return { type: 'clarify', text, message: 'Rozpoznana operacja nie zgadza się z podanym towarem lub ilością. Powtórz pełne polecenie.' }

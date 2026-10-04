@@ -267,7 +267,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
   )
 
   const startRecognition = useCallback(() => {
-    if (recognitionRef.current || optionsRef.current.paused || pendingRefinesRef.current > 0) return
+    if (recognitionRef.current || optionsRef.current.paused || pendingRefinesRef.current > 0 || commandBufferRef.current?.pending) return
     const recognition = createRecognition({ continuous: true })
     if (!recognition) return
     // nowa sesja przeglądarki numeruje wyniki od zera
@@ -325,8 +325,7 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
     recognition.onend = () => {
       if (recognitionRef.current === recognition) {
         recognitionRef.current = null
-        commandBufferRef.current?.flush()
-        commandBufferRef.current?.clear()
+        commandBufferRef.current?.endSession()
         if (pendingRefinesRef.current === 0) setPhase(Date.now() < armedUntilRef.current ? 'hearing' : 'listening')
       }
     }
