@@ -193,6 +193,19 @@ describe('offline command pipeline (test_api.py)', () => {
     })
   })
 
+  it('recall understands an inflected product name', async () => {
+    await savePacking(db, (await previewPacking(db, { item_id: 2, packaging_id: 3, quantity_per_package: 2, notes: 'Przekładki' }, 'kierownik')).args, WORKER, 'kierownik')
+    const response = await command('jak pakujemy szkła?')
+    expect(response).toMatchObject({ type: 'answer', tool: 'recall_procedure', text: expect.stringContaining('Duży karton') })
+  })
+
+  it('recall falls back to a free-text procedure saved before packing rules', async () => {
+    await db.query('INSERT INTO procedures (topic, text) VALUES ($1, $2)', ['szkło', 'Owijamy folią, przekładki w kartonie.'])
+    const response = await command('jak pakujemy szkło?')
+    expect(response).toMatchObject({ type: 'answer', tool: 'recall_procedure', text: 'Procedura „szkło”: Owijamy folią, przekładki w kartonie.' })
+    expect(await command('jak pakujemy szkła?')).toMatchObject({ type: 'answer', tool: 'recall_procedure' })
+  })
+
   it('zone proposal then confirm writes zone and audit', async () => {
     const proposal = await proposalFor('strefa: kartony')
     expect(proposal.tool).toBe('add_zone')
@@ -284,8 +297,8 @@ describe('offline command pipeline (test_api.py)', () => {
     expect((await command('jak pakujemy przekładkami?')).type).toBe('clarify')
   })
 
-  it('worker cannot create a packing proposal', async () => {
-    await expect(command('zapamiętaj: Szkło pakujemy po 2 w Duży karton')).rejects.toMatchObject({ status: 403 })
+  it('worker cannot create a packing proposal (clarification, not an HTTP 403)', async () => {
+    expect(await command('zapamiętaj: Szkło pakujemy po 2 w Duży karton')).toMatchObject({ type: 'clarify' })
     expect(await listProcedures(db)).toEqual([])
     expect(await db.query('SELECT id FROM proposals')).toEqual([])
     expect(await listAudit(db)).toEqual([])

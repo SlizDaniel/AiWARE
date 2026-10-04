@@ -202,7 +202,7 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   let response: CommandResponse
   try { response = await dispatchCommand(db, sourceText, parsed, actor, defaultMinimum, options.role) }
   catch (error) {
-    if (!(error instanceof HttpError) || error.status !== 422) throw error
+    if (!(error instanceof HttpError) || (error.status !== 422 && error.status !== 403)) throw error
     response = { type: 'clarify', text, message: error.message }
   }
   if (warning) response.warning = warning
@@ -368,12 +368,15 @@ function answer(text: string, parsed: ParsedCommand, data: Record<string, unknow
       }
     }
     const best = procedures[0] as { topic: string; text: string; packaging_stock?: { name: string; quantity: number; unit: string } | null }
+    // stara notatka (bez reguły pakowania) nie ma opakowania — bez zdania o jego stanie
+    const stock = !('packaging_stock' in best) ? ''
+      : best.packaging_stock
+        ? ` Opakowania na stanie: ${best.packaging_stock.name} — ${best.packaging_stock.quantity} ${best.packaging_stock.unit}.`
+        : ' Opakowanie nie ma powiązanego stanu magazynowego.'
     return {
       type: 'answer',
       tool: 'recall_procedure',
-      text: `Procedura „${best.topic}”: ${best.text} ` + (best.packaging_stock
-        ? `Opakowania na stanie: ${best.packaging_stock.name} — ${best.packaging_stock.quantity} ${best.packaging_stock.unit}.`
-        : 'Opakowanie nie ma powiązanego stanu magazynowego.'),
+      text: `Procedura „${best.topic}”: ${best.text}${stock}`,
       data,
     }
   }

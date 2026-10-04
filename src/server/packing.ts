@@ -1,5 +1,6 @@
 import { MSG_FORBIDDEN } from './auth'
-import { getItem, listItems, logEvent, type Actor } from './db'
+import { findProcedures, getItem, listItems, logEvent, type Actor, type ProcedureMatch } from './db'
+import { matchInventoryNames } from '@/lib/inventoryNames'
 import { HttpError } from './http'
 import { tsText, type Db } from './sql'
 import type { Role } from './types'
@@ -132,10 +133,22 @@ export function matchPackingName<T extends { name: string }>(text: string, rows:
   return rows.filter((r) => fold(r.name) === query)
 }
 
-export async function recallPacking(db: Db, topic: string): Promise<PackingRule[]> {
-  const items = matchPackingName(topic, await listItems(db))
+export async function recallPacking(db: Db, topic: string): Promise<(PackingRule | ProcedureMatch)[]> {
+  const all = await listItems(db)
+  let items = matchPackingName(topic, all)
+  // Odmiana z mowy („szkła”, „kartonów”) — tylko gdy wszystkie słowa wskazują dokładnie jeden produkt.
+  if (items.length === 0) {
+    const inflected = matchInventoryNames(topic, all)
+    if (inflected.length === 1) items = inflected
+  }
   if (items.length > 1) throw new HttpError(422, 'Pasuje kilka produktów. Podaj pełną nazwę produktu.')
-  return items.length === 1 ? (await listPackingRules(db)).filter((r) => r.item_id === items[0].id) : []
+  if (items.length === 1) {
+    const rules = (await listPackingRules(db)).filter((r) => r.item_id === items[0].id)
+    if (rules.length) return rules
+  }
+  // Notatki zapisane przed regułami pakowania zostają do odczytu, dopóki kierownik nie utworzy reguły.
+  const legacy = await findProcedures(db, topic)
+  return legacy.length || items.length !== 1 ? legacy : findProcedures(db, items[0].name)
 }
 
 export async function parsePacking(db: Db, text: string): Promise<Record<string, unknown>> {
