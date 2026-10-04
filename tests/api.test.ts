@@ -180,13 +180,16 @@ describe.each(engines)('API on %s', (_name, open) => {
     expect((await runCommand('gdzie leży szkło?')).text).toContain('Szkło leży w:')
     expect((await runCommand('kto wygrał mecz?')).type).toBe('unknown')
 
-    // Procedures (prefix is stripped before parsing).
-    const memory = await runCommand('Magu, zapamiętaj: szkło pakujemy z przekładkami')
+    // Packing rules (schema v4) — structured remember; /api/procedures serves approved rules.
+    const memory = await runCommand('Magu, zapamiętaj: Szkło pakujemy po 2 w Duży karton')
     expect(memory.proposal.tool).toBe('remember_procedure')
     await confirmCard(memory.proposal.id)
-    expect((await ok(procedures.GET())).procedures).toHaveLength(1)
+    const rules = (await ok(procedures.GET())).procedures
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toMatchObject({ topic: 'Szkło', quantity_per_package: 2, version: 1 })
     const recalled = await runCommand('Magu, jak pakujemy szkło?')
     expect(recalled).toMatchObject({ type: 'answer', tool: 'recall_procedure' })
+    expect((recalled as { text: string }).text).toContain('na opakowanie „Duży karton”')
 
     // Export is re-importable.
     const csv = await exportRoute.GET(new Request(`${BASE}/api/export/csv`), params({ format: 'csv' }))

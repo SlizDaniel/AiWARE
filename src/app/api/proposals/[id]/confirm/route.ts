@@ -8,7 +8,7 @@ import { session } from '@/server/session'
 export const POST = route(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const { id } = await context.params
   const { db, user } = await session()
-  const payload = await confirmProposal(db, id, actorOf(user))
+  const payload = await confirmProposal(db, id, actorOf(user), user.role)
   await bumpDataVersion(db)
   return Response.json(payload)
 })

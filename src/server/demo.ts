@@ -16,9 +16,20 @@ export const NOT_DEMO_DATABASE =
   'Baza nie jest bazą demo. Wskaż osobną bazę przez DEMO_DATABASE_URL (albo katalog PGLITE_DEMO_DIR).'
 
 /** Domain tables whose content would be wiped by a demo (re)seed. */
-const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures'] as const
+const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules'] as const
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
-const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'map_sector_items', 'map_sectors', 'map_paths', 'items']
+const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'map_sector_items', 'map_sectors', 'map_paths', 'items']
+
+async function seedDemoPacking(db: Db): Promise<void> {
+  await db.exec(`INSERT INTO packaging_types (name) VALUES ('Koperta'), ('Mały karton'), ('Duży karton'), ('Folia stretch') ON CONFLICT (name) DO NOTHING`)
+  // Only the shipped, unchanged demo note has a known structured replacement.
+  await db.query(`INSERT INTO packing_rules (item_id, packaging_id, quantity_per_package, notes, updated_by)
+    SELECT i.id, p.id, 1, 'Owiń folią i dodaj przekładki.', 'Demo — reguła wzorcowa'
+    FROM items i CROSS JOIN packaging_types p
+    WHERE i.name = 'Szkło' AND p.name = 'Duży karton'
+      AND EXISTS (SELECT 1 FROM procedures WHERE topic = 'szkło' AND text = $1)
+    ON CONFLICT (item_id) DO NOTHING`, [DEMO_PROCEDURE])
+}
 
 async function tableExists(db: Db, table: string): Promise<boolean> {
   const rows = await db.query<{ found: boolean }>('SELECT to_regclass($1::text) IS NOT NULL AS found', [table])
@@ -45,7 +56,7 @@ export async function initDemoDb(db: Db, options: { reset: boolean } = { reset: 
     const alreadySeeded = await tableExists(tx, 'demo_metadata')
     if (!alreadySeeded && (await holdsAppData(tx))) throw new Error(NOT_DEMO_DATABASE)
     await ensureSchema(tx)
-    if (alreadySeeded && !options.reset) return false
+    if (alreadySeeded && !options.reset) { await seedDemoPacking(tx); return false }
 
     await tx.exec(`TRUNCATE ${RESET_TABLES.join(', ')} RESTART IDENTITY CASCADE`)
     for (const [name, quantity, minimum, unit, location] of DEMO_ITEMS) {
@@ -58,6 +69,9 @@ export async function initDemoDb(db: Db, options: { reset: boolean } = { reset: 
       ])
     }
     await tx.query('INSERT INTO procedures (topic, text) VALUES ($1, $2)', ['szkło', DEMO_PROCEDURE])
+    await seedDemoPacking(tx)
+    await tx.exec(`UPDATE packaging_types SET inventory_item_id = (SELECT id FROM items WHERE name = 'Kartony') WHERE name = 'Duży karton';
+      UPDATE packaging_types SET inventory_item_id = (SELECT id FROM items WHERE name = 'Folia stretch') WHERE name = 'Folia stretch';`)
     await tx.exec(`
       CREATE TABLE IF NOT EXISTS demo_metadata (version INTEGER NOT NULL);
       ALTER TABLE demo_metadata ENABLE ROW LEVEL SECURITY;

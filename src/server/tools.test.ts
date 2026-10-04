@@ -1,6 +1,6 @@
 // Agent tool registry (card 02) — port of legacy tests/test_tools.py.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { confirmStockChange, initDb, listAudit, listReorderDrafts, listZones } from './db'
+import { confirmStockChange, DEFAULT_ACTOR, initDb, listAudit, listReorderDrafts, listZones } from './db'
 import { createPgliteDb, nextTuesday, type Db } from './sql'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
 
@@ -155,15 +155,14 @@ describe('tools on a real database', () => {
     expect((await listZones(db)).map((zone) => zone.name)).toEqual(['kartony'])
   })
 
-  it('remember and recall a procedure', async () => {
-    await callTool(db, 'remember_procedure', { topic: 'szkło', text: 'szkło pakujemy w kartony Y, strefa C2' })
+  it('remember and recall a packing rule', async () => {
+    const { previewPacking } = await import('./packing')
+    const packaging = (await db.query<{ id: number }>("SELECT id FROM packaging_types WHERE name = 'Duży karton'"))[0]!.id
+    const preview = await previewPacking(db, { item_id: 2, packaging_id: packaging, quantity_per_package: 2, notes: 'kartony Y' }, 'kierownik')
+    await callTool(db, 'remember_procedure', preview.args, { actor: DEFAULT_ACTOR, role: 'kierownik' })
 
     const hit = (await callTool(db, 'recall_procedure', { topic: 'szkło' })) as { procedures: { text: string }[] }
-    expect(hit.procedures[0].text.startsWith('szkło pakujemy')).toBe(true)
-
-    // search by a fragment of the procedure text
-    const fragment = (await callTool(db, 'recall_procedure', { topic: 'pakujemy' })) as { procedures: unknown[] }
-    expect(fragment.procedures).toHaveLength(1)
+    expect(hit.procedures[0].text).toContain('na opakowanie „Duży karton”')
 
     // Polish uppercase is folded too
     const upper = (await callTool(db, 'recall_procedure', { topic: 'SZKŁO' })) as { procedures: unknown[] }
@@ -172,15 +171,19 @@ describe('tools on a real database', () => {
     expect(await callTool(db, 'recall_procedure', { topic: 'elektronika' })).toEqual({ procedures: [] })
   })
 
-  it('remember_procedure updates an existing topic', async () => {
-    await callTool(db, 'remember_procedure', { topic: 'szkło', text: 'stara wersja' })
-    const second = await callTool(db, 'remember_procedure', { topic: 'Szkło', text: 'nowa wersja' })
-    expect(second.updated).toBe(true)
+  it('remember_procedure bumps the rule version', async () => {
+    const { previewPacking } = await import('./packing')
+    const packaging = (await db.query<{ id: number }>("SELECT id FROM packaging_types WHERE name = 'Duży karton'"))[0]!.id
+    const first = await previewPacking(db, { item_id: 2, packaging_id: packaging, quantity_per_package: 2 }, 'kierownik')
+    await callTool(db, 'remember_procedure', first.args, { actor: DEFAULT_ACTOR, role: 'kierownik' })
+    const secondPreview = await previewPacking(db, { item_id: 2, packaging_id: packaging, quantity_per_package: 3 }, 'kierownik')
+    const second = (await callTool(db, 'remember_procedure', secondPreview.args, { actor: DEFAULT_ACTOR, role: 'kierownik' })) as { version: number }
+    expect(second.version).toBe(2)
 
-    const procedures = ((await callTool(db, 'recall_procedure', { topic: 'szkło' })) as { procedures: { text: string }[] })
+    const rules = ((await callTool(db, 'recall_procedure', { topic: 'szkło' })) as { procedures: { quantity_per_package: number }[] })
       .procedures
-    expect(procedures).toHaveLength(1)
-    expect(procedures[0].text).toBe('nowa wersja')
+    expect(rules).toHaveLength(1)
+    expect(rules[0].quantity_per_package).toBe(3)
   })
 
   it('add_item adds once with defaults', async () => {
