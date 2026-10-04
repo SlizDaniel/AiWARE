@@ -1,12 +1,12 @@
 import { actorOf } from '@/server/auth'
 import { runCommand } from '@/server/commands'
 import { HttpError, readJson, route } from '@/server/http'
-import { llmConfigured, providerFromEnv } from '@/server/llm'
+import { commandProviderFromEnv } from '@/server/commandProvider'
 import { enforceRateLimit, RATE_LIMITS } from '@/server/rateLimit'
 import { session } from '@/server/session'
 import { parseCommandConversation } from '@/lib/commandConversation'
 
-// LLM budget is 15 s; leave headroom for the database round trips.
+// Jev budget is 2 s + Gemini fallback 15 s; leave headroom for database round trips.
 export const maxDuration = 30
 
 const MAX_COMMAND_LENGTH = 2000
@@ -20,6 +20,6 @@ export const POST = route(async (request: Request) => {
   try { conversation = parseCommandConversation(body.conversation) }
   catch { throw new HttpError(422, 'Niepoprawny kontekst komendy (maksymalnie 4 doprecyzowania).') }
   await enforceRateLimit(db, `command:${user.id}`, RATE_LIMITS.command)
-  const provider = llmConfigured() ? providerFromEnv() : null
+  const provider = commandProviderFromEnv()
   return Response.json(await runCommand(db, body.text, { provider, actor: actorOf(user), conversation }))
 })

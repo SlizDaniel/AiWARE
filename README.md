@@ -100,6 +100,20 @@ odpowiedź bez zapisu; nieznane komendy — prośbę o doprecyzowanie. Agent nig
 
 ## Tryb agenta i Gemini
 
+- **Hybryda Mercury Decide + Gemini:** ustaw `OPENROUTER_API_KEY` w `.env.local`
+  i zachowaj `GEMINI_API_KEY`. Domyślny `OPENROUTER_MODEL` to
+  `inception/mercury-decide:free`, a `OPENROUTER_BASE_URL` to `https://openrouter.ai/api/v1`.
+  Komendy korzystają z [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request)
+  pod `/api/alpha/decisions`. Mercury wybiera intencję i towar w jednym zapytaniu
+  (limit 2 s); kod odczytuje jawne ilości sztuk lub palet (demo: 2 szt./paletę).
+  Obsługiwane są proste wydania, przyjęcia, pytania o stan i lokalizację.
+  Niepewność, niejednoznaczna ilość, inne intencje, doprecyzowania i awarie
+  kierują komendę do Gemini. Bez Gemini niepewność prowadzi do dopytania,
+  a awaria do parsera offline. STT i import pozostają w istniejących integracjach.
+  Bez klucza OpenRouter działa dotychczasowe Gemini; offline/mock/demo bez API.
+  Zapis nadal wymaga confirm i audytu. `npm run check:decisions` porównuje czas
+  i poprawność na trzech syntetycznych komendach, bez bazy i wykonania narzędzi.
+  Skrypt wymaga obu kluczy; mała próba nie gwarantuje przyspieszenia w produkcji.
 - `llm` (domyślny): Gemini z function calling na rejestrze 8 narzędzi (`get_stock`, `update_stock`,
   `check_reorder`, `draft_order`, `get_location`, `add_zone`, `remember_procedure`, `recall_procedure`)
   + `add_item`. Odpowiedź modelu przechodzi walidację schematu; błąd, timeout (15 s) albo

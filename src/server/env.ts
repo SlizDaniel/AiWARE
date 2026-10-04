@@ -32,6 +32,30 @@ export function geminiModel(): string {
   return env('GEMINI_MODEL') || 'gemini-3.5-flash-lite'
 }
 
+/** Mercury Decide via OpenRouter; Gemini remains the fallback for complex commands. */
+export function decisionApiKey(): string {
+  return env('OPENROUTER_API_KEY')
+}
+
+export function decisionEndpoint(): string {
+  const base = (env('OPENROUTER_BASE_URL') || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
+  // Only the configured provider receives its credential; reject custom origins.
+  if (base !== 'https://openrouter.ai/api/v1') throw new Error('Nieprawidłowy OPENROUTER_BASE_URL.')
+  return 'https://openrouter.ai/api/alpha/decisions'
+}
+
+export function decisionModel(): string {
+  return env('OPENROUTER_MODEL') || 'inception/mercury-decide:free'
+}
+
+export function commandAiConfigured(): boolean {
+  return decisionApiKey() !== '' || geminiApiKey() !== ''
+}
+
+export function commandAiModel(): string {
+  return decisionApiKey() ? decisionModel() : geminiModel()
+}
+
 /**
  * Speech-to-text model. The dedicated transcribe model is far more accurate on
  * noisy Polish speech than general flash models, which may echo the vocabulary.

@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "check:gemini": "tsx scripts/check-gemini.ts",
+    "check:decisions": "tsx scripts/check-decisions.ts",
     "db:setup": "tsx scripts/db-setup.ts",
     "mobile:start": "npm --prefix mobile start",
     "mobile:typecheck": "npm --prefix mobile run typecheck"

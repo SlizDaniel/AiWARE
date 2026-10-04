@@ -3,7 +3,7 @@
 // and validation follow the card-12 API from the legacy FastAPI app
 // (GET/PATCH /api/settings), extended with TTS and the default order size.
 import { DEFAULT_REORDER_QUANTITY, setSetting } from './db'
-import { geminiApiKey, geminiModel, geminiSttModel, isDemoMode, requestedModeFromEnv } from './env'
+import { commandAiConfigured, commandAiModel, geminiApiKey, geminiModel, geminiSttModel, isDemoMode, decisionApiKey, decisionEndpoint, requestedModeFromEnv } from './env'
 import { HttpError } from './http'
 import type { Db } from './sql'
 import type { AgentMode } from './types'
@@ -125,7 +125,7 @@ export async function getAppSettings(db: Db): Promise<AppSettings> {
 export async function getAgentModeStatus(db: Db): Promise<AgentModeStatus> {
   const demoMode = isDemoMode()
   const { mode } = await readStored(db)
-  const keyPresent = geminiApiKey() !== ''
+  const keyPresent = commandAiConfigured()
   let effectiveMode: AgentMode = mode
   let warning: string | null = null
   if (mode === 'llm' && !keyPresent) {
@@ -263,10 +263,14 @@ export function aiUsage(settings: AppSettings, status: AgentModeStatus): AiUsage
   const llmEnabled = status.effective_mode === 'llm'
   const sttEnabled =
     !status.demo_mode && settings.voice_mode !== 'text' && (whisperKey !== '' || geminiApiKey() !== '')
-  const llmModel = geminiModel()
+  const llmModel = commandAiModel()
+  const llmProvider = decisionApiKey() ? new URL(decisionEndpoint()).hostname : GEMINI_HOST
+  const commandIntegration = decisionApiKey()
+    ? `Mercury Decide ${llmModel} (Inception przez ${llmProvider}); lokalny parser ilości; Gemini ${geminiModel()} jako fallback ${geminiApiKey() ? 'dostępny' : 'nieskonfigurowany'}`
+    : `${llmModel} (Google Gemini, ${GEMINI_HOST})`
   const disclosure =
     'MAGAZYNIER korzysta z AI do interpretacji poleceń, transkrypcji mowy i podpowiedzi mapowania kolumn przy imporcie. ' +
-    `Skonfigurowane integracje: LLM ${llmModel} (Google Gemini, ${GEMINI_HOST}), STT ${sttModel} (${sttProvider}). ` +
+    `Skonfigurowane integracje: komendy ${commandIntegration}, mapowanie importu Google Gemini, STT ${sttModel} (${sttProvider}). ` +
     `W bieżącym trybie LLM ${llmEnabled ? 'jest aktywne' : 'jest zastąpione parserem offline'}, ` +
     `a STT ${sttEnabled ? 'jest dostępne po naciśnięciu mikrofonu' : 'jest wyłączone lub nieskonfigurowane'}. ` +
     'Dyktowanie na żywo i nasłuch na prefix korzystają z rozpoznawania mowy wbudowanego w przeglądarkę (Web Speech API; w Chrome przetwarzane przez usługę Google). ' +
@@ -276,7 +280,7 @@ export function aiUsage(settings: AppSettings, status: AgentModeStatus): AiUsage
     'Przy tworzeniu projektu korzystaliśmy także z Codex/ChatGPT oraz Claude Code.'
   return {
     llm_model: llmModel,
-    llm_provider: GEMINI_HOST,
+    llm_provider: llmProvider,
     llm_enabled: llmEnabled,
     stt_model: sttModel,
     stt_provider: sttProvider,

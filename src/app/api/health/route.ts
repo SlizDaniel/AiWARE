@@ -1,4 +1,4 @@
-import { authMode, geminiModel, geminiSttModel, isDemoMode } from '@/server/env'
+import { authMode, commandAiModel, geminiSttModel, isDemoMode } from '@/server/env'
 import { route } from '@/server/http'
 import { getDb, storageKind } from '@/server/runtime'
 import { getAgentModeStatus } from '@/server/settings'
@@ -13,7 +13,7 @@ export const GET = route(async () => {
     demo_mode: isDemoMode(),
     storage: storageKind(),
     auth_mode: authMode(),
-    llm_model: geminiModel(),
+    llm_model: commandAiModel(),
     stt_model: process.env.STT_API_KEY?.trim() ? process.env.STT_MODEL?.trim() || 'whisper-large-v3' : geminiSttModel(),
   })
 })
