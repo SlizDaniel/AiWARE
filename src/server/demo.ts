@@ -2,6 +2,7 @@
 // port of legacy/backend/app/demo.py.
 import { bumpDataVersion } from './db'
 import { ensureSchema, type Db } from './sql'
+import sampleProcedures from '../../data-samples/warehouse-procedures.json'
 
 export const DEMO_PROCEDURE = 'Szkło owijamy folią, wkładamy do kartonów z przekładkami; towar leży w Strefie B-2.'
 
@@ -20,15 +21,44 @@ const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
 const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'map_sector_items', 'map_sectors', 'map_paths', 'items']
 
-async function seedDemoPacking(db: Db): Promise<void> {
+async function seedDemoPacking(db: Db): Promise<boolean> {
   await db.exec(`INSERT INTO packaging_types (name) VALUES ('Koperta'), ('Mały karton'), ('Duży karton'), ('Folia stretch') ON CONFLICT (name) DO NOTHING`)
   // Only the shipped, unchanged demo note has a known structured replacement.
-  await db.query(`INSERT INTO packing_rules (item_id, packaging_id, quantity_per_package, notes, updated_by)
+  const factoryRules = await db.query(`INSERT INTO packing_rules (item_id, packaging_id, quantity_per_package, notes, updated_by)
     SELECT i.id, p.id, 1, 'Owiń folią i dodaj przekładki.', 'Demo — reguła wzorcowa'
     FROM items i CROSS JOIN packaging_types p
     WHERE i.name = 'Szkło' AND p.name = 'Duży karton'
       AND EXISTS (SELECT 1 FROM procedures WHERE topic = 'szkło' AND text = $1)
-    ON CONFLICT (item_id) DO NOTHING`, [DEMO_PROCEDURE])
+    ON CONFLICT (item_id) DO NOTHING RETURNING item_id`, [DEMO_PROCEDURE])
+  let changed = factoryRules.length > 0
+
+  // Keep the checked-in demo procedure data visible in the offline demo without
+  // replacing rules that a manager has edited. The old factory glass rule is
+  // migrated once; rules carrying our seed marker can follow later sample edits.
+  for (const sample of sampleProcedures) {
+    const saved = await db.query(`INSERT INTO packing_rules (item_id, packaging_id, quantity_per_package, notes, updated_by)
+      SELECT i.id, p.id, $3, $4, 'Demo — przykładowa procedura'
+      FROM items i CROSS JOIN packaging_types p
+      WHERE i.name = $1 AND p.name = $2
+      ON CONFLICT (item_id) DO UPDATE SET
+        packaging_id = EXCLUDED.packaging_id,
+        quantity_per_package = EXCLUDED.quantity_per_package,
+        notes = EXCLUDED.notes,
+        version = packing_rules.version + 1,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+      WHERE (packing_rules.updated_by = 'Demo — przykładowa procedura'
+          OR (packing_rules.updated_by = 'Demo — reguła wzorcowa'
+          AND packing_rules.notes = 'Owiń folią i dodaj przekładki.'
+          AND packing_rules.packaging_id = (SELECT id FROM packaging_types WHERE name = 'Duży karton')
+          AND EXCLUDED.item_id = (SELECT id FROM items WHERE name = 'Szkło')))
+        AND (packing_rules.packaging_id, packing_rules.quantity_per_package, packing_rules.notes)
+          IS DISTINCT FROM (EXCLUDED.packaging_id, EXCLUDED.quantity_per_package, EXCLUDED.notes)
+      RETURNING item_id`,
+    [sample.item, sample.packaging, sample.quantity_per_package, sample.notes])
+    changed ||= saved.length > 0
+  }
+  return changed
 }
 
 async function tableExists(db: Db, table: string): Promise<boolean> {
@@ -56,7 +86,7 @@ export async function initDemoDb(db: Db, options: { reset: boolean } = { reset: 
     const alreadySeeded = await tableExists(tx, 'demo_metadata')
     if (!alreadySeeded && (await holdsAppData(tx))) throw new Error(NOT_DEMO_DATABASE)
     await ensureSchema(tx)
-    if (alreadySeeded && !options.reset) { await seedDemoPacking(tx); return false }
+    if (alreadySeeded && !options.reset) return await seedDemoPacking(tx)
 
     if (await tableExists(tx, 'work_tasks')) await tx.exec('TRUNCATE work_tasks')
     await tx.exec(`TRUNCATE ${RESET_TABLES.join(', ')} RESTART IDENTITY CASCADE`)

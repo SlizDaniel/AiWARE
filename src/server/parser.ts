@@ -87,6 +87,13 @@ export function parseCommand(text: string, items: ItemRef[]): ParsedCommand | nu
   if (!text) return null
   const t = text.toLowerCase().trim()
 
+  const taskQuestion = /^(?:jakie|jakiego|jaki)\s+(?:zadanie|zadania|taska|task|taski)\s+ma\s+(.+?)[?.!]*$/iu.exec(t)
+    ?? /^co\s+(?:robi|ma\s+do\s+zrobienia)\s+(.+?)[?.!]*$/iu.exec(t)
+  if (taskQuestion) return command('get_work_tasks', text, { args: { employee: taskQuestion[1].trim() } })
+  if (/^(?:jakie\s+(?:mam|są\s+moje)\s+(?:zadania|taski)|(?:pokaż|pokaz|podaj)\s+moje\s+(?:zadania|taski))[?.!]*$/iu.test(t)) {
+    return command('get_work_tasks', text)
+  }
+
   const zone = ZONE_RE.exec(t)
   if (zone) {
     const name = zone[1].trim()

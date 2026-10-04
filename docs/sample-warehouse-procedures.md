@@ -5,15 +5,19 @@ oraz procedury do produktów swojego magazynu.
 
 ## Wczytanie
 
-Uruchom lokalne demo bez resetu danych. Następnie:
+Lokalne demo ładuje te reguły automatycznie przy starcie do swojej odizolowanej
+bazy. Restart istniejącego demo uzupełni brakujące reguły i zaktualizuje starą
+fabryczną regułę szkła; reguły zmienione przez kierownika pozostają bez zmian.
+
+Jeśli demo już działa i nie chcesz go restartować, możesz użyć importera:
 
 ```powershell
 python scripts/load-sample-procedures.py --url http://127.0.0.1:3002
 ```
 
 Importer wymaga lokalnego trybu demo bez logowania, korzysta z kart zatwierdzenia
-i audytu. Nie zmienia zapasu ani własnych reguł kierownika. Aktualizuje jedynie
-niezmienioną, fabryczną regułę szkła. Ponowienie nie tworzy duplikatów.
+i audytu. Nie zmienia zapasu ani własnych reguł kierownika. Ponowienie nie tworzy
+duplikatów.
 
 ## Reguły widoczne w Procedurach
 

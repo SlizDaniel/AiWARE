@@ -14,11 +14,12 @@ export default function ManagerNotifications({ refreshToken, onNavigate, onForbi
   refreshToken: string; onNavigate: (section: SectionId) => void; onForbidden: () => void
 }) {
   const remote = useRemote(fetchNotifications, 'manager-notifications', refreshToken, onForbidden)
-  const [unreadOnly, setUnreadOnly] = useState(false)
+  const [showRead, setShowRead] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const data = remote.data
-  const notices = data?.notifications.filter(n => !unreadOnly || !n.read) ?? []
+  const unread = data?.notifications.filter(n => !n.read) ?? []
+  const visible = showRead ? (data?.notifications ?? []) : unread
   const markRead = async (ids: string[]) => {
     setSaving(true)
     setSaveError('')
@@ -34,23 +35,25 @@ export default function ManagerNotifications({ refreshToken, onNavigate, onForbi
     } catch (error) { setSaveError(error instanceof Error ? error.message : 'Nie udało się oznaczyć powiadomień.') }
     finally { setSaving(false) }
   }
+  // Wszystko odczytane → karta znika z dashboardu; odczytane alerty nie wracają do listy.
+  if (data && data.unread_count === 0) return null
   return <section className={`${cardClass} p-5 sm:p-6`} aria-label="Powiadomienia kierownika">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-bold">Powiadomienia kierownika</h2>
       <p role="status">{data ? `${data.unread_count} nieprzeczytanych · ${data.critical_count} pilnych` : 'Ładowanie…'}</p>
     </div>
-    <p className="mt-2 text-sm text-[#646b64]">Automatyczne alerty o zapasach i zamówieniach. Przeczytanie nie rozwiązuje problemu ani nie zmienia stanu magazynu.</p>
+    <p className="mt-2 text-sm text-[#646b64]">Automatyczne alerty o zapasach i zamówieniach. Odczytane znikają z dashboardu; przeczytanie nie rozwiązuje problemu ani nie zmienia stanu magazynu.</p>
     {Boolean(remote.error) && <BlockError error={remote.error} fallback="Nie udało się pobrać powiadomień." onRetry={remote.retry} />}
     {saveError && <p role="alert" className="mt-2 text-red-700">{saveError}</p>}
+    {data && <div className="my-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <button className={secondaryButton} disabled={saving || remote.loading || unread.length === 0} onClick={() => void markRead(unread.map(n => n.id))}>Odczytaj wszystkie</button>
+      <label className="flex items-center gap-1.5"><input type="checkbox" checked={showRead} onChange={e => setShowRead(e.target.checked)} /> Pokaż przeczytane</label>
+    </div>}
     {data && <>
-      <div className="my-3 flex flex-wrap gap-3">
-        <label><input type="checkbox" checked={unreadOnly} onChange={e => setUnreadOnly(e.target.checked)} /> Tylko nieprzeczytane</label>
-        <button className={secondaryButton} disabled={saving || remote.loading || !data.unread_count} onClick={() => void markRead(data.notifications.filter(n => !n.read).map(n => n.id))}>Oznacz widoczne jako przeczytane</button>
-      </div>
       {data.truncated && <p role="status">Pokazano pierwsze 100 alertów. Liczniki dotyczą tej listy.</p>}
-      {!notices.length && <p className="py-3">{unreadOnly ? 'Brak nieprzeczytanych powiadomień.' : 'Brak alertów wymagających uwagi.'}</p>}
-      <ul className="space-y-3">{notices.map(n => <li key={n.id} className={`border p-3 ${n.priority === 'critical' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
-        <p className="font-semibold">{n.priority === 'critical' ? 'PILNE' : 'UWAGA'} · {n.title} {n.read ? '· Przeczytane' : '· Nowe'}</p>
+      {!visible.length && <p className="py-3">Brak powiadomień do pokazania.</p>}
+      <ul className="space-y-3">{visible.map(n => <li key={n.id} className={`border p-3 ${n.priority === 'critical' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'} ${n.read ? 'opacity-60' : ''}`}>
+        <p className="font-semibold">{n.priority === 'critical' ? 'PILNE' : 'UWAGA'} · {n.title}</p>
         <p className="my-2 text-sm">{n.message}</p>
         <div className="flex flex-wrap gap-2">
           <button className={secondaryButton} onClick={() => onNavigate(n.target)}>Otwórz {n.target === 'stany' ? 'stany' : n.target === 'historia' ? 'historię' : 'kolejkę'}</button>

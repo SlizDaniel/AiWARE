@@ -12,6 +12,7 @@ import type { Actor, StockSnapshot } from './db'
 import type { Db } from './sql'
 import type { JsonSchema, Role } from './types'
 import { recallPacking, savePacking } from './packing'
+import { queryWorkerTasks } from './taskQuery'
 
 export type ToolContext = { actor: Actor; expectedStock?: StockSnapshot; role?: Role }
 
@@ -54,6 +55,13 @@ function str(args: Record<string, unknown>, key: string): string {
 const DEFAULT_CONTEXT: ToolContext = { actor: db.DEFAULT_ACTOR }
 
 const SPECS: ToolSpec[] = [
+  {
+    name: 'get_work_tasks',
+    kind: 'read',
+    description: 'Otwarte zadania pracownika po imieniu lub pełnej nazwie; bez employee = moje zadania. Respektuje uprawnienia użytkownika.',
+    parameters: schema({ employee: { type: 'string', maxLength: 200, description: 'Imię lub imię i nazwisko, np. Michał albo Kuba.' } }),
+    handler: (conn, args, ctx) => queryWorkerTasks(conn, args.employee === undefined ? undefined : str(args, 'employee'), ctx.actor, ctx.role),
+  },
   {
     name: 'get_stock',
     kind: 'read',

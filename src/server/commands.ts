@@ -25,6 +25,7 @@ export const HINTS = [
   'ile mamy X?',
   'gdzie leży X?',
   'jak pakujemy X?',
+  'jakie zadanie ma Michał?',
 ]
 
 export const NO_KEY_COMMAND_WARNING = 'Brak GEMINI_API_KEY — użyto parsera offline.'
@@ -314,6 +315,10 @@ async function createProposal(db: Db, actor: Actor, fields: Omit<Proposal, 'id'>
 
 /** Answer to a question (read tool) — reads only, writes nothing. */
 function answer(text: string, parsed: ParsedCommand, data: Record<string, unknown>): CommandResponse {
+  if (parsed.tool === 'get_work_tasks') {
+    if (data.clarification) return { type: 'clarify', text, message: String(data.clarification) }
+    return { type: 'answer', tool: parsed.tool, text: String(data.message), data }
+  }
   if (parsed.tool === 'check_reorder') {
     if (Object.keys(data).length === 0) return { type: 'clarify', text, message: 'Nie znaleziono pozycji.' }
     const status = data.below_minimum ? 'poniżej minimum' : 'minimum zachowane'
