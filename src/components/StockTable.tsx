@@ -104,7 +104,7 @@ export default function StockTable({
       ) : (
         // Szerokości kolumn mieszczą się w ~600 px (laptop 1280 px z kolumną agenta); przewijanie tylko awaryjnie.
         <div className="relative overflow-x-auto border-t border-line">
-          <table className="w-full min-w-[38rem] table-fixed text-left">
+          <table className="w-full min-w-[37rem] table-fixed text-left">
             <thead>
               <tr>
                 <th scope="col" className="label-caps py-3 pl-5 pr-3 text-left">Pozycja</th>

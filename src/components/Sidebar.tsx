@@ -36,7 +36,7 @@ export default function Sidebar({ current, onNavigate, connected, user, authMode
 
   return (
     <>
-      <aside className="hidden w-60 shrink-0 2xl:w-64 flex-col bg-rail lg:flex">
+      <aside className="hidden w-64 shrink-0 flex-col bg-rail lg:flex">
         <Brand />
         <Navigation current={current} onNavigate={onNavigate} layout="vertical" canManage={canManage} badges={badges} />
         <div className="mt-auto space-y-4 px-4 pb-5">

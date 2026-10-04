@@ -463,7 +463,7 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
       {toast && (
         <div
           key={toast.message}
-          className="fixed inset-x-4 bottom-5 z-30 flex animate-arrive items-start gap-3 rounded-lg bg-ink px-4 py-3 text-sm font-medium text-sheet shadow-raise sm:inset-x-auto sm:left-8 sm:max-w-md lg:left-[calc(15rem+2rem)]"
+          className="fixed inset-x-4 bottom-5 z-30 flex animate-arrive items-start gap-3 rounded-lg bg-ink px-4 py-3 text-sm font-medium text-sheet shadow-raise sm:inset-x-auto sm:left-8 sm:max-w-md lg:left-[calc(16rem+2rem)]"
           role={toast.tone === 'error' ? 'alert' : 'status'}
         >
           <StateShape kind={toast.tone === 'error' ? 'alarm' : 'ok'} className="mt-[5px]" />
