@@ -135,6 +135,9 @@ export function useWakeListener({ enabled, prefix, refine: refineEnabled, paused
     const recognition = recognitionRef.current
     recognitionRef.current = null
     if (!recognition) return
+    // onend tej sesji już nie posprząta (ref wyzerowany) — niedokończona wypowiedź nie może
+    // zostać w buforze, bo `pending` blokowałby ponowny start nasłuchu
+    commandBufferRef.current?.endSession()
     abortRecognition(recognition)
   }, [])
 
