@@ -1,4 +1,4 @@
-import type { AppSettings, CommandResponse, ConfirmResult, Health, HistoryEntry, ImportField, ImportPreview, Item, Me, Procedure, ReorderDraft, UndoResult, Zone } from './contracts'
+import type { AppSettings, CommandResponse, ConfirmResult, Health, HistoryEntry, ImportField, ImportPreview, Item, MapPath, MapSector, Me, PathMarker, PathPoint, Procedure, ReorderDraft, UndoResult, Zone } from './contracts'
 import { withTimeout } from './withTimeout'
 
 export class ApiError extends Error {
@@ -57,6 +57,18 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     undo: (id: number) => request<UndoResult>(`/api/history/${id}/undo`, { method: 'POST' }),
     decideOrder: (id: number, approve: boolean) => request(`/api/reorder-drafts/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),
     saveSettings: (values: Partial<AppSettings>) => request<AppSettings>('/api/settings', json('PATCH', values)),
+    mapPaths: () => request<{ paths: MapPath[] }>('/api/map-paths').then(d => d.paths),
+    saveMapPath: (input: { name: string; step_length: number; points: PathPoint[]; markers: PathMarker[] }) =>
+      request<{ path: MapPath }>('/api/map-paths', json('POST', input)).then(d => d.path),
+    deleteMapPath: (id: number) => request<{ deleted: number }>(`/api/map-paths/${id}`, { method: 'DELETE' }),
+    mapSectors: () => request<{ sectors: MapSector[] }>('/api/map-sectors').then(d => d.sectors),
+    createMapSector: (input: { name: string; x: number; y: number }) =>
+      request<{ sector: MapSector }>('/api/map-sectors', json('POST', input)).then(d => d.sector),
+    deleteMapSector: (id: number) => request<{ deleted: number }>(`/api/map-sectors/${id}`, { method: 'DELETE' }),
+    assignSectorItem: (sectorId: number, input: { item_id: number; quantity: number }) =>
+      request<{ sector: MapSector }>(`/api/map-sectors/${sectorId}/items`, json('PUT', input)).then(d => d.sector),
+    unassignSectorItem: (sectorId: number, itemId: number) =>
+      request<{ sector: MapSector }>(`/api/map-sectors/${sectorId}/items/${itemId}`, { method: 'DELETE' }).then(d => d.sector),
     transcribe: async (audio: Uint8Array, mime: string, extension: string) => {
       if (audio.byteLength > 4 * 1024 * 1024) throw new Error('Nagranie przekracza 4 MB. Nagraj krótszą komendę.')
       return request<{ text: string }>(`/api/stt?filename=audio.${extension}`, {
