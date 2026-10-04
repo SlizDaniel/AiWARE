@@ -37,7 +37,7 @@ export function WarehouseApp({ api }: { api: Api }) {
             <CommandScreen active={tab === 'command'} api={api} data={data} reload={reload} onLocation={(name, location) => { setTarget({ name, location }); setTab('map') }} />
           </View>
           {tab === 'inventory' ? <InventoryScreen api={api} data={data} reload={reload} /> : null}
-          {tab === 'map' ? <MapScreen key={`${target?.name ?? ''}:${target?.location ?? ''}`} data={data} target={target} /> : null}
+          {tab === 'map' ? <MapScreen key={`${target?.name ?? ''}:${target?.location ?? ''}`} api={api} data={data} target={target} /> : null}
           {tab === 'history' ? <RecordsScreen key="history" kind="history" data={data} api={api} reload={reload} /> : null}
           {tab === 'more' ? <>
             <View className="flex-row gap-2">{(['orders', 'procedures', 'settings'] as const).map(kind => <View key={kind} className="flex-1"><Button
