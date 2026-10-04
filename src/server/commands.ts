@@ -12,7 +12,8 @@ import { delta, parseCommand, SZT_NA_PALETE, type ParsedCommand } from './parser
 import { commandText, getAgentModeStatus, getAppSettings } from './settings'
 import type { Db } from './sql'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
-import type { ItemRef, LLMProvider } from './types'
+import type { ItemRef, LLMProvider, Role } from './types'
+import { listPackaging, parsePacking, previewPacking } from './packing'
 import { parseCommandConversation, type ClarificationTurn } from '@/lib/commandConversation'
 
 export const HINTS = [
@@ -66,7 +67,7 @@ export type CommandResponse = (
 
 export type ConfirmPayload = { applied: true } & Record<string, unknown>
 
-type RunOptions = { provider: LLMProvider | null; actor?: Actor; conversation?: ClarificationTurn[] }
+type RunOptions = { provider: LLMProvider | null; actor?: Actor; conversation?: ClarificationTurn[]; role?: Role }
 
 // The prompt carries only the items the command can be about; small warehouses go in whole.
 export const MAX_CONTEXT_ITEMS = 40
@@ -142,7 +143,8 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
 
   if (status.mode === 'llm' && options.provider !== null) {
     const relatedText = [...conversation.map((turn) => turn.userText), command].join(' ')
-    const context = inventoryContext(contextItems(rows, relatedText), conversation)
+    const context = JSON.stringify({ ...JSON.parse(inventoryContext(contextItems(rows, relatedText), conversation)),
+      role: options.role ?? 'pracownik', packaging_catalogue: await listPackaging(db) })
     try {
       const interpretation = await options.provider.interpret(command, toolSchemas(), context)
       if (interpretation.toolCall === null) {
@@ -161,7 +163,20 @@ export async function runCommand(db: Db, text: string, options: RunOptions): Pro
   }
 
   const sourceText = [...conversation.map((turn) => turn.userText), text].join(' → ')
-  const response = await dispatchCommand(db, sourceText, parsed, actor, defaultMinimum)
+  // Free-text procedure arguments from the old offline parser never reach a write tool.
+  if (parsed?.tool === 'remember_procedure' && !('item_id' in parsed.args)) {
+    try { parsed.args = await parsePacking(db, command) }
+    catch (error) {
+      if (!(error instanceof HttpError)) throw error
+      return { type: 'clarify', text, message: error.message, ...(warning ? { warning } : {}) }
+    }
+  }
+  let response: CommandResponse
+  try { response = await dispatchCommand(db, sourceText, parsed, actor, defaultMinimum, options.role) }
+  catch (error) {
+    if (!(error instanceof HttpError) || error.status !== 422) throw error
+    response = { type: 'clarify', text, message: error.message }
+  }
   if (warning) response.warning = warning
   return response
 }
@@ -172,6 +187,7 @@ async function dispatchCommand(
   parsed: ParsedCommand | null,
   actor: Actor,
   defaultMinimum: number,
+  role?: Role,
 ): Promise<CommandResponse> {
   if (parsed === null) {
     // unknown command → ask to rephrase, never guess silently
@@ -202,7 +218,7 @@ async function dispatchCommand(
   }
 
   if (READ_TOOLS.has(parsed.tool)) {
-    const data = await callTool(db, parsed.tool, parsed.args, { actor })
+    const data = await callTool(db, parsed.tool, parsed.args, { actor, role })
     return answer(text, parsed, data)
   }
 
@@ -228,12 +244,7 @@ async function dispatchCommand(
   }
 
   if (parsed.tool === 'remember_procedure') {
-    const proposal = await createProposal(db, actor, {
-      tool: 'remember_procedure',
-      text,
-      args: parsed.args,
-      summary: `Zapamiętaj procedurę: ${String(parsed.args.topic)}`,
-    })
+    const proposal = await proposePackingRule(db, parsed.args, actor, role, text)
     return { type: 'proposal', proposal }
   }
 
@@ -259,6 +270,11 @@ async function dispatchCommand(
   }
 
   return { type: 'unknown', text, hints: [...HINTS] }
+}
+
+export async function proposePackingRule(db: Db, args: Record<string, unknown>, actor: Actor, role?: Role, text = 'Formularz reguły pakowania'): Promise<Proposal> {
+  const preview = await previewPacking(db, args, role)
+  return createProposal(db, actor, { tool: 'remember_procedure', text, ...preview })
 }
 
 async function createProposal(db: Db, actor: Actor, fields: Omit<Proposal, 'id'>): Promise<Proposal> {
@@ -314,14 +330,16 @@ function answer(text: string, parsed: ParsedCommand, data: Record<string, unknow
         text,
         message:
           `Nie mam zapisanej procedury dla «${topic}». ` +
-          `Zapamiętaj ją mówiąc: „zapamiętaj: ${topic} pakujemy w…”`,
+          'Kierownik może utworzyć regułę w zakładce Procedury, wybierając produkt, opakowanie i ilość.',
       }
     }
-    const best = procedures[0]
+    const best = procedures[0] as { topic: string; text: string; packaging_stock?: { name: string; quantity: number; unit: string } | null }
     return {
       type: 'answer',
       tool: 'recall_procedure',
-      text: `Procedura „${best.topic}”: ${best.text}`,
+      text: `Procedura „${best.topic}”: ${best.text} ` + (best.packaging_stock
+        ? `Opakowania na stanie: ${best.packaging_stock.name} — ${best.packaging_stock.quantity} ${best.packaging_stock.unit}.`
+        : 'Opakowanie nie ma powiązanego stanu magazynowego.'),
       data,
     }
   }
@@ -341,7 +359,7 @@ const EVENT_TYPES: Record<string, string> = {
  * Taking the proposal, the tool and its audit entry share one transaction —
  * a second confirm of the same id gets 404 and cannot double-apply.
  */
-export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT_ACTOR): Promise<ConfirmPayload> {
+export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT_ACTOR, role?: Role): Promise<ConfirmPayload> {
   const outcome = await db.transaction(async (tx): Promise<{ payload: ConfirmPayload } | { error: HttpError }> => {
     const proposal = await takeProposal<Proposal>(tx, id)
     if (proposal === null) {
@@ -365,7 +383,7 @@ export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT
     let result: Record<string, unknown>
     try {
       if (tool !== 'update_stock' && eventType === null) throw new UnknownToolError(tool)
-      result = await callTool(tx, tool, args, { actor, expectedStock })
+      result = await callTool(tx, tool, args, { actor, expectedStock, role })
     } catch (error) {
       // Like Python: the card is consumed (committed delete), the tool wrote nothing.
       if (error instanceof UnknownToolError) return { error: new HttpError(400, `Nieznane narzędzie: ${tool}`) }
@@ -374,7 +392,7 @@ export async function confirmProposal(db: Db, id: string, actor: Actor = DEFAULT
       throw error
     }
 
-    if (tool === 'update_stock') return { payload: { applied: true as const, ...result } }
+    if (tool === 'update_stock' || tool === 'remember_procedure') return { payload: { applied: true as const, tool, ...result } }
     if (tool === 'draft_order') {
       // createReorderDraft already records the creation in the same transaction.
       return { payload: { applied: true as const, tool, reorder_draft: result, ...result } }

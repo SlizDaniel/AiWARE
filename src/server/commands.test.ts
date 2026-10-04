@@ -7,13 +7,13 @@ import {
   initDb,
   listAudit,
   listItems,
-  listProcedures,
   listReorderDrafts,
   listZones,
-  rememberProcedure,
   saveProposal,
 } from './db'
 import { HttpError } from './http'
+import { listPackingRules as listProcedures, previewPacking, savePacking } from './packing'
+import type { Role } from './types'
 import { GeminiRequestError } from './llm'
 import { MOCK_WARNING, setAgentMode, updateAppSettings } from './settings'
 import { createPgliteDb, type Db } from './sql'
@@ -44,12 +44,12 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-async function command(text: string, provider: LLMProvider | null = null): Promise<CommandResponse> {
-  return runCommand(db, text, { provider, actor: WORKER })
+async function command(text: string, provider: LLMProvider | null = null, role: Role = 'pracownik'): Promise<CommandResponse> {
+  return runCommand(db, text, { provider, actor: WORKER, role })
 }
 
 async function proposalFor(text: string, provider: LLMProvider | null = null) {
-  const response = await command(text, provider)
+  const response = await command(text, provider, 'kierownik')
   if (response.type !== 'proposal') throw new Error(`expected proposal for ${text}, got ${JSON.stringify(response)}`)
   return response.proposal
 }
@@ -126,7 +126,7 @@ describe('offline command pipeline (test_api.py)', () => {
 
   it('confirm writes stock and audit', async () => {
     const proposal = await proposalFor('wzięliśmy paletę kartonów')
-    const result = await confirmProposal(db, proposal.id, WORKER)
+    const result = await confirmProposal(db, proposal.id, WORKER, 'kierownik')
     expect(result.applied).toBe(true)
     expect(result).toMatchObject({ item_id: 1, item_name: 'Kartony', delta: -2, before: 54, after: 52, reorder_draft: null })
 
@@ -179,17 +179,17 @@ describe('offline command pipeline (test_api.py)', () => {
     const response = await command('jak pakujemy szkło?')
     expect(response.type).toBe('clarify')
     const message = (response as { message: string }).message
-    expect(message).toBe('Nie mam zapisanej procedury dla «szkło». Zapamiętaj ją mówiąc: „zapamiętaj: szkło pakujemy w…”')
+    expect(message).toBe('Nie mam zapisanej procedury dla «szkło». Kierownik może utworzyć regułę w zakładce Procedury, wybierając produkt, opakowanie i ilość.')
     expect(await listAudit(db)).toEqual([])
   })
 
   it('recall of a saved procedure returns an answer', async () => {
-    await rememberProcedure(db, { topic: 'szkło', text: 'szkło pakujemy w kartony Y, strefa C2' })
+    await savePacking(db, (await previewPacking(db, { item_id: 2, packaging_id: 3, quantity_per_package: 2, notes: 'Przekładki' }, 'kierownik')).args, WORKER, 'kierownik')
     const response = await command('jak pakujemy szkło?')
     expect(response).toMatchObject({
       type: 'answer',
       tool: 'recall_procedure',
-      text: 'Procedura „szkło”: szkło pakujemy w kartony Y, strefa C2',
+      text: expect.stringContaining('Szkło: 2 szt na opakowanie „Duży karton”. Przekładki'),
     })
   })
 
@@ -200,7 +200,7 @@ describe('offline command pipeline (test_api.py)', () => {
     expect(proposal.summary).toBe('Nowa strefa: kartony')
     expect(await listZones(db)).toEqual([])
 
-    const result = await confirmProposal(db, proposal.id, WORKER)
+    const result = await confirmProposal(db, proposal.id, WORKER, 'kierownik')
     expect(result).toMatchObject({ applied: true, tool: 'add_zone', name: 'kartony', created: true, event_type: 'zone_added' })
     expect(typeof result.audit_id).toBe('number')
     expect((await listZones(db)).map((zone) => zone.name)).toEqual(['kartony'])
@@ -243,58 +243,52 @@ describe('offline command pipeline (test_api.py)', () => {
     expect(await listAudit(db)).toEqual([])
   })
 
-  it('the suggested remember command round-trips', async () => {
-    expect((await command('jak pakujemy szkło?')).type).toBe('clarify')
-
-    const proposal = await proposalFor('zapamiętaj: szkło pakujemy w kartony Y, strefa C2')
+  it('structured packing command waits for manager confirmation and round-trips', async () => {
+    const proposal = await proposalFor('zapamiętaj: Szkło pakujemy po 2 w Duży karton')
     expect(proposal.tool).toBe('remember_procedure')
-    expect(proposal.summary).toBe('Zapamiętaj procedurę: szkło')
     expect(await listProcedures(db)).toEqual([])
     expect((await command('jak pakujemy szkło?')).type).toBe('clarify')
-
-    await confirmProposal(db, proposal.id)
+    await confirmProposal(db, proposal.id, WORKER, 'kierownik')
     const answer = await command('jak pakujemy szkło?')
     expect(answer.type).toBe('answer')
-    expect((answer as { text: string }).text).toContain('kartony Y')
+    if (answer.type !== 'answer') throw new Error('Expected packing answer')
+    expect(answer.text).toContain('Duży karton')
     const procedures = await listProcedures(db)
     expect(procedures).toHaveLength(1)
-    expect(procedures[0].topic).toBe('szkło')
-    expect(procedures[0].text).toBe('szkło pakujemy w kartony Y, strefa C2')
-    expect(procedures[0].created).toBeTruthy()
+    expect(procedures[0]).toMatchObject({ item_id: 2, packaging_id: 3, quantity_per_package: 2 })
     expect((await listAudit(db))[0].event_type).toBe('procedure_saved')
   })
 
-  it('procedure update requires confirmation and recall searches the content', async () => {
-    const original = await proposalFor('zapamiętaj: szkło pakujemy w kartony Y, strefa C2')
-    await confirmProposal(db, original.id)
+  it('packing update waits for confirmation and increments the rule version', async () => {
+    const original = await proposalFor('zapamiętaj: Szkło pakujemy po 2 w Duży karton')
+    await confirmProposal(db, original.id, WORKER, 'kierownik')
     const before = await listProcedures(db)
-
-    const replacement = await proposalFor('zapamiętaj: szkło pakujemy z przekładkami, strefa B-2')
+    const replacement = await proposalFor('zapamiętaj: Szkło pakujemy po 4 w Mały karton')
     expect(await listProcedures(db)).toEqual(before)
-    await confirmProposal(db, replacement.id)
+    await confirmProposal(db, replacement.id, WORKER, 'kierownik')
     const after = await listProcedures(db)
     expect(after).toHaveLength(1)
     expect(after[0].id).toBe(before[0].id)
-    expect(after[0].text).toBe('szkło pakujemy z przekładkami, strefa B-2')
-
-    const answer = await command('jak pakujemy przekładkami?')
-    expect(answer.type).toBe('answer')
-    expect((answer as unknown as { data: { procedures: { text: string }[] } }).data.procedures[0].text).toBe(after[0].text)
+    expect(after[0].version).toBe(before[0].version + 1)
+    expect(after[0]).toMatchObject({ packaging_id: 2, quantity_per_package: 4 })
+    const answer = await command('jak pakujemy szkło?')
+    if (answer.type !== 'answer') throw new Error('Expected packing answer')
+    expect(answer.text).toContain('Mały karton')
   })
 
-  it('procedure from an uppercase transcription keeps the topic and is recalled', async () => {
-    const proposal = await proposalFor('Zapamiętaj: SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2')
-    expect(proposal.args.topic).toBe('szkło')
+  it('uppercase packing commands match full catalogue names', async () => {
+    const proposal = await proposalFor('Zapamiętaj: SZKŁO pakujemy po 2 w DUŻY KARTON')
+    expect(proposal.args.item_id).toBe(2)
+    await confirmProposal(db, proposal.id, WORKER, 'kierownik')
+    expect((await command('jak pakujemy SZKŁO?')).type).toBe('answer')
+    expect((await command('jak pakujemy przekładkami?')).type).toBe('clarify')
+  })
+
+  it('worker cannot create a packing proposal', async () => {
+    await expect(command('zapamiętaj: Szkło pakujemy po 2 w Duży karton')).rejects.toMatchObject({ status: 403 })
     expect(await listProcedures(db)).toEqual([])
-    await confirmProposal(db, proposal.id)
-
-    const answer = (await command('jak pakujemy szkło?')) as unknown as { type: string; data: { procedures: { text: string; topic: string }[] } }
-    expect(answer.type).toBe('answer')
-    expect(answer.data.procedures[0].text).toBe('SZKŁO pakujemy z PRZEKŁADKAMI, strefa C2')
-
-    const fragment = (await command('jak pakujemy przekładkami?')) as unknown as typeof answer
-    expect(fragment.type).toBe('answer')
-    expect(fragment.data.procedures[0].topic).toBe('szkło')
+    expect(await db.query('SELECT id FROM proposals')).toEqual([])
+    expect(await listAudit(db)).toEqual([])
   })
 
   it('a draft_order proposal confirms into the queue', async () => {
@@ -517,6 +511,13 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
     expect(new Set(call.tools.map((tool) => tool.function.name))).toEqual(new Set(Object.keys(TOOL_REGISTRY)))
     expect(JSON.parse(call.context)).toEqual({
       units_per_pallet: 2,
+      role: 'pracownik',
+      packaging_catalogue: [
+        { id: 1, name: 'Koperta', inventory_item_id: null },
+        { id: 2, name: 'Mały karton', inventory_item_id: null },
+        { id: 3, name: 'Duży karton', inventory_item_id: null },
+        { id: 4, name: 'Folia stretch', inventory_item_id: null },
+      ],
       items: [
         { id: 3, name: 'Folia stretch', quantity: 15, unit: 'rolka', minimum: 6, location: 'Strefa C-1' },
         { id: 1, name: 'Kartony', quantity: 54, unit: 'szt', minimum: 12, location: 'Strefa A-1' },
@@ -543,7 +544,7 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
 
   const writeCases: [string, Record<string, unknown>, () => Promise<unknown>][] = [
     ['add_zone', { name: 'Strefa testowa' }, () => listZones(db)],
-    ['remember_procedure', { topic: 'szkło', text: 'Pakujemy w kartony' }, () => listProcedures(db)],
+    ['remember_procedure', { item_id: 2, packaging_id: 3, quantity_per_package: 2 }, () => listProcedures(db)],
     ['add_item', { name: 'Taśma', quantity: 7 }, () => listItems(db)],
     ['draft_order', { item_id: 1, quantity: 50 }, () => listReorderDrafts(db)],
   ]
@@ -555,7 +556,7 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
     expect(await read()).toEqual(before)
     expect(await listAudit(db)).toEqual([])
 
-    const confirmed = await confirmProposal(db, proposal.id, WORKER)
+    const confirmed = await confirmProposal(db, proposal.id, WORKER, 'kierownik')
     expect(confirmed.applied).toBe(true)
     expect(await read()).not.toEqual(before)
     expect(await listAudit(db)).toHaveLength(1)

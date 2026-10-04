@@ -181,7 +181,7 @@ describe.each(engines)('API on %s', (_name, open) => {
     expect((await runCommand('kto wygrał mecz?')).type).toBe('unknown')
 
     // Procedures (prefix is stripped before parsing).
-    const memory = await runCommand('Magu, zapamiętaj: szkło pakujemy z przekładkami')
+    const memory = await runCommand('Magu, zapamiętaj: Szkło pakujemy po 2 w Duży karton')
     expect(memory.proposal.tool).toBe('remember_procedure')
     await confirmCard(memory.proposal.id)
     expect((await ok(procedures.GET())).procedures).toHaveLength(1)

@@ -23,6 +23,7 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.pytest_cache/
 
 # System / edytory
 .DS_Store

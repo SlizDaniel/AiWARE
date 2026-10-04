@@ -29,13 +29,21 @@ wąską lokalną gramatykę. Model nadal może podjąć błędną semantycznie d
 progi pewności jej nie gwarantują. Brak obietnicy poprawy czasu przed pomiarem live.
 STT, import, persistence, auth, klient mobilny i format API pozostają kompatybilne.
 
-## Weryfikacja
+## Weryfikacja (2026-10-04, po integracji origin/main)
 
-- Pełna suita: 806 passed, 2 skipped; build (z TypeScript) i lint passed.
+- Pełna suita: 848 passed, 2 skipped; build (z TypeScript), typecheck i lint passed.
 - Testy: wybór intencji/towaru, lokalne ilości, confidence, safety, błędy API,
   timeout, limit odpowiedzi, routing Gemini, endpoint i ochrona klucza,
   propozycja bez zapisu, confirm i audyt, ujawnienie integracji w ustawieniach.
-- Live OpenRouter: HTTP 401 dla aktualnej konfiguracji. Porównanie Mercury/Gemini
-  nie uzyskało poprawnych odpowiedzi; brak potwierdzenia jakości i przyspieszenia.
+- Live OpenRouter: trzy komendy na syntetycznej bazie PGlite w pamięci,
+  bez fallbacku: wydanie palety kartonów 516 ms, stan 344 ms, lokalizacja 322 ms.
+  Przed confirm stan 54; po confirm 52 i jeden wpis audytu.
+  W poprzedniej próbie wydanie przekroczyło limit 2 s; parser offline zachował
+  poprawną propozycję. Mała próbka nie gwarantuje jakości ani stałego czasu.
+- Gemini zwracał HTTP 429; porównanie szybkości obu modeli nie jest miarodajne.
+- Integracja zachowuje rolę użytkownika w route handlerze komend z origin/main.
+  Stare testy procedur dostosowano do jego nowych reguł pakowania:
+  produkt, opakowanie, ilość, preview i zatwierdzenie przez kierownika.
 - GUI-check niewykonany: Browser nie udostępnił żadnej przeglądarki.
-- Bez commita, merge i push; użytkownik utrzymuje lokalne sekrety w .env.local.
+- Lokalne scalenie; bez push i deployu ze względu na limit Vercel.
+  Sekrety pozostają w ignorowanym .env.local.

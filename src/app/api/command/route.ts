@@ -6,7 +6,7 @@ import { enforceRateLimit, RATE_LIMITS } from '@/server/rateLimit'
 import { session } from '@/server/session'
 import { parseCommandConversation } from '@/lib/commandConversation'
 
-// Jev budget is 2 s + Gemini fallback 15 s; leave headroom for database round trips.
+// Mercury Decide budget is 2 s + Gemini fallback 15 s; leave headroom for database round trips.
 export const maxDuration = 30
 
 const MAX_COMMAND_LENGTH = 2000
@@ -21,5 +21,5 @@ export const POST = route(async (request: Request) => {
   catch { throw new HttpError(422, 'Niepoprawny kontekst komendy (maksymalnie 4 doprecyzowania).') }
   await enforceRateLimit(db, `command:${user.id}`, RATE_LIMITS.command)
   const provider = commandProviderFromEnv()
-  return Response.json(await runCommand(db, body.text, { provider, actor: actorOf(user), conversation }))
+  return Response.json(await runCommand(db, body.text, { provider, actor: actorOf(user), conversation, role: user.role }))
 })

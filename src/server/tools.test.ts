@@ -2,6 +2,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { confirmStockChange, initDb, listAudit, listReorderDrafts, listZones } from './db'
 import { createPgliteDb, nextTuesday, type Db } from './sql'
+import { previewPacking } from './packing'
 import { TOOL_REGISTRY, ToolError, UnknownToolError, callTool } from './tools'
 
 const TABLES = 'items, audit_log, reorder_drafts, zones, procedures, proposals, pending_imports, settings, app_meta'
@@ -155,32 +156,25 @@ describe('tools on a real database', () => {
     expect((await listZones(db)).map((zone) => zone.name)).toEqual(['kartony'])
   })
 
-  it('remember and recall a procedure', async () => {
-    await callTool(db, 'remember_procedure', { topic: 'szkło', text: 'szkło pakujemy w kartony Y, strefa C2' })
-
-    const hit = (await callTool(db, 'recall_procedure', { topic: 'szkło' })) as { procedures: { text: string }[] }
-    expect(hit.procedures[0].text.startsWith('szkło pakujemy')).toBe(true)
-
-    // search by a fragment of the procedure text
-    const fragment = (await callTool(db, 'recall_procedure', { topic: 'pakujemy' })) as { procedures: unknown[] }
-    expect(fragment.procedures).toHaveLength(1)
-
-    // Polish uppercase is folded too
-    const upper = (await callTool(db, 'recall_procedure', { topic: 'SZKŁO' })) as { procedures: unknown[] }
-    expect(upper.procedures).toHaveLength(1)
-
+  it('manager saves a structured rule; recall matches full product names', async () => {
+    const ctx = { actor: { name: 'Kierownik', id: null }, role: 'kierownik' as const }
+    await callTool(db, 'remember_procedure', (await previewPacking(db, { item_id: 2, packaging_id: 3, quantity_per_package: 2, notes: 'Przekładki' }, ctx.role)).args, ctx)
+    const hit = await callTool(db, 'recall_procedure', { topic: 'szkło' }) as { procedures: { text: string }[] }
+    expect(hit.procedures[0].text).toContain('Duży karton')
+    expect(hit.procedures[0].text).toContain('Przekładki')
+    expect((await callTool(db, 'recall_procedure', { topic: 'SZKŁO' }) as { procedures: unknown[] }).procedures).toHaveLength(1)
+    expect(await callTool(db, 'recall_procedure', { topic: 'przekładki' })).toEqual({ procedures: [] })
     expect(await callTool(db, 'recall_procedure', { topic: 'elektronika' })).toEqual({ procedures: [] })
   })
 
-  it('remember_procedure updates an existing topic', async () => {
-    await callTool(db, 'remember_procedure', { topic: 'szkło', text: 'stara wersja' })
-    const second = await callTool(db, 'remember_procedure', { topic: 'Szkło', text: 'nowa wersja' })
-    expect(second.updated).toBe(true)
-
-    const procedures = ((await callTool(db, 'recall_procedure', { topic: 'szkło' })) as { procedures: { text: string }[] })
-      .procedures
-    expect(procedures).toHaveLength(1)
-    expect(procedures[0].text).toBe('nowa wersja')
+  it('remember_procedure updates one rule rather than duplicating it', async () => {
+    const ctx = { actor: { name: 'Kierownik', id: null }, role: 'kierownik' as const }
+    const args = { item_id: 2, packaging_id: 3, quantity_per_package: 2, notes: 'stara wersja' }
+    await callTool(db, 'remember_procedure', (await previewPacking(db, args, ctx.role)).args, ctx)
+    await callTool(db, 'remember_procedure', (await previewPacking(db, { ...args, quantity_per_package: 4, notes: 'nowa wersja' }, ctx.role)).args, ctx)
+    const rules = (await callTool(db, 'recall_procedure', { topic: 'szkło' }) as { procedures: { quantity_per_package: number; notes: string; version: number }[] }).procedures
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toMatchObject({ quantity_per_package: 4, notes: 'nowa wersja', version: 2 })
   })
 
   it('add_item adds once with defaults', async () => {
