@@ -2,6 +2,7 @@
 // prostokąty do absolutnego pozycjonowania (bez react-native-svg). Testowalna bez RN.
 import { boundsOf, projectionFor, type Projection } from '../../../src/lib/pdr'
 import type { MapPath, MapSector } from './contracts'
+import { JUNCTION_PREFIX } from './guidedScan'
 
 export const CANVAS_W = 320
 export const CANVAS_H = 240
@@ -58,7 +59,9 @@ export function canvasGeometry(paths: MapPath[], sectors: MapSector[], width = C
     }
     for (const marker of path.markers) {
       const box = proj.toSvg(marker)
-      markers.push({ key: `${path.id}-m-${marker.label}-${marker.x},${marker.y}`, left: box.x - 5, top: box.y - 5, label: marker.label, color: pathColor(pathIndex) })
+      const label = marker.label.startsWith(JUNCTION_PREFIX) ? marker.label.slice(JUNCTION_PREFIX.length) : marker.label
+      if (markers.some(item => item.label === label && Math.abs(item.left - (box.x - 5)) < 0.1 && Math.abs(item.top - (box.y - 5)) < 0.1)) continue
+      markers.push({ key: `${path.id}-m-${marker.label}-${marker.x},${marker.y}`, left: box.x - 5, top: box.y - 5, label, color: pathColor(pathIndex) })
     }
   })
 
@@ -67,7 +70,7 @@ export function canvasGeometry(paths: MapPath[], sectors: MapSector[], width = C
     return { key: `s-${sector.id}`, left: box.x - 8, top: box.y - 8, label: sector.name, color: SECTOR_COLOR, active: false }
   })
 
-  const startPoint = paths[0]?.points[0]
+  const startPoint = paths.flatMap(path => path.markers).find(marker => marker.label === JUNCTION_PREFIX + 'START') ?? paths[0]?.points[0]
   const startSvg = startPoint ? proj.toSvg(startPoint) : null
   return {
     proj,

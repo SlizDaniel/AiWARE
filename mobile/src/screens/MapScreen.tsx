@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { itemsForZone, zoneForItem } from '../../../src/components/zoneItems'
-import { formatMeters, pathDistanceM, PathTracker, StepDetector, type PathMarker, type PathPoint } from '../../../src/lib/pdr'
+import { formatMeters, pathDistanceM, StepDetector, type PathMarker, type PathPoint } from '../../../src/lib/pdr'
 import { Button, Card, Field, Message, Title } from '../components/ui'
 import type { Api } from '../lib/client'
 import type { MapPath, MapSector } from '../lib/contracts'
-import { attachTrackerToImu, createImuTracker, imuAvailable, requestImuPermission, type ImuTracker } from '../lib/imu'
+import { createStepTracker, motionAvailable, requestImuPermission, type ImuTracker } from '../lib/imu'
+import { GuidedScan, savedJunctions, SCAN_DIRECTIONS, type Junction, type ScanDirection } from '../lib/guidedScan'
 import { CANVAS_H, CANVAS_W, canvasGeometry, tapToMeters, type CanvasGeometry } from '../lib/mapping'
 import type { Warehouse } from '../hooks/useWarehouse'
 
@@ -17,20 +18,21 @@ type Snapshot = { points: PathPoint[]; markers: PathMarker[] }
 const EMPTY_SNAPSHOT: Snapshot = { points: [{ x: 0, y: 0, t: 0 }], markers: [] }
 const HEADING_WATCHDOG_MS = 3500
 
-/** Mapa magazynu: rzeczywisty rzut ze spaceru z telefonem, sektory i schemat stref. */
+/** Schemat alejek z kroków, ręcznych skrętów i potwierdzonych skrzyżowań. */
 export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; target: MapTarget | null }) {
   const canDecide = data.user.role === 'kierownik'
   const [paths, setPaths] = useState<MapPath[]>([])
   const [sectors, setSectors] = useState<MapSector[]>([])
   const [loadError, setLoadError] = useState('')
+  const [mapLoading, setMapLoading] = useState(true)
   const [actionError, setActionError] = useState('')
   const [info, setInfo] = useState('')
 
   const [mode, setMode] = useState<Mode>('idle')
   const [manual, setManual] = useState(false)
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY_SNAPSHOT)
-  const [markerLabel, setMarkerLabel] = useState('')
-  const [markerZone, setMarkerZone] = useState('')
+  const [startLabel, setStartLabel] = useState('START')
+  const [startDirection, setStartDirection] = useState<ScanDirection>(0)
   const [name, setName] = useState('')
   const [stepLength, setStepLength] = useState('0.7')
   const [busy, setBusy] = useState(false)
@@ -45,7 +47,7 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
   const highlighted = target ? zoneForItem(target, data.zones) : null
   const zone = data.zones.find(item => item.id === selected) ?? highlighted
 
-  const trackerRef = useRef<PathTracker | null>(null)
+  const trackerRef = useRef<GuidedScan | null>(null)
   const detectorRef = useRef<StepDetector | null>(null)
   const imuRef = useRef<ImuTracker | null>(null)
   const startedAtRef = useRef(0)
@@ -54,7 +56,12 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
   const watchdogRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const knownJunctions = useMemo(() => savedJunctions(paths), [paths])
+  const startingJunction = useMemo(() => knownJunctions.find(item => item.label === startLabel)
+    ?? knownJunctions.find(item => item.label === 'START') ?? knownJunctions[0] ?? { x: 0, y: 0, label: 'START' }, [knownJunctions, startLabel])
+
   const loadMap = useCallback(async () => {
+    setMapLoading(true)
     try {
       const [loadedPaths, loadedSectors] = await Promise.all([api.mapPaths(), api.mapSectors()])
       setPaths(loadedPaths)
@@ -62,6 +69,8 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
       setLoadError('')
     } catch (reason) {
       setLoadError(reason instanceof Error ? reason.message : 'Nie udało się pobrać mapy.')
+    } finally {
+      setMapLoading(false)
     }
   }, [api])
 
@@ -82,15 +91,15 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       // Watchdog: czujniki raportowane, ale milczą (laptop, brak zgody systemowej) → tryb ręczny.
-      if (!manualRef.current && !watchdogRef.current && lastAccelAtRef.current === 0 && Date.now() - startedAtRef.current > HEADING_WATCHDOG_MS) {
+      if (!manualRef.current && !watchdogRef.current && Date.now() - (lastAccelAtRef.current || startedAtRef.current) > HEADING_WATCHDOG_MS) {
         watchdogRef.current = true
         manualRef.current = true
         setManual(true)
-        setInfo('Czujniki nie wysyłają danych — włączony tryb ręczny: dotykaj punktów przejścia na mapie.')
+        setInfo('Czujniki nie wysyłają danych — włączony tryb ręczny: dodawaj kroki przyciskiem + Krok.')
       }
       const tracker = trackerRef.current
       if (tracker && !manualRef.current) {
-        setSnapshot({ points: tracker.allPoints(), markers: tracker.allMarkers() })
+        setSnapshot(tracker.snapshot())
       }
     }, 200)
   }, [])
@@ -107,38 +116,46 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
     watchdogRef.current = false
     lastAccelAtRef.current = 0
     startedAtRef.current = Date.now()
-    if (imuAvailable()) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const tracker = new GuidedScan(Number(stepLength.replace(',', '.')), startingJunction, startDirection, knownJunctions)
+      trackerRef.current = tracker
+      const detector = new StepDetector()
+      detectorRef.current = detector
+      setSnapshot(tracker.snapshot())
       try {
         const granted = await requestImuPermission()
-        if (granted) {
-          const tracker = new PathTracker(Number(stepLength) || 0.7)
-          trackerRef.current = tracker
-          const detector = new StepDetector()
-          detectorRef.current = detector
-          const imu = createImuTracker(detector, tMs => trackerRef.current?.step(Math.max(0, tMs)), deg => trackerRef.current?.setHeading(deg))
-          imuRef.current = imu
-          await attachTrackerToImu(tracker, detector, imu)
-          switchMode(false)
-          setSnapshot({ points: tracker.allPoints(), markers: [] })
-          startTick()
-          setMode('recording')
-          return
-        }
-        setInfo('Brak zgody na czujniki — nagrywam w trybie ręcznym (dotykanie punktów).')
+        if (!granted) throw new Error('Brak zgody na ruch — dodawaj kroki przyciskiem + Krok.')
+        if (!await motionAvailable()) throw new Error('Czujnik ruchu jest niedostępny — dodawaj kroki przyciskiem + Krok.')
+        const imu = createStepTracker()
+        imuRef.current = imu
+        await imu.start({
+          onAccel: (mag, tMs) => {
+            lastAccelAtRef.current = tMs
+            if (!manualRef.current && detector.push(mag, tMs)) tracker.step(tMs)
+          },
+          onHeading: () => {},
+        })
+        switchMode(false)
       } catch (reason) {
-        setInfo(reason instanceof Error ? reason.message : 'Czujniki niedostępne — nagrywam w trybie ręcznym.')
+        stopSensors()
+        switchMode(true)
+        setInfo(reason instanceof Error ? reason.message : 'Dodawaj kroki przyciskiem + Krok.')
       }
-    } else {
-      setInfo('To urządzenie nie ma czujników ruchu — nagrywam w trybie ręcznym.')
+      startedAtRef.current = Date.now()
+      startTick()
+      setMode('recording')
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'Nie udało się rozpocząć spaceru.')
+    } finally {
+      setBusy(false)
     }
-    switchMode(true)
-    setSnapshot(EMPTY_SNAPSHOT)
-    startTick()
-    setMode('recording')
-  }, [startTick, stepLength, switchMode])
+  }, [busy, knownJunctions, startingJunction, startDirection, startTick, stepLength, switchMode, stopSensors])
 
   const stopRecording = useCallback(() => {
     stopSensors()
+    if (trackerRef.current) setSnapshot(trackerRef.current.snapshot())
     setMode('review')
   }, [stopSensors])
 
@@ -153,26 +170,28 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
 
   const syncFromTracker = useCallback(() => {
     const tracker = trackerRef.current
-    if (tracker) setSnapshot({ points: tracker.allPoints(), markers: tracker.allMarkers() })
+    if (tracker) setSnapshot(tracker.snapshot())
   }, [])
 
-  const addMarker = useCallback(() => {
-    const label = markerLabel.trim()
-    if (!label) return
-    const zoneName = markerZone || undefined
-    if (manualRef.current) {
-      setSnapshot(current => {
-        const last = current.points[current.points.length - 1]!
-        const marker: PathMarker = { x: last.x, y: last.y, label }
-        if (zoneName) marker.zone = zoneName
-        return { ...current, markers: [...current.markers, marker] }
-      })
-    } else {
-      trackerRef.current?.addMarker(label, zoneName)
+  const editScan = useCallback((edit: (scan: GuidedScan) => void) => {
+    const scan = trackerRef.current
+    if (!scan) return
+    setActionError('')
+    detectorRef.current?.reset()
+    try {
+      edit(scan)
       syncFromTracker()
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'Nie udało się skorygować przejścia.')
     }
-    setMarkerLabel('')
-  }, [markerLabel, markerZone, syncFromTracker])
+  }, [syncFromTracker])
+
+  const returnToJunction = useCallback((junction: Junction) => {
+    editScan(scan => {
+      const correction = scan.returnTo(junction)
+      setInfo(`Potwierdzono ${junction.label}. Korekta nowych odcinków: ${formatMeters(correction)}.`)
+    })
+  }, [editScan])
 
   const recordingShapes: MapPath[] = useMemo(
     () => (mode === 'idle' ? [] : [{ id: -1, name: '', points: snapshot.points, markers: snapshot.markers, step_length: 0.7, actor: '', created: '' }]),
@@ -190,9 +209,6 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
       setSectorName('')
       return
     }
-    if (mode === 'recording' && manualRef.current) {
-      setSnapshot(current => ({ ...current, points: [...current.points, { x: meters.x, y: meters.y, t: Date.now() }] }))
-    }
   }, [addSectorMode, geometry, mode])
 
   const saveRecording = useCallback(async () => {
@@ -203,7 +219,7 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
     try {
       const saved = await api.saveMapPath({
         name: trimmed,
-        step_length: manualRef.current ? Number(stepLength) || 0.7 : trackerRef.current?.stepLength ?? 0.7,
+        step_length: trackerRef.current?.stepLength ?? 0.7,
         points: snapshot.points,
         markers: snapshot.markers,
       })
@@ -215,7 +231,7 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
     } finally {
       setBusy(false)
     }
-  }, [api, busy, cancelRecording, name, snapshot, stepLength])
+  }, [api, busy, cancelRecording, name, snapshot])
 
   const removePath = useCallback(async (path: MapPath) => {
     setActionError('')
@@ -292,21 +308,23 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
   const selectedSector = sectors.find(item => item.id === selectedSectorId) ?? null
   const assignedIds = new Set(selectedSector?.items.map(item => item.item_id) ?? [])
   const assignableItems = data.items.filter(item => !assignedIds.has(item.id))
-  const steps = mode === 'idle' ? 0 : snapshot.points.length - 1
+  const steps = mode === 'idle' ? 0 : trackerRef.current?.steps ?? 0
+  const scanJunctions = mode === 'idle' ? [] : trackerRef.current?.allJunctions() ?? []
+  const currentDirection = SCAN_DIRECTIONS.find(item => item.value === trackerRef.current?.heading)?.label ?? ''
   const distance = pathDistanceM(mode === 'idle' ? [] : snapshot.points)
 
   return <View className="gap-3">
     <Card>
       <Title>Mapa magazynu</Title>
       <Text className="text-stone-600">
-        Rzeczywisty rzut ze spaceru z telefonem{paths.length ? ` · ${paths.length} ścieżek` : ' · zmapuj halę poniżej'} · kratka {geometry.gridStepM} m
+        Schemat alejek ze spaceru{paths.length ? ` · ${paths.length} ścieżek` : ' · zmapuj halę poniżej'} · kratka {geometry.gridStepM} m
       </Text>
       {target ? <Message>{target.name}: {target.location || 'brak zapisanej lokalizacji'}{!highlighted ? ' · nie znaleziono odpowiadającej strefy' : ''}</Message> : null}
       {loadError ? <Message error>{loadError}</Message> : null}
       {info ? <Message>{info}</Message> : null}
       {actionError ? <Message error>{actionError}</Message> : null}
 
-      <Pressable accessibilityLabel="Rzeczywista mapa magazynu w metrach" onPress={event => handleCanvasPress(event.nativeEvent.locationX, event.nativeEvent.locationY)}
+      <Pressable accessibilityLabel="Schemat 2D alejek magazynu" onPress={event => handleCanvasPress(event.nativeEvent.locationX, event.nativeEvent.locationY)}
         style={{ width: CANVAS_W, height: CANVAS_H }} className="mt-3 self-center overflow-hidden rounded-lg border border-stone-300 bg-[#fbfaf7]">
         <View style={{ width: CANVAS_W, height: CANVAS_H }}>
           {Array.from({ length: Math.floor(CANVAS_W / (geometry.gridStepM * geometry.proj.scale)) + 1 }, (_, index) => {
@@ -323,7 +341,7 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
           }} />)}
           <View style={{ position: 'absolute', left: geometry.start.left - 5, top: geometry.start.top - 5, width: 10, height: 10, borderRadius: 5, backgroundColor: '#315b45' }} />
           <Text style={{ position: 'absolute', left: geometry.start.left + 7, top: geometry.start.top - 7 }} className="text-[10px] font-bold text-forest">START</Text>
-          {geometry.markers.map(marker => <View key={marker.key} style={{ position: 'absolute', left: marker.left, top: marker.top }}>
+          {geometry.markers.filter(marker => marker.label !== 'START').map(marker => <View key={marker.key} style={{ position: 'absolute', left: marker.left, top: marker.top }}>
             <View style={{ width: 10, height: 10, backgroundColor: marker.color }} />
             <Text className="text-[10px] font-semibold text-ink">{marker.label}</Text>
           </View>)}
@@ -337,10 +355,22 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
 
       {mode === 'idle' ? (
         <View className="mt-3 gap-2">
-          <Button title="Rozpocznij spacer z telefonem" onPress={() => void startRecording()} disabled={busy} />
+          <Text className="text-sm font-semibold text-forest">Stań w punkcie początkowym</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {(knownJunctions.length ? knownJunctions : [{ x: 0, y: 0, label: 'START' }]).map(junction => <Button key={junction.label} title={junction.label} secondary={startingJunction.label !== junction.label}
+              onPress={() => setStartLabel(junction.label)} />)}
+          </View>
+          <Text className="text-sm text-stone-600">Kierunek pierwszej alejki na planie (nie kierunek telefonu)</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {SCAN_DIRECTIONS.map(direction => <Button key={direction.value} title={direction.label} secondary={startDirection !== direction.value}
+              onPress={() => setStartDirection(direction.value)} />)}
+          </View>
+          <Field label="Długość kroku [m], np. 0,7" value={stepLength} onChangeText={setStepLength} />
+          <Button title={busy ? 'Uruchamiam…' : mapLoading ? 'Wczytuję mapę…' : 'Rozpocznij spacer z telefonem'} onPress={() => void startRecording()} disabled={busy || mapLoading || !!loadError} />
           <Text className="text-xs text-stone-500">
-            Trzymaj telefon płasko i idź powoli: kroki z akcelerometru rysują ścieżkę, magnetometr ustawia kierunek.
-            Bez czujników działa tryb ręczny — dotykaj punktów na mapie.
+            Idź prosto. Na skrzyżowaniu zatrzymaj się i kliknij Skrzyżowanie, a przed dalszym przejściem wybierz skręt.
+            Pierwsza alejka wyznacza orientację planu. Dystans jest szacowany z kroków; kompas nie obraca mapy.
+            Przy powrocie wybierz znany punkt, aby skorygować nowe odcinki. Zmierz długość kroku: dystans testowy podziel przez liczbę kroków.
           </Text>
         </View>
       ) : (
@@ -353,24 +383,25 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
           </View>
           {mode === 'recording' ? (
             <View className="gap-2 rounded-xl border border-stone-200 bg-paper p-3">
-              <Text className="text-sm font-semibold text-forest">Znacznik w miejscu składowania</Text>
-              <Field label="Etykieta (np. A-01)" value={markerLabel} onChangeText={setMarkerLabel} />
-              <View className="flex-row flex-wrap gap-2">
-                <Pressable accessibilityRole="button" onPress={() => setMarkerZone('')}
-                  className={`rounded-full border px-3 py-1.5 ${markerZone === '' ? 'border-forest bg-accent' : 'border-stone-300 bg-white'}`}>
-                  <Text className="text-xs text-ink">bez strefy</Text>
-                </Pressable>
-                {data.zones.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => setMarkerZone(item.name)}
-                  className={`rounded-full border px-3 py-1.5 ${markerZone === item.name ? 'border-forest bg-accent' : 'border-stone-300 bg-white'}`}>
-                  <Text className="text-xs text-ink">{item.name}</Text>
-                </Pressable>)}
+              <Text className="text-sm font-semibold text-forest">Kierunek: {currentDirection}</Text>
+              <Button title="Skrzyżowanie" onPress={() => editScan(scan => {
+                const junction = scan.addJunction()
+                setInfo(`Oznaczono ${junction.label}. Możesz iść prosto lub wybrać skręt.`)
+              })} />
+              <View className="flex-row gap-2">
+                <View className="flex-1"><Button title="W lewo" secondary onPress={() => editScan(scan => scan.turn('left'))} /></View>
+                <View className="flex-1"><Button title="W prawo" secondary onPress={() => editScan(scan => scan.turn('right'))} /></View>
               </View>
-              <Button title="Dodaj znacznik" secondary disabled={!markerLabel.trim()} onPress={addMarker} />
-              {manual ? <Button title="Cofnij ostatni punkt" secondary disabled={snapshot.points.length < 2}
-                onPress={() => setSnapshot(current => (current.points.length > 1 ? { ...current, points: current.points.slice(0, -1) } : current))} /> : null}
+              <Button title="Zawróć" secondary onPress={() => editScan(scan => scan.turn('back'))} />
+              <Text className="text-sm font-semibold text-forest">Jestem ponownie w punkcie:</Text>
+              <Text className="text-xs text-stone-500">Wybierz dopiero, gdy fizycznie dojdziesz do tego miejsca. Po korekcie kierunek pozostaje ten sam; skręt wybierz osobno.</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {scanJunctions.map(junction => <Button key={junction.label} title={`Powrót: ${junction.label}`} secondary onPress={() => returnToJunction(junction)} />)}
+              </View>
+              {manual ? <Button title="+ Krok" secondary onPress={() => editScan(scan => scan.step(Date.now()))} /> : null}
               <View className="flex-row gap-2">
                 <View className="flex-1"><Button title="Zakończ spacer" onPress={stopRecording} /></View>
-                <View className="flex-1"><Button title={manual ? 'Na czujniki' : 'Tryb ręczny'} secondary onPress={() => switchMode(!manual)} /></View>
+                {!manual ? <View className="flex-1"><Button title="Kroki ręczne" secondary onPress={() => switchMode(true)} /></View> : null}
               </View>
               <Button title="Odrzuć" secondary onPress={cancelRecording} />
             </View>
@@ -378,9 +409,8 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
             <View className="gap-2 rounded-xl border border-stone-200 bg-paper p-3">
               <Text className="text-sm font-semibold text-forest">Zapisz nagraną ścieżkę</Text>
               <Field label="Nazwa ścieżki" value={name} onChangeText={setName} />
-              {manual ? <Field label="Długość kroku [m]" value={stepLength} onChangeText={setStepLength} /> : null}
               <View className="flex-row gap-2">
-                <View className="flex-1"><Button title={busy ? 'Zapisuję…' : 'Zapisz na mapie'} onPress={() => void saveRecording()} disabled={busy || !name.trim()} /></View>
+                <View className="flex-1"><Button title={busy ? 'Zapisuję…' : 'Zapisz na mapie'} onPress={() => void saveRecording()} disabled={busy || !name.trim() || snapshot.points.length < 2} /></View>
                 <View className="flex-1"><Button title="Odrzuć" secondary onPress={cancelRecording} disabled={busy} /></View>
               </View>
             </View>
@@ -454,7 +484,7 @@ export function MapScreen({ api, data, target }: { api: Api; data: Warehouse; ta
           <Text className="text-xs text-stone-600">{formatMeters(pathDistanceM(path.points))} · {path.points.length} pkt · {path.markers.length} znaczników</Text>
         </View>
         {canDecide ? <Button title="Usuń" secondary disabled={busy} onPress={() => void removePath(path)} /> : null}
-      </View>) : <Text className="text-sm text-stone-500">Jeszcze nic nie zmapowano — pierwszy spacer wyznaczy rzeczywisty rzut.</Text>}
+      </View>) : <Text className="text-sm text-stone-500">Jeszcze nic nie zmapowano — pierwszy spacer utworzy schemat alejek.</Text>}
     </Card>
 
     <Card>

@@ -50,19 +50,24 @@ try {
   const [{ version }] = await db.query<{ version: string }>('SELECT version()')
   console.log(`Połączono: ${version.split(',')[0]}`)
   await initDb(db)
+  const expectedTables = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures',
+    'proposals', 'pending_imports', 'settings', 'app_meta', 'profiles', 'rate_limits',
+    'map_paths', 'map_sectors', 'map_sector_items', 'packaging_types', 'packing_rules']
   const tables = await db.query<{ tablename: string; rowsecurity: boolean }>(
     `SELECT tablename, rowsecurity FROM pg_tables
      WHERE schemaname = 'public' AND tablename = ANY($1::text[]) ORDER BY tablename`,
-    [['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'proposals', 'pending_imports', 'settings', 'app_meta', 'profiles', 'rate_limits']],
+    [expectedTables],
   )
   const missingRls = tables.filter((table) => !table.rowsecurity).map((table) => table.tablename)
-  console.log(`Tabele (${tables.length}/11): ${tables.map((table) => table.tablename).join(', ')}`)
+  const missingTables = expectedTables.filter((name) => !tables.some((table) => table.tablename === name))
+  console.log(`Tabele (${tables.length}/${expectedTables.length}): ${tables.map((table) => table.tablename).join(', ')}`)
+  if (missingTables.length) console.log(`Brakujące tabele: ${missingTables.join(', ')}`)
   console.log(missingRls.length ? `UWAGA: RLS wyłączone dla: ${missingRls.join(', ')}` : 'RLS włączone na wszystkich tabelach.')
   const items = await listItems(db)
   const [{ count }] = await db.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM profiles')
   console.log(`Pozycje w magazynie: ${items.length} · konta (profile): ${count}`)
   console.log('Baza Supabase gotowa. Uruchom ponownie `npm run dev`, a na Vercelu ustaw tę samą DATABASE_URL.')
-  process.exit(tables.length === 11 && missingRls.length === 0 ? 0 : 1)
+  process.exit(missingTables.length === 0 && missingRls.length === 0 ? 0 : 1)
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error)
   console.error(`Błąd połączenia: ${message.replace(url, '<DATABASE_URL>')}`)

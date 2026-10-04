@@ -1,11 +1,14 @@
 // Process-wide database handle for route handlers. Serverless instances (and
 // Next dev HMR) reuse one connection pool / PGlite instance via globalThis.
 import { databaseConfig, isDemoMode } from './env'
-import { createPgliteDb, createPostgresDb, type Db } from './sql'
+import { createPgliteDb, createPostgresDb, ensureSchema, type Db } from './sql'
 import { initDb } from './db'
 import { initDemoDb } from './demo'
 
 const store = globalThis as typeof globalThis & { __magazynierDb?: Promise<Db> }
+// This module reloads with schema code; the connection survives in globalThis.
+// Check each retained handle once per module load, sharing concurrent requests.
+const schemaChecks = new WeakMap<Db, Promise<void>>()
 
 async function openConfiguredDb(): Promise<Db> {
   const config = databaseConfig()
@@ -15,14 +18,24 @@ async function openConfiguredDb(): Promise<Db> {
   return db
 }
 
-export function getDb(): Promise<Db> {
+export async function getDb(): Promise<Db> {
   if (!store.__magazynierDb) {
     store.__magazynierDb = openConfiguredDb().catch((error) => {
       store.__magazynierDb = undefined
       throw error
     })
   }
-  return store.__magazynierDb
+  const db = await store.__magazynierDb
+  let checked = schemaChecks.get(db)
+  if (!checked) {
+    checked = ensureSchema(db).catch((error) => {
+      schemaChecks.delete(db)
+      throw error
+    })
+    schemaChecks.set(db, checked)
+  }
+  await checked
+  return db
 }
 
 export type StorageKind = 'supabase' | 'postgres' | 'pglite' | 'ephemeral'

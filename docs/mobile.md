@@ -70,18 +70,25 @@ Na telefonie otwórz nowy adres `exp://…exp.direct` w Expo Go.
   szum otoczenia może przekraczać próg — celem produkcyjnym jest telefon.
 - **Stany:** wyszukiwanie i minima; kierownik importuje XLSX/CSV po sprawdzeniu mapowania.
   Wszyscy mogą eksportować XLSX/CSV do arkusza udostępniania telefonu.
-- **Mapa:** rzeczywisty rzut hali ze spaceru z telefonem, sektory i schemat stref.
-  Nagrywanie ścieżki korzysta z `expo-sensors`: akcelerometr wykrywa kroki (wspólny
-  `StepDetector` z klientem webowym), magnetometr ustawia kierunek przy telefonie trzymanym
-  płasko (formuła w `mobile/src/lib/imu.ts` — gdy na urządzeniu kierunek jest odwrócony,
-  poprawką jest znak w `compassHeadingDeg`). Bez czujników albo po 3,5 s milczenia włącza się
-  tryb ręczny: punkty ścieżki dotyka się na kanwie (dotyk → metry przez wspólną projekcję
-  z `src/lib/pdr.ts`). W miejscach składowania dodaje się znaczniki (z opcjonalną strefą).
-  Zapisana ścieżka staje się główną mapą; na niej dotykiem stawia się sektory i przypisuje
-  im przedmioty z magazynu w dowolnej ilości (rozmieszczenie — bez zmiany stanów). Usuwanie
-  ścieżek i sektorów tylko dla kierownika; wszystkie operacje trafiają do audytu na serwerze.
-  Odpowiedź o lokalizacji przełącza do mapy i podświetla odpowiadającą strefę. Reguły
-  przypisania pozycji do stref są współdzielone z klientem webowym.
+- **Mapa:** schemat alejek 2D z mapowania wspomaganego w Expo Go. Przed spacerem wybiera się
+  START albo zapisane skrzyżowanie, kierunek pierwszej alejki na planie i długość kroku
+  (0,3–1,5 m; zmierzony dystans / liczba kroków). `DeviceMotion` z `expo-sensors` dostarcza
+  przyspieszenie, a wspólny `StepDetector` wykrywa kroki. Kompas nie steruje kierunkiem.
+  Zatrzymaj się na skrzyżowaniu i kliknij „Skrzyżowanie”; skręty „W lewo”, „W prawo” i
+  „Zawróć” zmieniają kierunek o 90°/180° i też oznaczają punkt. Alejki są prostopadłe.
+  Po fizycznym powrocie do znanego punktu wybierz „Powrót: START/S…”. Korekta rozkłada błąd
+  osobno na osie nowych odcinków, bez przesuwania wcześniej potwierdzonej części przejścia.
+  Niepasujące punkty (brak przejścia w wymaganej osi albo korekta ponad 50% drogi w osi)
+  są odrzucane. Jest to schemat o szacowanych wymiarach, nie pomiar geodezyjny ani obrys ścian.
+  Bez zgody/czujnika albo po 3,5 s braku próbek działa „+ Krok”; można też wybrać kroki ręczne.
+  Punkty i skrzyżowania są zapisywane przez obecne `/api/map-paths`; skrzyżowania to znaczniki
+  z prefiksem `Skrzyżowanie: `. Kolejne przejścia rozpoczynane ze znanych punktów rozszerzają
+  wspólny plan. Stare ścieżki z kompasu nadal są wyświetlane, ale nie dostają automatycznie
+  nowych punktów odniesienia; jeśli są błędne, kierownik może je usunąć przed demonstracją.
+  Zapisane przejścia automatycznie mieszczą się na miniaturze. Sektory i istniejące przypisania
+  przedmiotów pozostają dostępne. Dodawanie grup produktów do alejek jest odłożone.
+  Usuwanie ścieżek i sektorów tylko dla kierownika; operacje zapisu trafiają do audytu.
+  Odpowiedź o lokalizacji przełącza do mapy i podświetla odpowiadającą strefę.
 - **Historia:** audyt, a dla kierownika cofnięcie z osobnym potwierdzeniem.
 - **Więcej:** szkice zamówień, procedury, konto i ustawienia agenta. Role egzekwuje API;
   zarządzanie rolami użytkowników pozostaje w panelu webowym. Ustawienia agenta odpowiadają
