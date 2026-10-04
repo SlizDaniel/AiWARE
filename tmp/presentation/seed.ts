@@ -1,0 +1,17 @@
+import {createPgliteDb} from '../../src/server/sql';
+import {initDemoDb} from '../../src/server/demo';
+import {addZone} from '../../src/server/db';
+import {saveMapPath} from '../../src/server/mapPaths';
+import {saveMapSector,assignSectorItem} from '../../src/server/mapSectors';
+import {ensureWorkTasksSchema,createWorkTask} from '../../src/server/workTasks';
+const db=await createPgliteDb('./data/presentation-demo');await initDemoDb(db,{reset:true});
+const manager={id:'00000000-0000-0000-0000-000000000001',email:'demo@example.test',display_name:'Kierownik demo',role:'kierownik' as const};
+const employee='00000000-0000-0000-0000-000000000002';
+await db.query("INSERT INTO profiles(user_id,email,display_name,role) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",[manager.id,manager.email,manager.display_name,manager.role]);
+await db.query("INSERT INTO profiles(user_id,email,display_name,role) VALUES ($1,$2,$3,'pracownik') ON CONFLICT DO NOTHING",[employee,'pracownik@example.test','Michał Demo']);
+const actor={name:manager.display_name,id:manager.id};
+for(const name of ['Strefa A-1','Strefa B-2','Strefa C-1'])await addZone(db,name);
+await saveMapPath(db,{name:'Alejka główna',step_length:0.7,points:[{x:0,y:0},{x:0,y:6},{x:4,y:6},{x:4,y:0}],markers:[]},actor);
+const sector=await saveMapSector(db,{name:'Strefa B-2',x:0,y:5},actor);await assignSectorItem(db,sector.id,{item_id:2,quantity:10},actor);
+await ensureWorkTasksSchema(db);await createWorkTask(db,manager,{title:'Zapakuj szkło do wysyłki',description:'Przygotuj 4 sztuki szkła zgodnie z procedurą pakowania. Sprawdź towar w Strefie B-2.',assigned_to:employee,priority:'urgent'});
+console.log('Isolated presentation fixture ready');process.exit(0);

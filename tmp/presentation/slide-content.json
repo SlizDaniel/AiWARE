@@ -1,0 +1,1098 @@
+[
+  {
+    "title": "MAGAZYNIER",
+    "section": "Przewodnik użytkownika",
+    "steps": [],
+    "image": null,
+    "crop": null,
+    "note": "",
+    "kind": "cover"
+  },
+  {
+    "title": "Twoja droga przez aplikację",
+    "section": "Na początek",
+    "steps": [
+      [
+        "01 / Uruchomienie i konto",
+        "Przygotuj aplikację lub otwórz adres otrzymany od kierownika. Załóż konto w wersji webowej i uzyskaj dostęp."
+      ],
+      [
+        "02 / Przygotowanie magazynu",
+        "Kierownik ustawia agenta, importuje stany, definiuje lokalizacje i reguły pakowania."
+      ],
+      [
+        "03 / Codzienna praca",
+        "Pracownik pyta o towar, zgłasza wydania i przyjęcia, zatwierdza karty oraz wykonuje własne zadania."
+      ],
+      [
+        "04 / Praca na telefonie",
+        "Zaloguj się tym samym kontem. Korzystaj z komend, stanów, mapy, historii i menu Więcej."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Screeny: rzeczywisty interfejs na fikcyjnych danych. Mobile: podgląd Expo Web 390 × 844; logowanie w lokalnej atrapie Auth, bez kont produkcyjnych.",
+    "kind": "text"
+  },
+  {
+    "title": "Uruchomienie na komputerze",
+    "section": "Instalacja / administrator",
+    "steps": [
+      [
+        "Wymagania",
+        "Node.js ≥ 20.9, npm, Git. Internet jest potrzebny przy instalacji. Python 3.10+ jest opcjonalny dla launchera demo."
+      ],
+      [
+        "Konfiguracja",
+        "Skopiuj .env.example do .env.local. Puste wartości wystarczą do startu lokalnego: PGlite, parser offline i rola lokalnego kierownika."
+      ],
+      [
+        "Start",
+        "Otwórz localhost:3000. W trybie lokalnym bez Supabase Auth nie sprawdzisz rozdzielenia ról."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "macOS/Linux: cp .env.example .env.local. Zachowaj własny plik konfiguracji, jeśli już istnieje.",
+    "kind": "code",
+    "code": "git clone https://github.com/SlizDaniel/AiWARE.git\ncd AiWARE\nnpm ci\n# PowerShell:\nCopy-Item .env.example .env.local\nnpm run dev"
+  },
+  {
+    "title": "Konfiguracja wdrożenia i AI",
+    "section": "Instalacja / administrator",
+    "steps": [
+      [
+        "Supabase",
+        "Ustaw połączenie PostgreSQL, URL projektu i publiczny klucz Auth. W Auth skonfiguruj e-mail/hasło, Site URL i adres /auth/callback."
+      ],
+      [
+        "Gemini i głos",
+        "GEMINI_API_KEY włącza AI. OPENROUTER_API_KEY dodaje Mercury Decide, a STT_API_KEY opcjonalny Whisper/Groq."
+      ],
+      [
+        "Vercel",
+        "Wybierz Next.js i katalog główny. Ustaw zmienne projektu i wykonaj deploy. Sprawdź /api/health i logowanie."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Klucze serwerowe pozostają na backendzie. Na Vercel storage=ephemeral oznacza nietrwałe dane. AUTH_DISABLED=1 służy wyłącznie do lokalnych prób.",
+    "kind": "code",
+    "code": "DATABASE_URL=postgresql://...\nNEXT_PUBLIC_SUPABASE_URL=https://...\nNEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...\nGEMINI_API_KEY=...\n\nnpm run db:setup\nnpm run build\nnpm start"
+  },
+  {
+    "title": "Logowanie w przeglądarce",
+    "section": "Konto / web",
+    "steps": [
+      [
+        "1. Otwórz aplikację",
+        "Przejdź do adresu wdrożenia i wybierz zakładkę Zaloguj."
+      ],
+      [
+        "2. Podaj dane",
+        "Wpisz adres e-mail i hasło swojego konta. Przycisk Pokaż pozwala sprawdzić wpisane hasło."
+      ],
+      [
+        "3. Wejdź do magazynu",
+        "Kliknij Zaloguj. Jeśli e-mail nie jest potwierdzony, najpierw otwórz link z wiadomości rejestracyjnej."
+      ]
+    ],
+    "image": "web-login.png",
+    "crop": [
+      405,
+      60,
+      455,
+      520
+    ],
+    "note": "Logowanie produkcyjne wymaga skonfigurowanego Supabase Auth. Konto oczekujące zobaczy informację o potrzebie akceptacji.",
+    "kind": "screen"
+  },
+  {
+    "title": "Rejestracja nowego użytkownika",
+    "section": "Konto / web",
+    "steps": [
+      [
+        "1. Wybierz Załóż konto",
+        "Podaj e-mail, hasło i opcjonalnie imię oraz nazwisko widoczne w audycie."
+      ],
+      [
+        "2. Wyślij formularz",
+        "Użyj hasła spełniającego wymagania projektu Auth; formularz wymaga co najmniej 6 znaków."
+      ],
+      [
+        "3. Potwierdź e-mail",
+        "Jeśli Supabase wymaga potwierdzenia, kliknij link z wiadomości. Potem zaloguj się hasłem."
+      ],
+      [
+        "4. Poczekaj na dostęp",
+        "Pierwsze konto w nowej bazie zostaje kierownikiem. Kolejne czekają na nadanie roli."
+      ]
+    ],
+    "image": "web-register.png",
+    "crop": [
+      405,
+      60,
+      455,
+      610
+    ],
+    "note": "Rejestracja jest w wersji webowej. Ustawienia poczty, potwierdzania e-mail i możliwości rejestracji zależą od Supabase.",
+    "kind": "screen"
+  },
+  {
+    "title": "Akceptacja kont i podział ról",
+    "section": "Konto / kierownik",
+    "steps": [],
+    "image": null,
+    "crop": null,
+    "note": "Ustawienia → Użytkownicy → nadaj rolę pracownik lub kierownik. Status oczekujacy blokuje dostęp do danych. Ostatni kierownik musi zachować uprawnienia.",
+    "kind": "table",
+    "rows": [
+      [
+        "Operacja",
+        "Pracownik",
+        "Kierownik"
+      ],
+      [
+        "Komendy, pytania i karty zmian stanów",
+        "Tak",
+        "Tak"
+      ],
+      [
+        "Stany, mapa, historia, eksport",
+        "Tak",
+        "Tak"
+      ],
+      [
+        "Import i bezpośrednia edycja produktów",
+        "Nie",
+        "Tak"
+      ],
+      [
+        "Decyzje o szkicach oraz undo zapasu",
+        "Nie",
+        "Tak"
+      ],
+      [
+        "Zapis reguł, ustawienia i role",
+        "Nie",
+        "Tak"
+      ],
+      [
+        "Zadania",
+        "Własne: odczyt i wykonanie",
+        "Wszystkie: przydział i anulowanie"
+      ],
+      [
+        "Dashboard, raporty i powiadomienia",
+        "Nie",
+        "Tak"
+      ]
+    ]
+  },
+  {
+    "title": "Nawigacja i stany magazynowe",
+    "section": "Codzienna praca / web",
+    "steps": [
+      [
+        "1. Wybierz sekcję z lewej",
+        "Mapa, Stany, Kolejka, Historia, Procedury i Ustawienia. Kierownik ma też Dashboard; zadania obsługujesz w sekcji Zadania."
+      ],
+      [
+        "2. Sprawdź towar",
+        "Wyszukaj nazwę, zmień sortowanie lub pokaż braki. Każdy wiersz zawiera stan, jednostkę, minimum i lokalizację."
+      ],
+      [
+        "3. Korzystaj z agenta",
+        "Panel komend pozostaje obok danych. Odpowiedź lub propozycję sprawdzasz w tym samym miejscu."
+      ]
+    ],
+    "image": "web-stock.png",
+    "crop": null,
+    "note": "Kolory i oznaczenia rozróżniają zerowy stan, zapas poniżej minimum, blisko minimum oraz stan OK.",
+    "kind": "screen"
+  },
+  {
+    "title": "Prefix i tryb agenta",
+    "section": "Konfiguracja / kierownik",
+    "steps": [
+      [
+        "1. Otwórz Ustawienia",
+        "W części Agent wpisz prefix, np. Magu lub Gosiu. Komendy bez prefixu też działają."
+      ],
+      [
+        "2. Wybierz interpretację",
+        "LLM korzysta z AI; offline i mock z deterministycznego parsera. W demo tryb jest zablokowany."
+      ],
+      [
+        "3. Zapisz ustawienia",
+        "Zmiany obowiązują bez restartu. Po zmianie prefixu poprzedni przestaje aktywować agenta."
+      ]
+    ],
+    "image": "web-settings.png",
+    "crop": [
+      285,
+      170,
+      605,
+      390
+    ],
+    "note": "Pracownik widzi ustawienia do odczytu. Klucze dostawców ustawia administrator w konfiguracji serwera.",
+    "kind": "screen"
+  },
+  {
+    "title": "Mikrofon, nasłuch i odczyt głosem",
+    "section": "Konfiguracja / kierownik",
+    "steps": [
+      [
+        "1. Wybierz tryb głosu",
+        "Mikrofon po naciśnięciu, nasłuch na prefix albo tylko tekst."
+      ],
+      [
+        "2. Sprawdź transkrypcję",
+        "Zezwól na mikrofon przy korzystaniu z głosu. Opcjonalna transkrypcja serwera doprecyzowuje tekst z przeglądarki."
+      ],
+      [
+        "3. Włącz TTS, jeśli potrzebujesz",
+        "Opcja Czytaj odpowiedzi głosem korzysta z dostępnego polskiego głosu. Zapisz zmianę i sprawdź próbkę."
+      ]
+    ],
+    "image": "web-voice-settings.png",
+    "crop": [
+      285,
+      155,
+      605,
+      555
+    ],
+    "note": "Mikrofon wymaga HTTPS lub localhost. W DEMO_MODE chmurowe STT i TTS są wyłączone; pozostaje tekst. Nasłuch na telefonie włącza się przyciskiem.",
+    "kind": "screen"
+  },
+  {
+    "title": "Źródło danych, minima i zamówienia",
+    "section": "Konfiguracja / kierownik",
+    "steps": [
+      [
+        "1. Wybierz źródło danych",
+        "Wbudowana baza lub import XLSX/CSV. W obu przypadkach dane są przechowywane w bazie."
+      ],
+      [
+        "2. Ustal domyślne minimum",
+        "Dotyczy nowych produktów i importu bez kolumny minimum. Nie zmienia progów istniejących pozycji."
+      ],
+      [
+        "3. Ustal wielkość szkicu",
+        "Domyślna ilość w szkicu zamówienia określa propozycję uzupełnienia po spadku poniżej minimum."
+      ]
+    ],
+    "image": "web-thresholds.png",
+    "crop": [
+      285,
+      140,
+      605,
+      570
+    ],
+    "note": "Zapisz ustawienia, aby zastosować zmiany. Aplikacja nie aktualizuje automatycznie pliku Excel.",
+    "kind": "screen"
+  },
+  {
+    "title": "Import pliku magazynu",
+    "section": "Dane / kierownik",
+    "steps": [
+      [
+        "1. Otwórz Stany",
+        "Kliknij Importuj plik i wybierz XLSX albo CSV."
+      ],
+      [
+        "2. Wczytaj arkusz",
+        "Limit: 4 MB i 10 000 wierszy. Wymagane są nazwa produktu i ilość; można dodać minimum, lokalizację i jednostkę."
+      ],
+      [
+        "3. Przejdź do podglądu",
+        "Na tym etapie nic nie zmienia stanu. Aplikacja przygotowuje sugestię przypisania kolumn."
+      ]
+    ],
+    "image": "web-import.png",
+    "crop": [
+      285,
+      175,
+      615,
+      340
+    ],
+    "note": "W trybie LLM nagłówki i pierwsze 5 wierszy trafiają do Gemini. Offline mapowanie powstaje z nazw kolumn, bez AI.",
+    "kind": "screen"
+  },
+  {
+    "title": "Mapowanie kolumn i zatwierdzenie",
+    "section": "Dane / kierownik",
+    "steps": [
+      [
+        "1. Sprawdź przypisania",
+        "Nazwa pozycji → nazwa; Aktualny stan → ilość. Dopasuj minimum, lokalizację i jednostkę."
+      ],
+      [
+        "2. Obejrzyj próbkę",
+        "Sprawdź liczby i miejsca składowania. Sugestia i procent dopasowania wymagają Twojej oceny."
+      ],
+      [
+        "3. Zatwierdź import",
+        "Dopiero ten przycisk zapisuje dane. Pozycje o tej samej nazwie są aktualizowane zamiast powielane."
+      ]
+    ],
+    "image": "web-import-mapping.png",
+    "crop": [
+      285,
+      20,
+      610,
+      635
+    ],
+    "note": "Import czyta wartości arkusza; aplikacja nie oblicza formuł Excel. Błędne mapowanie popraw przed zapisem.",
+    "kind": "screen"
+  },
+  {
+    "title": "Edycja produktu i eksport stanów",
+    "section": "Dane / web",
+    "steps": [
+      [
+        "1. Kierownik: kliknij ikonę edycji",
+        "Popraw nazwę, ilość, minimum, jednostkę lub lokalizację. Sprawdź dane i wybierz Zapisz produkt."
+      ],
+      [
+        "2. Wszyscy: pobierz arkusz",
+        "Przyciski CSV i XLSX eksportują aktualne stany do pliku."
+      ],
+      [
+        "3. Zachowaj spójność",
+        "Zmiany wykonywane przez aplikację trafiają do bazy. Excel odświeżasz przez ponowny eksport."
+      ]
+    ],
+    "image": "web-edit.png",
+    "crop": [
+      285,
+      85,
+      615,
+      625
+    ],
+    "note": "Eksport stanów nie jest backupem kont, audytu, procedur ani map. Bezpośrednia edycja i usuwanie produktów wymagają kierownika.",
+    "kind": "screen"
+  },
+  {
+    "title": "Komenda i karta zmiany",
+    "section": "Agent / web",
+    "steps": [
+      [
+        "1. Powiedz albo wpisz polecenie",
+        "Np. „wzięliśmy paletę kartonów”. W trybie tekstowym kliknij Wyślij."
+      ],
+      [
+        "2. Sprawdź kartę",
+        "Towar, ilość, stan przed i po, jednostka oraz minimum. W demo: 13 → 11 szt."
+      ],
+      [
+        "3. Podejmij decyzję",
+        "Zatwierdź zapisuje operację; Odrzuć pozostawia stan. Możesz też powiedzieć tak/zatwierdź albo nie/odrzuć w aktywnym trybie głosowym."
+      ]
+    ],
+    "image": "web-proposal.png",
+    "crop": [
+      930,
+      265,
+      315,
+      438
+    ],
+    "note": "Parser demo przyjmuje 2 jednostki na paletę. Dla rzeczywistego wydania podaj jawną ilość i sprawdź kartę.",
+    "kind": "screen"
+  },
+  {
+    "title": "Historia zatwierdzonych operacji",
+    "section": "Audyt / web",
+    "steps": [
+      [
+        "1. Otwórz Historię",
+        "Znajdziesz kto, kiedy i co zmienił: treść polecenia, stan przed i po oraz wpisy innych operacji."
+      ],
+      [
+        "2. Sprawdź efekt",
+        "Po zatwierdzeniu kartonów widoczna jest zmiana 13 → 11 oraz osobny szkic uzupełnienia."
+      ],
+      [
+        "3. Rozróżniaj wpisy",
+        "Pytanie nie jest zmianą zapasu. Import, reguła pakowania czy szkic mają własny rodzaj zdarzenia."
+      ]
+    ],
+    "image": "web-history.png",
+    "crop": [
+      285,
+      125,
+      610,
+      590
+    ],
+    "note": "Autora ustala serwer na podstawie konta. Na screenach demo jest lokalny kierownik.",
+    "kind": "screen"
+  },
+  {
+    "title": "Cofnięcie błędnej zmiany",
+    "section": "Audyt / kierownik",
+    "steps": [
+      [
+        "1. Znajdź zmianę zapasu",
+        "Kliknij Cofnij przy właściwym wpisie historii."
+      ],
+      [
+        "2. Przeczytaj potwierdzenie",
+        "Sprawdź produkt i stan po korekcie. Dla przykładu 11 wróci do 13."
+      ],
+      [
+        "3. Wybierz Tak, cofnij",
+        "Powstaje nowy wpis audytu. Pierwotna operacja pozostaje widoczna; nie jest usuwana."
+      ]
+    ],
+    "image": "web-undo.png",
+    "crop": [
+      285,
+      165,
+      610,
+      430
+    ],
+    "note": "Undo dotyczy zmian zapasu. Nie każda operacja ma cofnięcie, a wpis już cofnięty nie może być cofnięty ponownie.",
+    "kind": "screen"
+  },
+  {
+    "title": "Szkic uzupełnienia zapasu",
+    "section": "Kolejka / kierownik",
+    "steps": [
+      [
+        "1. Otwórz Kolejkę",
+        "Po spadku poniżej minimum agent może utworzyć szkic. W przykładzie proponuje 50 szt. kartonów."
+      ],
+      [
+        "2. Sprawdź produkt i ilość",
+        "Obejrzyj termin dostawy oraz filtr Oczekujące / Rozpatrzone / Wszystkie."
+      ],
+      [
+        "3. Zatwierdź albo odrzuć",
+        "Kierownik zapisuje decyzję. Przycisk usunięcia z kolejki odrzuca szkic; możliwe jest zbiorcze odrzucenie."
+      ]
+    ],
+    "image": "web-queue.png",
+    "crop": [
+      285,
+      160,
+      610,
+      545
+    ],
+    "note": "Zatwierdzenie szkicu nie wysyła zamówienia do dostawcy i nie zwiększa fizycznego stanu towaru.",
+    "kind": "screen"
+  },
+  {
+    "title": "Lokalizacja na mapie",
+    "section": "Mapa / web",
+    "steps": [
+      [
+        "1. Zapytaj o miejsce",
+        "„Gdzie leży szkło?” daje lokalizację i podświetla odpowiadającą strefę."
+      ],
+      [
+        "2. Wybierz strefę lub sektor",
+        "Sprawdź znajdujące się tam towary i ilości. Strefę dodasz komendą „strefa: Strefa B-2” i zatwierdzeniem."
+      ],
+      [
+        "3. Uzupełniaj plan",
+        "Zapisuj przejścia i sektory. Nazwy stref powinny odpowiadać lokalizacjom w stanach."
+      ]
+    ],
+    "image": "web-map.png",
+    "crop": [
+      285,
+      670,
+      960,
+      570
+    ],
+    "note": "Układ stref jest schematyczny. Przypisanie towaru do sektora opisuje rozmieszczenie, nie zmienia zapasu. Usuwanie ścieżek i sektorów: kierownik.",
+    "kind": "screen"
+  },
+  {
+    "title": "Wyszukiwanie procedury",
+    "section": "Procedury / web",
+    "steps": [
+      [
+        "1. Wybierz Procedury",
+        "Wyszukaj produkt, np. Szkło, albo zapytaj „Magu, jak pakujemy szkło?”."
+      ],
+      [
+        "2. Przeczytaj całą instrukcję",
+        "Zwróć uwagę na opakowanie, ilość na opakowanie i postępowanie przy brakach lub uszkodzeniu."
+      ],
+      [
+        "3. Odszukaj towar",
+        "Pokaż na mapie przenosi do jego strefy. Jeśli opakowanie jest powiązane ze stanem, zobaczysz zapas."
+      ]
+    ],
+    "image": "web-procedures.png",
+    "crop": [
+      285,
+      175,
+      610,
+      480
+    ],
+    "note": "Samo przeczytanie procedury nie odejmuje towaru ani opakowania. Reguły demo są fikcyjnymi przykładami.",
+    "kind": "screen"
+  },
+  {
+    "title": "Zapis reguły pakowania",
+    "section": "Procedury / kierownik",
+    "steps": [
+      [
+        "1. Wybierz produkt i opakowanie",
+        "W formularzu Nowa reguła pakowania wybierz pozycje z katalogu."
+      ],
+      [
+        "2. Wpisz ilość i uwagi",
+        "Podaj liczbę jednostek produktu w jednym opakowaniu oraz warunki wykonania."
+      ],
+      [
+        "3. Sprawdź Podgląd reguły",
+        "Zatwierdź kartę. Można też podać pełną komendę, np. „zapamiętaj: Szkło pakujemy po 2 w Duży karton”."
+      ]
+    ],
+    "image": "web-packing-form.png",
+    "crop": [
+      285,
+      230,
+      610,
+      425
+    ],
+    "note": "Jedna aktywna reguła na produkt. Zapis i aktualizacja wymagają kierownika; zmiana produktu lub reguły może unieważnić starą kartę.",
+    "kind": "screen"
+  },
+  {
+    "title": "Przydzielanie i wykonywanie zadań",
+    "section": "Zadania / web",
+    "steps": [
+      [
+        "1. Kierownik: przygotuj zadanie",
+        "Wybierz aktywnego pracownika, wpisz tytuł, opis i priorytet Normalny albo Pilny."
+      ],
+      [
+        "2. Przydziel zadanie",
+        "Pracownik zobaczy je na własnym koncie i licznik nowych zadań."
+      ],
+      [
+        "3. Pracownik: potwierdź wykonanie",
+        "Odczytaj instrukcję, oznacz własne zadanie jako przeczytane i następnie wykonane. Kierownik może anulować przydział."
+      ]
+    ],
+    "image": "web-tasks.png",
+    "crop": [
+      285,
+      175,
+      610,
+      475
+    ],
+    "note": "Pracownik widzi własne zadania, kierownik wszystkie. Pytanie agenta o cudze zadania jest dostępne tylko kierownikowi.",
+    "kind": "screen"
+  },
+  {
+    "title": "Pomoc do wykonania zadania",
+    "section": "Zadania / web",
+    "steps": [
+      [
+        "1. Kliknij Jak wykonać?",
+        "Aplikacja szuka zapisanych procedur związanych z treścią zadania."
+      ],
+      [
+        "2. Sprawdź źródła",
+        "W offline widzisz pełne dopasowane instrukcje. W AI Gemini wybiera kroki ze wskazanych źródeł."
+      ],
+      [
+        "3. Nie uzupełniaj braków domysłem",
+        "Przeczytaj warunki bezpieczeństwa. Gdy brak procedury lub instrukcja jest niejasna, poproś kierownika."
+      ]
+    ],
+    "image": "web-task-procedures.png",
+    "crop": [
+      285,
+      45,
+      610,
+      550
+    ],
+    "note": "Po kliknięciu pomocy w trybie AI treść zadania i dopasowane procedury trafiają do Gemini. Pomoc nie zmienia stanów ani statusu zadania.",
+    "kind": "screen"
+  },
+  {
+    "title": "Dashboard i powiadomienia",
+    "section": "Zarządzanie / kierownik",
+    "steps": [
+      [
+        "1. Sprawdź stan teraz",
+        "Towary poniżej minimum, oczekujące szkice i brakujące lokalizacje."
+      ],
+      [
+        "2. Wybierz okres",
+        "Dziś, 7 dni, 30 dni lub własne daty. Liczniki bieżące nadal opisują stan teraz."
+      ],
+      [
+        "3. Otwórz alert",
+        "Przejdź do stanów lub kolejki. Oznaczenie powiadomienia jako przeczytane nie rozwiązuje problemu."
+      ]
+    ],
+    "image": "web-dashboard-alert.png",
+    "crop": [
+      285,
+      680,
+      950,
+      820
+    ],
+    "note": "Raport pokazuje liczbę operacji, nie sumę sztuk różnych towarów. Powiadomienia i dashboard są dostępne tylko kierownikowi.",
+    "kind": "screen"
+  },
+  {
+    "title": "Dziennik i przekazanie zmiany",
+    "section": "Raporty / kierownik",
+    "steps": [
+      [
+        "1. Sprawdź dziennik akcji",
+        "Filtruj po autorze, typie zdarzenia, towarze, statusie i nazwie. Pobierz pasujące wpisy jako CSV."
+      ],
+      [
+        "2. Wybierz towar do trendu",
+        "Historia zapasu pokazuje stan po zapisanych zmianach i luki w dostępnej historii."
+      ],
+      [
+        "3. Przekaż zmianę",
+        "Zakładka Przekazanie zmiany podsumowuje ostatnie 8 godzin albo własny zakres godzin."
+      ]
+    ],
+    "image": "web-shift.png",
+    "crop": [
+      285,
+      1790,
+      950,
+      455
+    ],
+    "note": "Podsumowanie dotyczy zapisanej pracy magazynu; nie jest ewidencją czasu pracy ani oceną osób.",
+    "kind": "screen"
+  },
+  {
+    "title": "Uruchomienie klienta mobilnego",
+    "section": "Mobile / administrator",
+    "steps": [
+      [
+        "1. Przygotuj backend",
+        "Użyj tego samego API Next.js i projektu Supabase co w wersji webowej."
+      ],
+      [
+        "2. Uzupełnij mobile/.env",
+        "API URL bez /api; publiczny URL i klucz Supabase. Nie umieszczaj tu klucza Gemini ani hasła bazy."
+      ],
+      [
+        "3. Uruchom Expo",
+        "Otwórz w Expo Go zgodnym z SDK 57 lub buildzie deweloperskim. Na laptopie i telefonie zadbaj o wspólną sieć."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Lokalnie API: adres LAN laptopa, np. http://192.168.1.20:3000. localhost na telefonie wskazuje telefon. Po zmianie .env: npm start -- --clear.",
+    "kind": "code",
+    "code": "cd mobile\nnpm ci\n# PowerShell:\nCopy-Item .env.example .env\n\nEXPO_PUBLIC_API_URL=https://twoja-aplikacja\nEXPO_PUBLIC_SUPABASE_URL=https://twoj-projekt\nEXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...\n\nnpm start"
+  },
+  {
+    "title": "Logowanie na telefonie",
+    "section": "Mobile / konto",
+    "steps": [
+      [
+        "1. Użyj konta z webu",
+        "Aplikacja mobilna ma formularz logowania. Konto załóż wcześniej na stronie webowej."
+      ],
+      [
+        "2. Wpisz e-mail i hasło",
+        "Wybierz Wejdź do magazynu. Dostęp i uprawnienia są takie same jak w przeglądarce."
+      ],
+      [
+        "3. Sprawdź rolę",
+        "Po wejściu u góry widzisz użytkownika i rolę. Jeśli konto czeka na akceptację, poproś kierownika o nadanie dostępu."
+      ]
+    ],
+    "image": "mobile-login.png",
+    "crop": null,
+    "note": "Zrzut klienta Expo Web. Konto i dane demonstracyjne; nie jest to screen z fizycznego Androida/iOS.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Panel Magu na telefonie",
+    "section": "Mobile / komendy",
+    "steps": [
+      [
+        "1. Otwórz Magu",
+        "Dolny pasek przełącza komendy, Stany, Mapę, Historię i Więcej."
+      ],
+      [
+        "2. Nagraj lub wpisz",
+        "W zwykłym trybie Nagraj komendę wysyła audio do STT. Obejrzyj i popraw transkrypcję przed wysłaniem."
+      ],
+      [
+        "3. Wyślij polecenie",
+        "Przyciski przykładów pomagają rozpocząć. Pytanie daje odpowiedź; operacja zapisu tworzy kartę."
+      ]
+    ],
+    "image": "mobile-command.png",
+    "crop": null,
+    "note": "W pokazanym demo nagrywanie jest wyłączone. Tekst przechodzi przez ten sam pipeline komend.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Zatwierdzanie mobilnej karty",
+    "section": "Mobile / operacje",
+    "steps": [
+      [
+        "1. Przeczytaj propozycję",
+        "Na screenie: przyjęcie palety kartonów i zmiana 11 → 13 szt."
+      ],
+      [
+        "2. Sprawdź ilość i towar",
+        "Karta nie zmieniła jeszcze zapasu. Porównaj ją z rzeczywistą operacją na hali."
+      ],
+      [
+        "3. Zatwierdź zmianę lub odrzuć",
+        "Zatwierdzenie zapisuje operację oraz audyt. Przełączanie sekcji zachowuje oczekującą kartę."
+      ]
+    ],
+    "image": "mobile-proposal.png",
+    "crop": null,
+    "note": "W nasłuchu na prefix można używać potwierdzeń głosowych. Nie ponawiaj zapisu po timeout bez sprawdzenia historii.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Stany, import i eksport na telefonie",
+    "section": "Mobile / dane",
+    "steps": [
+      [
+        "1. Otwórz Stany",
+        "Wyszukaj produkt i sprawdź zapas, minimum oraz lokalizację."
+      ],
+      [
+        "2. Kierownik: importuj plik",
+        "Wybierz XLSX/CSV, sprawdź mapowanie i zatwierdź. Obowiązują te same limity i uprawnienia API."
+      ],
+      [
+        "3. Wyeksportuj dane",
+        "Pobierz CSV/XLSX i udostępnij plik przez mechanizm telefonu. Obsługę plików sprawdź na docelowym urządzeniu."
+      ]
+    ],
+    "image": "mobile-stock.png",
+    "crop": null,
+    "note": "Web i telefon korzystają z tej samej bazy. Odświeżenie widoku pobiera aktualne dane serwera.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Mapa alejek w aplikacji",
+    "section": "Mobile / mapa",
+    "steps": [
+      [
+        "1. Otwórz Mapę",
+        "Zobacz zapisane przejścia oraz sektory. Dotknij strefy, aby sprawdzić zawartość."
+      ],
+      [
+        "2. Wybierz punkt startu",
+        "START lub zapisane skrzyżowanie. Ustal kierunek pierwszej alejki na planie."
+      ],
+      [
+        "3. Skalibruj krok",
+        "Zmierz odcinek i podziel dystans przez liczbę kroków. Wpisz długość kroku przed spacerem."
+      ]
+    ],
+    "image": "mobile-map.png",
+    "crop": null,
+    "note": "Kompas nie obraca planu mobilnego. To schemat alejek o szacowanych wymiarach, nie pomiar geodezyjny.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Mapowanie podczas spaceru",
+    "section": "Mobile / mapa",
+    "steps": [
+      [
+        "1 / Rozpocznij spacer",
+        "Stań w wybranym punkcie, ustal kierunek i wybierz Rozpocznij spacer z telefonem. Na urządzeniu zezwól na wymagany czujnik ruchu."
+      ],
+      [
+        "2 / Zaznaczaj skrzyżowania",
+        "Idź prosto; na skrzyżowaniu zatrzymaj się i dodaj punkt. W lewo, W prawo oraz Zawróć zmieniają kierunek planu."
+      ],
+      [
+        "3 / Skoryguj powrót",
+        "Po fizycznym powrocie wybierz znany punkt START/S…; korekta dotyczy nowych odcinków. Niepasujący powrót może zostać odrzucony."
+      ],
+      [
+        "4 / Zapisz przejście",
+        "Nazwij ścieżkę i wybierz Zapisz na mapie. Jeśli czujnik nie działa, użyj + Krok lub trybu ręcznego. Dodaj sektor i przypisz towar."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Screeny nie potwierdzają pracy czujników. Przed pracą na hali sprawdź mapowanie na fizycznym telefonie; usuwanie sektorów i ścieżek wymaga kierownika.",
+    "kind": "text"
+  },
+  {
+    "title": "Historia operacji na telefonie",
+    "section": "Mobile / audyt",
+    "steps": [
+      [
+        "1. Otwórz Historię",
+        "Sprawdź wykonane operacje i stany przed oraz po zmianie."
+      ],
+      [
+        "2. Kierownik: cofnij zmianę",
+        "Wybierz Cofnij zmianę. Aplikacja pokaże osobne potwierdzenie przed wykonaniem korekty."
+      ],
+      [
+        "3. Zweryfikuj zapis",
+        "Po błędzie sieci sprawdź historię przed ponownym potwierdzaniem, aby uniknąć podwójnej operacji."
+      ]
+    ],
+    "image": "mobile-history.png",
+    "crop": null,
+    "note": "Pracownik może czytać historię, ale nie ma uprawnienia do undo.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Kolejka zamówień na telefonie",
+    "section": "Mobile / Więcej",
+    "steps": [
+      [
+        "1. Wybierz Więcej → Kolejka",
+        "Sprawdź szkice, ilość, termin i status."
+      ],
+      [
+        "2. Kierownik: wybierz decyzję",
+        "Zatwierdź szkic lub Odrzuć szkic. Następnie potwierdź w osobnym widoku."
+      ],
+      [
+        "3. Zachowaj kontrolę zakupów",
+        "To zapis decyzji w aplikacji. Zamówienie nadal nie jest automatycznie wysyłane dostawcy."
+      ]
+    ],
+    "image": "mobile-queue.png",
+    "crop": null,
+    "note": "Pracownik ma podgląd. Decyzje zakupowe API dopuszcza wyłącznie dla kierownika.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Procedury pod ręką",
+    "section": "Mobile / Więcej",
+    "steps": [
+      [
+        "1. Wybierz Więcej → Procedury",
+        "Znajdź instrukcję przez pole wyszukiwania albo pytanie do Magu."
+      ],
+      [
+        "2. Przeczytaj pełną treść",
+        "Sprawdź ilość na opakowanie i zasady przy brakach, uszkodzeniu lub rozbieżności stanów."
+      ],
+      [
+        "3. Użyj lokalizacji",
+        "Pytanie „gdzie leży szkło?” przenosi do mapy i podświetla odpowiednią strefę."
+      ]
+    ],
+    "image": "mobile-procedures.png",
+    "crop": null,
+    "note": "Zatwierdzone reguły są wspólne dla obu klientów. Zapis nowej reguły wymaga roli kierownika i pełnych danych produktu/opakowania.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Konto i ustawienia na telefonie",
+    "section": "Mobile / Więcej",
+    "steps": [
+      [
+        "1. Wybierz Więcej → Konto",
+        "Sprawdź użytkownika, rolę i konfigurację agenta."
+      ],
+      [
+        "2. Kierownik: dostosuj pracę",
+        "Prefix, AI/offline/mock, mikrofon lub nasłuch, źródło danych, minima i wielkość szkicu. Zapisz ustawienia."
+      ],
+      [
+        "3. Sprawdź głos i wyloguj się",
+        "TTS zależy od polskiego głosu systemu. Po skończonej pracy możesz wylogować konto."
+      ]
+    ],
+    "image": "mobile-settings.png",
+    "crop": null,
+    "note": "Pracownik widzi ustawienia do odczytu. Zarządzanie rolami użytkowników pozostaje w panelu webowym.",
+    "kind": "mobile"
+  },
+  {
+    "title": "Nasłuch na prefix w praktyce",
+    "section": "Mobile / głos",
+    "steps": [
+      [
+        "1 / Włącz nasłuch w Magu",
+        "Kierownik wcześniej wybiera ten tryb w ustawieniach. Użytkownik włącza pętlę przyciskiem i udziela zgody na mikrofon."
+      ],
+      [
+        "2 / Powiedz „Magu, …”",
+        "Wypowiedz komendę po prefiksie. Sam prefix uzbraja kolejną wypowiedź; aplikacja wysyła transkrypcję do obsługi komendy."
+      ],
+      [
+        "3 / Sprawdź i potwierdź",
+        "Oczekującą kartę zatwierdzasz „tak”/„zatwierdź” lub odrzucasz „nie”/„odrzuć”. Nadal możesz użyć przycisków."
+      ],
+      [
+        "4 / Reaguj na błąd",
+        "Przejście do tła lub odczyt TTS wstrzymuje nasłuch. Po kolejnych błędach transkrypcji użyj wznowienia albo wpisz tekst."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Chmurowe STT wymaga połączenia z API. Przed wydaniem sprawdź zgody mikrofonu, hałas na hali, powrót z tła i rozpoznawanie na Android/iOS.",
+    "kind": "text"
+  },
+  {
+    "title": "Web i mobile: gdzie wykonać operację",
+    "section": "Zakres funkcji",
+    "steps": [],
+    "image": null,
+    "crop": null,
+    "note": "Uprawnienia API są wspólne. Webowy widok na małym ekranie i klient Expo to dwa różne interfejsy.",
+    "kind": "table",
+    "rows": [
+      [
+        "Funkcja",
+        "Web",
+        "Aplikacja Expo"
+      ],
+      [
+        "Rejestracja i akceptacja kont",
+        "Tak",
+        "Logowanie istniejącym kontem"
+      ],
+      [
+        "Komendy i zatwierdzanie stanów",
+        "Tak",
+        "Tak"
+      ],
+      [
+        "Stany oraz import/eksport",
+        "Tak",
+        "Tak"
+      ],
+      [
+        "Mapa stref, sektory i ścieżki",
+        "Tak",
+        "Tak; wspomagane mapowanie alejek"
+      ],
+      [
+        "Historia oraz undo kierownika",
+        "Tak",
+        "Tak"
+      ],
+      [
+        "Kolejka i procedury",
+        "Tak",
+        "Tak, w Więcej"
+      ],
+      [
+        "Ustawienia agenta",
+        "Tak",
+        "Tak, w Konto"
+      ],
+      [
+        "Role, dashboard, raporty i zadania",
+        "Tak",
+        "Brak osobnych widoków"
+      ]
+    ]
+  },
+  {
+    "title": "AI, dane i tryb awaryjny",
+    "section": "Kontrola i prywatność",
+    "steps": [
+      [
+        "Co trafia do dostawców",
+        "Komenda i kontekst towarów do LLM; audio do STT; nagłówki i próbka importu do Gemini; zadanie i dopasowane procedury po kliknięciu pomocy."
+      ],
+      [
+        "Jak sprawdzić użycie AI",
+        "Ustawienia → Użycie AI pokazują integracje i gotowy tekst ujawnienia AI. Rozpoznawanie przeglądarki może korzystać z usługi Google."
+      ],
+      [
+        "Jak pracować bez AI",
+        "Offline/mock zastępują interpretację i mapowanie parserem. Nie wyłączają same w sobie Supabase ani każdego trybu STT."
+      ],
+      [
+        "Jak przygotować demo bez internetu",
+        "Z internetem: python scripts/start-demo.py --build --reset. Kolejne próby: python scripts/start-demo.py --reset; adres 127.0.0.1:3002."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "Demo używa osobnej bazy i wyłącza zewnętrzne API AI. Szkice nie są wysyłane, mapa nie jest skanem AR, odczyt procedury nie rozlicza automatycznie opakowań.",
+    "kind": "text"
+  },
+  {
+    "title": "Pierwsza próba i najczęstsze problemy",
+    "section": "Lista kontrolna",
+    "steps": [],
+    "image": null,
+    "crop": null,
+    "note": "Przeprowadź pełną próbę z osobnym kontem pracownika i fizycznym telefonem. Eksport stanów nie zastępuje backupu bazy.",
+    "kind": "table",
+    "rows": [
+      [
+        "Sprawdzenie",
+        "Oczekiwany wynik / rozwiązanie"
+      ],
+      [
+        "Konto i rola",
+        "Kierownik akceptuje nowego pracownika; worker nie widzi funkcji zarządzania."
+      ],
+      [
+        "Import i minima",
+        "Nazwy, jednostki, ilości i miejsca zgadzają się z arkuszem."
+      ],
+      [
+        "Karta zmiany",
+        "Przed confirm brak zmiany; po confirm nowy stan i audyt."
+      ],
+      [
+        "Brak lub szkic",
+        "Kolejka pokazuje propozycję; decyzja nie wysyła zamówienia."
+      ],
+      [
+        "Mikrofon / STT",
+        "Sprawdź zgodę, HTTPS i konfigurację; tekst pozostaje fallbackiem."
+      ],
+      [
+        "Telefon / sieć",
+        "LAN zamiast localhost; po zmianie .env zrestartuj Expo."
+      ],
+      [
+        "Nieaktualna karta / timeout",
+        "Wczytaj stan i historię, zanim ponowisz zapis."
+      ],
+      [
+        "Nietrwała baza",
+        "storage=ephemeral → skonfiguruj PostgreSQL."
+      ]
+    ]
+  },
+  {
+    "title": "Dokumentacja i następny krok",
+    "section": "Materiały projektu",
+    "steps": [
+      [
+        "Zacznij od krótkiej próby",
+        "Import → karta zmiany → zatwierdzenie → historia → szkic → mapa → procedura. Następnie przydziel zadanie pracownikowi."
+      ],
+      [
+        "Instrukcje w repozytorium",
+        "README.md: pełne uruchomienie i role. docs/mobile.md: telefon i tunel. docs/demo-offline.md: demo. docs/sample-warehouse-procedures.md: scenariusze."
+      ],
+      [
+        "Projekt i autorzy",
+        "MAGAZYNIER · HackYeah 2026 · Open Task ARTIFICIAL INTELLIGENCE. Kod: Apache 2.0. Historia autorów i wkładów w repozytorium GitHub."
+      ]
+    ],
+    "image": null,
+    "crop": null,
+    "note": "github.com/SlizDaniel/AiWARE",
+    "kind": "closing",
+    "url": "https://github.com/SlizDaniel/AiWARE"
+  }
+]
