@@ -11,7 +11,7 @@ Zastąpić dowolne wpisywanie procedur regułami powiązanymi z produktem i kata
 - Wersjonowanie i audyt z poprzednią oraz nową regułą. Karta przygotowana przed zmianą reguły, nazwy/jednostki produktu lub powiązania opakowania nie nadpisuje aktualnych danych.
 - Kierownik może powiązać typ opakowania z pozycją magazynową; reguła i odpowiedź agenta pokazują jej aktualny stan.
 - Reguły nie zużywają zapasów. Dodatkowe uwagi zatwierdza kierownik.
-- Migracja schematu v3 pozostawia wcześniejsze notatki w tabeli `procedures`; nie są publikowane jako zatwierdzone reguły. Wzorcowa baza demo dostaje znaną regułę pakowania szkła.
+- Migracja schematu v4 (po połączeniu z mapowaniem z maina) pozostawia wcześniejsze notatki w tabeli `procedures`; nie są publikowane jako zatwierdzone reguły. Wzorcowa baza demo dostaje znaną regułę pakowania szkła.
 
 ## Kryteria odbioru
 1. Kierownik wybiera produkt, typ opakowania i ilość, widzi podgląd i zatwierdza regułę.

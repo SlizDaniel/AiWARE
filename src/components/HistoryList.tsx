@@ -11,6 +11,8 @@ const EVENT_LABELS: Record<string, string> = {
   procedure_saved: 'procedura',
   packaging_link_updated: 'powiązanie opakowania',
   inventory_item_updated: 'edycja produktu',
+  map_path_saved: 'ścieżka na mapie',
+  map_path_deleted: 'usunięcie ścieżki',
   reorder_draft_created: 'szkic zamówienia',
   reorder_approved: 'szkic zatwierdzony',
   reorder_rejected: 'szkic odrzucony',

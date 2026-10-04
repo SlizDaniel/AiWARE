@@ -227,3 +227,13 @@ export function ChevronIcon(props: IconProps) {
     </Icon>
   )
 }
+
+/** Mapowanie hali: kompas ze wskaźnikiem kierunku. */
+export function CompassIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="10" r="7.5" />
+      <path d="m12.8 7.2-1.9 4.6-4.6 1.9 1.9-4.6 4.6-1.9Z" />
+    </Icon>
+  )
+}

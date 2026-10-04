@@ -18,7 +18,7 @@ export const NOT_DEMO_DATABASE =
 /** Domain tables whose content would be wiped by a demo (re)seed. */
 const APP_TABLES = ['items', 'audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules'] as const
 /** Tables cleared on (re)seed — rehearsal state, not users or settings. */
-const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'items']
+const RESET_TABLES = ['audit_log', 'reorder_drafts', 'zones', 'procedures', 'packing_rules', 'packaging_types', 'proposals', 'pending_imports', 'map_paths', 'items']
 
 async function seedDemoPacking(db: Db): Promise<void> {
   await db.exec(`INSERT INTO packaging_types (name) VALUES ('Koperta'), ('Mały karton'), ('Duży karton'), ('Folia stretch') ON CONFLICT (name) DO NOTHING`)

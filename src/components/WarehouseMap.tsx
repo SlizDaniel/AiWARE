@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmProposal, sendCommand, type Item, type Proposal, type Zone } from '@/lib/api'
+import { confirmProposal, sendCommand, type Item, type MapPath, type Proposal, type Zone } from '@/lib/api'
 import RangeIndicator from './ui/RangeIndicator'
 import { LoadError, Notice, RollingNumber, Skeleton } from './ui/feedback'
 import { CheckIcon, CloseIcon, PinIcon, PlusIcon } from './ui/icons'
 import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
 import { STOCK_LEVEL, countDeviations, stockLevel } from './ui/stockLevel'
 import { buttonClass, fieldClass, panelClass } from './ui/styles'
+import { formatMeters, pathDistanceM } from '@/lib/pdr'
+import PathMap, { PATH_COLORS } from './PathMap'
 import { findZoneByName, itemsForZone, zoneForItem, type MapTarget } from './zoneItems'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -13,6 +15,8 @@ type LoadState = 'loading' | 'ready' | 'error'
 type Props = {
   zones: Zone[]
   items: Item[]
+  /** Ścieżki nagrane telefonem (mapowanie hali) — nakładka na schemat. */
+  paths?: MapPath[]
   locationTarget: MapTarget | null
   selectedId: number | null
   onSelectZone: (id: number | null) => void
@@ -36,8 +40,9 @@ function zoneStats(zone: Zone, items: Item[], zones: Zone[]): ZoneStats {
 
 const SLOT = 'min-h-[5.5rem] rounded-md'
 
-export default function WarehouseMap({ zones, items, locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
+export default function WarehouseMap({ zones, items, paths = [], locationTarget, selectedId, onSelectZone, state, error, onRetry, itemsState, onRetryItems, onZoneAdded }: Props) {
   const [draftOpen, setDraftOpen] = useState(false)
+  const [showPaths, setShowPaths] = useState(true)
   const [draftName, setDraftName] = useState('')
   const [draftProposal, setDraftProposal] = useState<Proposal | null>(null)
   const [draftBusy, setDraftBusy] = useState(false)
@@ -249,6 +254,47 @@ export default function WarehouseMap({ zones, items, locationTarget, selectedId,
               })}
             </div>
           </div>
+
+          {paths.length > 0 && (
+            <div className="mt-4 rounded-lg border border-line-strong bg-sheet px-3 pb-4 pt-4 sm:px-5">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h3 className="text-lg font-semibold text-ink">Rzeczywisty rzut hali (z telefonu)</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowPaths((value) => !value)}
+                  aria-expanded={showPaths}
+                  className={buttonClass('ghost', 'sm')}
+                >
+                  {showPaths ? 'Ukryj ścieżki' : 'Pokaż ścieżki'}
+                </button>
+              </div>
+              {showPaths && (
+                <>
+                  <div className="overflow-x-auto">
+                    <PathMap
+                      width={880}
+                      height={480}
+                      shapes={paths.map((path, index) => ({
+                        points: path.points,
+                        markers: path.markers,
+                        color: PATH_COLORS[index % PATH_COLORS.length],
+                        label: path.name,
+                      }))}
+                      onMarkerClick={(marker) => {
+                        if (!marker.zone) return
+                        const zone = findZoneByName(marker.zone, zones)
+                        if (zone) onSelectZone(zone.id)
+                      }}
+                    />
+                  </div>
+                  <p className="mt-3 text-xs text-mute">
+                    Ścieżki z akcelerometru i kompasu (kroki × kierunek). Łącznie {formatMeters(paths.reduce((sum, path) => sum + pathDistanceM(path.points), 0))}.
+                    Znacznik ze strefą — kliknij, by wybrać strefę na schemacie. Kratka w metrach.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
           <p className="mt-3 text-xs text-mute">Układ schematyczny. Położenie stref na rzucie nie oznacza fizycznych współrzędnych.</p>
         </div>
 

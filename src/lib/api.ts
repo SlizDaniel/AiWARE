@@ -2,6 +2,20 @@
 // Błędy mają kształt {"detail": "..."}; 401 → /login (tylko gdy logowanie jest włączone),
 // 403 → komunikat serwera trafia do nasłuchujących (AppShell pokazuje go w toaście).
 import type { ClarificationTurn } from './commandConversation'
+import type { PathMarker, PathPoint } from './pdr'
+
+export type { PathMarker, PathPoint }
+
+/** Zapisana ścieżka z mapowania hali (kontrakt GET/POST /api/map-paths). */
+export type MapPath = {
+  id: number
+  name: string
+  points: PathPoint[]
+  markers: PathMarker[]
+  step_length: number
+  actor: string
+  created: string
+}
 
 export type Item = {
   id: number
@@ -316,6 +330,22 @@ export function updateStockItem(id: number, changes: Partial<Omit<Item, 'id'>>):
 
 export function fetchZones(): Promise<Zone[]> {
   return fetch('/api/zones').then((r) => json<{ zones: Zone[] }>(r)).then((d) => d.zones)
+}
+
+// --- mapowanie hali (ścieżki z telefonu, PDR) --------------------------------------
+
+export function fetchMapPaths(): Promise<MapPath[]> {
+  return fetch('/api/map-paths', { cache: 'no-store' })
+    .then((r) => json<{ paths: MapPath[] }>(r))
+    .then((d) => d.paths)
+}
+
+export function saveMapPath(input: { name: string; step_length: number; points: PathPoint[]; markers: PathMarker[] }): Promise<MapPath> {
+  return fetch('/api/map-paths', sendJson('POST', input)).then((r) => json<{ path: MapPath }>(r)).then((d) => d.path)
+}
+
+export function deleteMapPath(id: number): Promise<void> {
+  return fetch(`/api/map-paths/${id}`, { method: 'DELETE' }).then((r) => json<{ deleted: number }>(r)).then(() => undefined)
 }
 
 export function fetchProcedures(): Promise<Procedure[]> {

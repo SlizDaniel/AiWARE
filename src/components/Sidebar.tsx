@@ -2,7 +2,7 @@ import { useState, type ComponentType } from 'react'
 import { ROLE_LABELS, type AuthMode, type CurrentUser } from '@/lib/api'
 import { visibleSections, type SectionId } from '@/lib/sections'
 import { signOutAndRedirect } from '@/lib/signOut'
-import { GaugeIcon, HistoryIcon, LogoutIcon, MapIcon, ProcedureIcon, QueueIcon, SlidersIcon, StockIcon } from './ui/icons'
+import { CompassIcon, GaugeIcon, HistoryIcon, LogoutIcon, MapIcon, ProcedureIcon, QueueIcon, SlidersIcon, StockIcon } from './ui/icons'
 import { StateShape, type StateKind } from './ui/StateMark'
 import { buttonClass } from './ui/styles'
 
@@ -22,6 +22,7 @@ type Props = {
 
 const ICONS: Record<SectionId, ComponentType<{ size?: number; className?: string }>> = {
   mapa: MapIcon,
+  mapowanie: CompassIcon,
   stany: StockIcon,
   kolejka: QueueIcon,
   historia: HistoryIcon,
