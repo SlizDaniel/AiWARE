@@ -17,3 +17,14 @@ Nie odtworzono błędu toLowerCase, nie przypisujemy mu niepotwierdzonej przyczy
 - Błąd konta pokazuje komunikat i retry, zamiast bezterminowego spinnera.
 - Zachowane uprawnienia i przekierowanie 401 do logowania.
 - Regresje oraz GUI startu/operacji po restarcie. Zmiana kolegi nietknięta.
+
+## Weryfikacja
+
+919 testów aplikacji przeszło, 2 pominięte; 18 testów Python przeszło.
+Lint, web/mobile typecheck i build .next-demo przez webpack: OK.
+Restartowano wyłącznie uszkodzone demo 3002 z naprawionego worktree,
+na istniejącej bazie głównego checkout data/pglite-demo; bez resetu.
+SHA-256 odpowiedzi stock identyczny przed i po restarcie. Me 12ms, health 4ms.
+GUI po restarcie: pełny widok stanów, brak nowego ChunkLoadError,
+komenda „ile mamy kartonów?” zwraca 11 szt.
+Review Standards i Spec: bez błędów implementacji; GUI wykonane po review.

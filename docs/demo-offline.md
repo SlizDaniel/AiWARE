@@ -40,3 +40,7 @@ Lokalny GUI-check produkcji (2026-10-03): import XLSX i ręczne zatwierdzenie,
 strefy, zmiana 13→11, audyt z undo 11→13, ponowna zmiana i szkic 50 szt,
 zatwierdzenie bez ERP, lokalizacja na mapie oraz procedura z przyciskiem do
 `Strefa B-2`. Internet nie był fizycznie odłączony w tej próbie.
+
+Build demo ma osobny katalog `.next-demo`, więc zwykłe `npm run build` i dev
+nie nadpisują plików działającego demo. Po aktualizacji kodu zatrzymaj demo
+i uruchom `python scripts/start-demo.py --build` (bez `--reset`, aby zachować dane).
