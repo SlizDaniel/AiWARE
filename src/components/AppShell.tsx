@@ -425,6 +425,8 @@ function Workspace({ me, onReloadMe }: { me: Me | null; onReloadMe: () => Promis
                 zones={zones.data}
                 items={stock.data}
                 onShowZone={showZone}
+                canManage={canManage}
+                onChanged={refresh}
               />
             )}
 

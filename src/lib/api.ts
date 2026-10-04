@@ -23,7 +23,18 @@ export type Procedure = {
   topic: string
   text: string
   created: string
+  item_id?: number
+  packaging_id?: number
+  quantity_per_package?: number
+  notes?: string
+  packaging_name?: string
+  version?: number
+  updated_by?: string
+  packaging_stock?: { name: string; quantity: number; unit: string } | null
 }
+
+export type Packaging = { id: number; name: string; inventory_item_id: number | null }
+export type PackingInput = { item_id: number; packaging_id: number; quantity_per_package: number; notes: string }
 
 export type HistoryEntry = {
   id: number
@@ -309,6 +320,19 @@ export function fetchZones(): Promise<Zone[]> {
 
 export function fetchProcedures(): Promise<Procedure[]> {
   return fetch('/api/procedures').then((r) => json<{ procedures: Procedure[] }>(r)).then((d) => d.procedures)
+}
+
+export function fetchPackaging(): Promise<Packaging[]> {
+  return fetch('/api/packaging', { cache: 'no-store' }).then((r) => json<{ packaging: Packaging[] }>(r)).then((d) => d.packaging)
+}
+
+export function linkPackaging(id: number, inventory_item_id: number | null): Promise<Packaging[]> {
+  return fetch('/api/packaging', sendJson('PATCH', { id, inventory_item_id }))
+    .then((r) => json<{ packaging: Packaging[] }>(r)).then((d) => d.packaging)
+}
+
+export function proposePackingRule(input: PackingInput & { expected_version?: number }): Promise<Proposal> {
+  return fetch('/api/procedures', sendJson('POST', input)).then((r) => json<{ proposal: Proposal }>(r)).then((d) => d.proposal)
 }
 
 export function fetchHistory(): Promise<HistoryEntry[]> {

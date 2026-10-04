@@ -9,6 +9,7 @@ const EVENT_LABELS: Record<string, string> = {
   zone_added: 'strefa',
   item_added: 'nowa pozycja',
   procedure_saved: 'procedura',
+  packaging_link_updated: 'powiązanie opakowania',
   inventory_item_updated: 'edycja produktu',
   reorder_draft_created: 'szkic zamówienia',
   reorder_approved: 'szkic zatwierdzony',

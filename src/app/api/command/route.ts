@@ -21,5 +21,5 @@ export const POST = route(async (request: Request) => {
   catch { throw new HttpError(422, 'Niepoprawny kontekst komendy (maksymalnie 4 doprecyzowania).') }
   await enforceRateLimit(db, `command:${user.id}`, RATE_LIMITS.command)
   const provider = llmConfigured() ? providerFromEnv() : null
-  return Response.json(await runCommand(db, body.text, { provider, actor: actorOf(user), conversation }))
+  return Response.json(await runCommand(db, body.text, { provider, actor: actorOf(user), conversation, role: user.role }))
 })

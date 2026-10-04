@@ -10,9 +10,10 @@
 import * as db from './db'
 import type { Actor, StockSnapshot } from './db'
 import type { Db } from './sql'
-import type { JsonSchema } from './types'
+import type { JsonSchema, Role } from './types'
+import { recallPacking, savePacking } from './packing'
 
-export type ToolContext = { actor: Actor; expectedStock?: StockSnapshot }
+export type ToolContext = { actor: Actor; expectedStock?: StockSnapshot; role?: Role }
 
 export type ToolSpec = {
   name: string
@@ -155,16 +156,18 @@ const SPECS: ToolSpec[] = [
   {
     name: 'remember_procedure',
     kind: 'write',
-    description: 'Zapamiętanie procedury („zapamiętaj: X pakujemy w…”).',
-    parameters: schema({ topic: { type: 'string' }, text: { type: 'string' } }, ['topic', 'text']),
-    handler: async (conn, args) => db.rememberProcedure(conn, { topic: str(args, 'topic'), text: str(args, 'text') }),
+    description: 'Kierownik: reguła pakowania istniejącego produktu w opakowanie z katalogu, po potwierdzeniu. Nie zgaduj opakowania ani liczby sztuk.',
+    parameters: schema({ item_id: { type: 'integer' }, packaging_id: { type: 'integer', minimum: 1 },
+      quantity_per_package: { type: 'integer', minimum: 1, maximum: 1000000 }, notes: { type: 'string', maxLength: 500 } },
+    ['item_id', 'packaging_id', 'quantity_per_package']),
+    handler: async (conn, args, ctx) => savePacking(conn, args, ctx.actor, ctx.role),
   },
   {
     name: 'recall_procedure',
     kind: 'read',
     description: 'Odszukanie procedury po temacie lub fragmencie („jak pakujemy X?”).',
     parameters: schema({ topic: { type: 'string' } }, ['topic']),
-    handler: async (conn, args) => ({ procedures: await db.findProcedures(conn, str(args, 'topic')) }),
+    handler: async (conn, args) => ({ procedures: await recallPacking(conn, str(args, 'topic')) }),
   },
   {
     name: 'add_item',
