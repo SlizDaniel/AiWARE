@@ -18,6 +18,13 @@ ENV_NAMES = {'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY',
 ITEMS = [{'id': 1, 'name': 'Kartony'}, {'id': 2, 'name': 'Szkło'}, {'id': 3, 'name': 'Folia stretch'}]
 CONTEXT = json.dumps({
     'units_per_pallet': 2,
+    'role': 'kierownik',
+    'packaging_catalogue': [
+        {'id': 1, 'name': 'Koperta', 'inventory_item_id': None},
+        {'id': 2, 'name': 'Mały karton', 'inventory_item_id': None},
+        {'id': 3, 'name': 'Duży karton', 'inventory_item_id': None},
+        {'id': 4, 'name': 'Folia stretch', 'inventory_item_id': None},
+    ],
     'items': [
         {'id': 1, 'name': 'Kartony', 'quantity': 13, 'minimum': 12, 'unit': 'szt', 'location': 'Strefa A-1'},
         {'id': 2, 'name': 'Szkło', 'quantity': 20, 'minimum': 8, 'unit': 'szt', 'location': 'Strefa B-2'},
@@ -28,7 +35,7 @@ CONTEXT = json.dumps({
 # Każdy scenariusz definiuje konkretną intencję, nie tylko poprawny JSON.
 # tool=None oznacza, że model powinien zapytać zamiast zgadywać zapis.
 CASES = [
-    {'id': 'withdrawal', 'text': 'Z półki zabraliśmy cztery sztuki folii stretch.', 'tool': 'update_stock', 'args': {'item_id': 3, 'delta': -4}},
+    {'id': 'withdrawal', 'text': 'Z półki zabraliśmy cztery rolki folii stretch.', 'tool': 'update_stock', 'args': {'item_id': 3, 'delta': -4}},
     {'id': 'receipt', 'text': 'Przyjęliśmy pięć sztuk szkła.', 'tool': 'update_stock', 'args': {'item_id': 2, 'delta': 5}},
     {'id': 'pallets', 'text': 'Wzięliśmy trzy palety kartonów.', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': -6}},
     {'id': 'stock', 'text': 'Podaj aktualną liczbę kartonów.', 'tool': 'get_stock', 'args': {'item_id': 1}},
@@ -36,7 +43,7 @@ CASES = [
     {'id': 'reorder', 'text': 'Sprawdź, czy kartony są poniżej minimum.', 'tool': 'check_reorder', 'args': {'item_id': 1}},
     {'id': 'draft', 'text': 'Przygotuj szkic zamówienia na 50 sztuk kartonów.', 'tool': 'draft_order', 'args': {'item_id': 1, 'quantity': 50}},
     {'id': 'procedure', 'text': 'Jak pakujemy szkło?', 'tool': 'recall_procedure', 'args': {'topic': 'szkło'}},
-    {'id': 'remember-procedure', 'text': 'Zapisz procedurę. Temat: szkło. Treść: pakujemy w piankę.', 'tool': 'remember_procedure', 'args': {'topic': 'szkło', 'text': 'pakujemy w piankę'}},
+    {'id': 'remember-procedure', 'text': 'Zapamiętaj: Szkło pakujemy po 2 w Duży karton.', 'tool': 'remember_procedure', 'args': {'item_id': 2, 'packaging_id': 3, 'quantity_per_package': 2}},
     {'id': 'zone', 'text': 'Dodaj strefę o nazwie C2.', 'tool': 'add_zone', 'args': {'name': 'C2'}},
     {'id': 'speech-error', 'text': 'Wzięliśmy dwie sztuki kartonuw.', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': -2}},
     {'id': 'missing-quantity', 'text': 'Wzięliśmy kartony, ale nie wiem ile.', 'tool': None, 'args': {}},
@@ -51,6 +58,9 @@ CASES = [
     {'id': 'move-item', 'text': 'Przenieś kartony do strefy C2.', 'tool': None, 'args': {}},
     {'id': 'missing-reference', 'text': 'Weź jeszcze dwie sztuki tego samego.', 'tool': None, 'args': {}},
     {'id': 'unknown-similar-item', 'text': 'Wydaliśmy pięć rolek folii aluminiowej.', 'tool': None, 'args': {}},
+    {'id': 'two-pallets', 'text': 'Wzięliśmy dwie palety kartonów.', 'tool': 'update_stock', 'args': {'item_id': 1, 'delta': -4}},
+    {'id': 'fractional-pallet', 'text': 'Wzięliśmy 1,5 palety kartonów.', 'tool': None, 'args': {}},
+    {'id': 'wrong-unit', 'text': 'Pobrałem 2 rolki szkła.', 'tool': None, 'args': {}},
 ]
 
 

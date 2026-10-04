@@ -1,4 +1,4 @@
-// Deterministyczny parser intencji (offline) — port 1:1 z legacy/backend/app/parser.py.
+// Deterministyczny parser intencji (offline), rozszerzony po migracji z Pythona.
 //
 // Mapuje komendy demo na wywołania narzędzi — bez internetu, bez LLM
 // (gwarantowana ścieżka dema awaryjnego, PRD: MockAgent/offline-parser):
@@ -10,13 +10,15 @@
 //   - „jak pakujemy X?"     → recall_procedure(X)
 //   - „zapamiętaj: X …"     → remember_procedure(X, …)
 //
-// „paleta" = 2 szt., a X musi pasować do pozycji z bazy (po stemplach polskich
-// odmian, np. „kartonów" → „Kartony"). Gdy intencja jest znana, ale towaru nie ma
-// w bazie, parser ZWRACA intencję z `missingItem`. Wszystko inne → null.
+// „paleta" = 2 jednostki (przelicznik demo). Obsługujemy też sztuki i rolki,
+// pełne nazwy oraz ograniczoną odmianę polską. Niejasność → clarification;
+// nieznany towar → missingItem; nierozpoznana intencja → null.
 //
 // Regexy: Python `\w` i `\b` są unikodowe; w JS `\b` działa tylko dla ASCII,
 // więc granicę słowa zapisujemy lookbehindem na klasie [\p{L}\p{N}_] (flaga `u`).
 import type { ItemRef } from './types'
+import { matchInventoryNames } from '@/lib/inventoryNames'
+import { normalizeSpeech } from '@/lib/speech'
 
 export const SZT_NA_PALETE = 2
 
@@ -29,6 +31,7 @@ export type ParsedCommand = {
   itemName?: string | null
   /** Rozpoznany towar, którego nie ma w bazie. */
   missingItem?: string | null
+  clarification?: string
 }
 
 /** Delta stanu (dla narzędzi update_stock; 0 dla pozostałych). */
@@ -45,25 +48,21 @@ const B = `(?<!${W})` // \b before a word character
 const ANY = '[^\\n]'
 const TAIL = '\\s*[?.!]*\\s*$'
 
-const TAKE_RE = /wzi[ęe]liśmy/iu
-const GOT_RE = /doszł[ayo]/iu // doszła / doszły / doszło
-const PALETTE_RE = new RegExp(`${B}palet${W}*`, 'iu')
-const AFTER_PALETTE_RE = new RegExp(`${B}palet${W}*\\s+(${ANY}+?)${TAIL}`, 'iu')
-const COUNT_RE = new RegExp(`${B}([0-9]+|jedn${W}*|dw[oa]${W}*|trzy|cztery|pięć)\\s+palet`, 'iu')
-const WORD_COUNTS: [string, number][] = [
-  ['jedn', 1],
-  ['dw', 2],
-  ['trzy', 3],
-  ['czter', 4],
-  ['pięć', 5],
-]
+const TAKE = 'wez|wzielismy|wzialem|wzielam|pobralismy|pobralem|pobralam|zabralismy|zabralem|zabralam|wydalismy|wydalem|wydalam|zuzylismy|zuzylem|zuzylam'
+const GOT = 'doszla|doszly|doszlo|przyjelismy|przyjalem|przyjelam|zwrocilismy|zwrocilem|zwrocilam'
+const STOCK_RE = new RegExp(`^(${TAKE}|${GOT})\\s+(.+)$`, 'u')
+const STOCK_VERB = new RegExp(`(?:^| )(${TAKE}|${GOT}|wezmiemy|pobierzemy|przyjmiemy)(?: |$)`, 'u')
+const COUNTS: Record<string, number> = { jedna: 1, jeden: 1, jedno: 1, dwa: 2, dwie: 2, trzy: 3, cztery: 4, piec: 5,
+  szesc: 6, siedem: 7, osiem: 8, dziewiec: 9, dziesiec: 10, jedenascie: 11, dwanascie: 12 }
+const UNITS = /^(palete|paleta|palety|palet|sztuke|sztuka|sztuki|sztuk|szt\.?|rolke|rolka|rolki|rolek|jednostke|jednostka|jednostki|jednostek)(?:\s+|$)/u
+const SINGULAR_UNITS = new Set(['palete', 'paleta', 'sztuke', 'sztuka', 'rolke', 'rolka', 'jednostke', 'jednostka'])
 const TOKEN_RE = /[a-ząćęłńóśźż0-9]+/gu
 
 const ZONE_RE = new RegExp(`${B}strefa\\s*:\\s*(${ANY}+?)${TAIL}`, 'iu')
 const REMEMBER_RE = new RegExp(`${B}zapamiętaj\\s*:\\s*(${ANY}+?)${TAIL}`, 'iu')
-const HOW_MANY_RE = new RegExp(`${B}ile\\s+mamy(?:\\s+(${ANY}+?))?${TAIL}`, 'iu')
-const WHERE_RE = new RegExp(`${B}gdzie\\s+leż${W}*\\s+(${ANY}+?)${TAIL}`, 'iu')
-const HOW_PACK_RE = new RegExp(`${B}jak\\s+(?:się\\s+)?pakuj${W}*\\s+(${ANY}+?)${TAIL}`, 'iu')
+const HOW_MANY_RE = new RegExp(`${B}(?:ile\\s+(?:mamy|jest)|podaj\\s+(?:aktualny\\s+)?stan)(?:\\s+(${ANY}+?))?${TAIL}`, 'iu')
+const WHERE_RE = new RegExp(`${B}gdzie\\s+(?:leż${W}*|znajd[eę]|jest|s[aą])\\s+(${ANY}+?)${TAIL}`, 'iu')
+const HOW_PACK_RE = new RegExp(`${B}jak\\s+(?:się\\s+)?(?:pakuj${W}*|(?:za)?pakowa[ćc])\\s+(${ANY}+?)${TAIL}`, 'iu')
 
 function command(
   tool: string,
@@ -110,76 +109,83 @@ export function parseCommand(text: string, items: ItemRef[]): ParsedCommand | nu
   const where = WHERE_RE.exec(t)
   const howPack = HOW_PACK_RE.exec(t)
 
-  let sign: number
-  if (TAKE_RE.test(t)) {
-    sign = -1
-    if (!PALETTE_RE.test(t)) return null
-  } else if (GOT_RE.test(t)) {
-    sign = 1
-    if (!PALETTE_RE.test(t)) return null
-  } else if (howPack) {
+  if (howPack) {
     const topic = howPack[1].trim()
     return topic ? command('recall_procedure', text, { args: { topic } }) : null
   } else if (where) {
-    return queryIntent('get_location', where[1].trim(), t, items, text)
+    return queryIntent('get_location', where[1].trim(), items, text)
   } else if (howMany) {
     const fragment = (howMany[1] ?? '').trim()
-    return queryIntent('get_stock', fragment, t, items, text)
-  } else {
-    return null
+    return queryIntent('get_stock', fragment, items, text)
   }
-
-  // intencje update_stock: towar z bazy albo missingItem (bez args wykonania)
-  const item = findItem(t, items)
-  if (item !== null) {
-    return command('update_stock', text, {
-      args: { item_id: item.id, delta: sign * countPalets(t) * SZT_NA_PALETE },
-      itemId: item.id,
-      itemName: item.name,
-    })
-  }
-  const after = AFTER_PALETTE_RE.exec(t)
-  const missing = after ? after[1].trim() : null
-  return command('update_stock', text, { missingItem: missing })
+  return parseStock(text, items)
 }
 
 /** Pytania o stan/lokalizację: z towarem, bez towaru (cały magazyn) albo missingItem. */
-function queryIntent(tool: string, fragment: string, t: string, items: ItemRef[], text: string): ParsedCommand {
+function queryIntent(tool: string, fragment: string, items: ItemRef[], text: string): ParsedCommand {
   if (!fragment) return command(tool, text, { args: {} })
-  const item = findItem(fragment, items) ?? findItem(t, items)
+  const matches = matchInventoryNames(fragment, items)
+  if (matches.length > 1) return clarify(tool, text, 'Pasuje kilka produktów. Podaj pełną nazwę ze Stanów.')
+  const item = matches[0] ?? null
   if (item !== null) {
     return command(tool, text, { args: { item_id: item.id }, itemId: item.id, itemName: item.name })
   }
   return command(tool, text, { missingItem: fragment })
 }
 
-function countPalets(t: string): number {
-  const match = COUNT_RE.exec(t)
-  if (!match) return 1
-  const word = match[1]
-  if (/^[0-9]+$/.test(word)) return Number.parseInt(word, 10)
-  for (const [prefix, n] of WORD_COUNTS) {
-    if (word.startsWith(prefix)) return n
-  }
-  return 1
+function clarify(tool: string, text: string, clarification: string): ParsedCommand {
+  return { ...command(tool, text), clarification }
 }
 
-/** Dopasowanie towaru po stemplach: „Kartony" → „karton", „kartonów", „kartony"… */
-function findItem(t: string, items: ItemRef[]): ItemRef | null {
-  let best: [number, ItemRef] | null = null
-  const found = tokens(t)
-  for (const item of items) {
-    const firstWord = item.name.toLowerCase().trim().split(/\s+/u)[0] ?? ''
-    if (!firstWord) continue
-    const chars = Array.from(firstWord)
-    const stem = chars.slice(0, Math.max(4, chars.length - 2)).join('')
-    const stemLength = Array.from(stem).length
-    for (const token of found) {
-      if (token.startsWith(stem)) {
-        if (best === null || stemLength > best[0]) best = [stemLength, item]
-        break
-      }
-    }
+/** A narrow guard shared with the LLM path; uncertain stock statements must be clarified. */
+export function stockCommandConcern(text: string): string | null {
+  const normalized = normalizeSpeech(text)
+  if (!STOCK_VERB.test(normalized)) return null
+  if (/(?:^| )(?:nie|jutro|moze|chyba|jesli|gdyby|planuje|planujemy|wezmiemy|pobierzemy|przyjmiemy)(?: |$)/u.test(normalized)) {
+    return 'Podaj jedną pewną zmianę zapasu: co przyjęto lub wydano i w jakiej ilości. Negacja lub plan nie zmienia stanu.'
   }
-  return best ? best[1] : null
+  if (/\d[.,]\d|(?:^|\s)-\d/u.test(text)) return 'Podaj dodatnią, całkowitą ilość. Nie przeliczam ułamków ani ujemnych ilości.'
+  return null
+}
+
+function parseStock(text: string, items: ItemRef[]): ParsedCommand | null {
+  const concern = stockCommandConcern(text)
+  if (concern) return clarify('update_stock', text, concern)
+  // Preserve decimal signs: 1,5 must never become 15 or a guessed single pallet.
+  const folded = text.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/\p{M}/gu, '').trim().replace(/[.!?]+$/, '')
+  const match = STOCK_RE.exec(folded)
+  if (!match) return null
+  let rest = match[2].trim()
+  const first = rest.split(/\s+/u)[0]
+  const count = /^\d+$/.test(first) ? Number(first) : COUNTS[first]
+  if (count !== undefined) rest = rest.slice(first.length).trim()
+  const unit = UNITS.exec(rest)
+  if (unit) rest = rest.slice(unit[0].length).trim()
+  if (count === undefined && !unit) return clarify('update_stock', text, 'Podaj ilość i jednostkę, np. „wziąłem 3 sztuki kartonów”.')
+  const quantity = count ?? (unit && SINGULAR_UNITS.has(unit[1]) ? 1 : 0)
+  if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 1_000_000 || !rest) {
+    return clarify('update_stock', text, 'Podaj dodatnią, całkowitą ilość i nazwę towaru.')
+  }
+  const matches = matchInventoryNames(rest, items)
+  if (matches.length > 1) return clarify('update_stock', text, 'Pasuje kilka produktów. Podaj pełną nazwę ze Stanów.')
+  if (!matches.length) {
+    if (!unit && /^(?:kg|kilogram\p{L}*|litr\p{L}*|metr\p{L}*|pacz\p{L}*|opakowan\p{L}*|skrzyn\p{L}*)(?: |$)/u.test(rest)) {
+      return clarify('update_stock', text, 'Nie znam przelicznika tej jednostki. Podaj ilość w jednostce towaru ze Stanów.')
+    }
+    if (/(?:^| )(?:i|oraz|ale|nie|na|do|z|ze|w)(?: |$)/u.test(rest) || /[,.!?;]/u.test(rest)) {
+      return clarify('update_stock', text, 'Podaj jedną operację i pełną nazwę jednego towaru.')
+    }
+    return command('update_stock', text, { missingItem: text.normalize('NFC').trim().replace(/[.!?]+$/, '').slice(-rest.length).toLowerCase() })
+  }
+  const item = matches[0]
+  const spokenUnit = unit?.[1] ?? ''
+  if (item.unit && (spokenUnit.startsWith('rol') || spokenUnit.startsWith('szt'))) {
+    const storedUnit = normalizeSpeech(item.unit)
+    const compatible = spokenUnit.startsWith('rol') ? ['rolka', 'rolki', 'rolek'].includes(storedUnit)
+      : ['szt', 'sztuka', 'sztuki', 'sztuk'].includes(storedUnit)
+    if (!compatible) return clarify('update_stock', text, `Towar „${item.name}” jest liczony w „${item.unit}”. Podaj ilość w tej jednostce.`)
+  }
+  const sign = new RegExp(`^(?:${TAKE})$`, 'u').test(match[1]) ? -1 : 1
+  return command('update_stock', text, { itemId: item.id, itemName: item.name,
+    args: { item_id: item.id, delta: sign * quantity * (unit?.[1].startsWith('palet') ? SZT_NA_PALETE : 1) } })
 }

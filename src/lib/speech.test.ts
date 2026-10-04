@@ -213,7 +213,7 @@ describe('decideWakeAction', () => {
     expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: true })).toEqual({ type: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'Magu, zatwierdzam', isFinal: true })).toEqual({ type: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'odrzuć', isFinal: true })).toEqual({ type: 'reject' })
-    // wynik pośredni to tylko decyzja wstępna (wykonana, jeśli tekst się nie zmieni)
+    // Wynik pośredni jest tylko podglądem; na jego podstawie nie wolno zapisać zmiany.
     expect(decideWakeAction({ ...pending, transcript: 'tak', isFinal: false })).toEqual({ type: 'tentative', decision: 'confirm' })
     expect(decideWakeAction({ ...pending, transcript: 'Magu odrzuć', isFinal: false })).toEqual({ type: 'tentative', decision: 'reject' })
     // nowa komenda z prefiksem nadal działa przy otwartej karcie
@@ -237,6 +237,15 @@ describe('decideWakeAction', () => {
 })
 
 describe('recognition results', () => {
+  test('can arm from a safe interim alternative and tolerates two opening fillers', () => {
+    const result = Object.assign([
+      { transcript: 'mamy, ile mamy bułek?', confidence: 0.8 },
+      { transcript: 'Magu, ile mamy bułek?', confidence: 0.75 },
+    ], { isFinal: false })
+    expect(preferredSpeechTranscript(result, 'Magu')).toBe('Magu, ile mamy bułek?')
+    expect(matchWakeWord('No hej Magu, ile mamy szkła?', 'Magu')).toEqual({ matched: true, rest: 'ile mamy szkła?' })
+    expect(matchWakeWord('powiedz kolegom Magu ile mamy szkła', 'Magu').matched).toBe(false)
+  })
   test('uses a wake-word alternative without changing the command or a decision', () => {
     const alternative = Object.assign([
       { transcript: 'mamy, ile mamy bułek?', confidence: 0.8 },

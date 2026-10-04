@@ -2,6 +2,12 @@ import { describe, expect, test } from 'vitest'
 import { correctInventorySpeech } from './speechInventory'
 
 describe('inventory names in spoken commands', () => {
+  test('recognises inflected names before correcting, and repairs a misheard inflected noun', () => {
+    expect(correctInventorySpeech('ile mamy bułek?', ['Bułki', 'Bułka']).corrections).toEqual([])
+    expect(correctInventorySpeech('ile mamy półek?', ['Bułki']).text).toBe('ile mamy Bułki?')
+    expect(correctInventorySpeech('gdzie leżą półek?', ['Bułki', 'Półki']).corrections).toEqual([])
+    expect(correctInventorySpeech('przyjęliśmy dziesięć sztuk półek', ['Bułki']).text).toBe('przyjęliśmy dziesięć sztuk Bułki')
+  })
   test('matches a misheard item only in the item slot', () => {
     expect(correctInventorySpeech('ile mamy półki?', ['Bułki'])).toMatchObject({
       text: 'ile mamy Bułki?', corrections: [{ heard: 'półki', name: 'Bułki' }],

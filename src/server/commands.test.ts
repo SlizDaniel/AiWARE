@@ -492,6 +492,20 @@ function respond(name: string, args: Record<string, unknown>): FakeProvider {
 }
 
 describe('LLM registry contract (test_llm_registry.py)', () => {
+  it.each([
+    ['nie wzięliśmy palety kartonów', { item_id: 1, delta: -2 }],
+    ['wzięliśmy dwie palety kartonów', { item_id: 1, delta: -2 }],
+    ['wzięliśmy dwie palety kartonów', { item_id: 2, delta: -4 }],
+    ['wzięliśmy dwie palety kartonów', { item_id: 1, delta: 4 }],
+    ['pobrałem 2 rolki szkła', { item_id: 2, delta: -2 }],
+    ['wzięliśmy kartony', { item_id: 1, delta: -2 }],
+    ['wzięliśmy 1,5 palety kartonów', { item_id: 1, delta: -10 }],
+    ['wzięliśmy 2 kilogramy kartonów', { item_id: 1, delta: -2 }],
+  ] as const)('rejects a semantically wrong model proposal: %s', async (text, args) => {
+    expect((await command(text, respond('update_stock', args))).type).toBe('clarify')
+    expect(await listAudit(db)).toEqual([])
+    expect(await db.query('SELECT id FROM proposals')).toEqual([])
+  })
   it('explains rate limiting while preserving the offline demo path', async () => {
     const response = await command('wzięliśmy paletę kartonów', fakeProvider(new GeminiRequestError('secret provider body', 'http', 429)))
     expect(response.type).toBe('proposal')
@@ -626,6 +640,12 @@ describe('LLM registry contract (test_llm_registry.py)', () => {
 })
 
 describe('LLM context size', () => {
+  it('includes a phonetically close product beyond the first context page', async () => {
+    const { contextItems } = await import('./commands')
+    const rows = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, name: `Towar ${index}`, quantity: 1, minimum: 0, unit: 'szt', location: '' }))
+    rows.push({ id: 101, name: 'Bułki', quantity: 5, minimum: 1, unit: 'szt', location: 'A' })
+    expect(contextItems(rows, 'ile mamy półki?')[0].name).toBe('Bułki')
+  })
   it('sends only the items a command can be about in a large warehouse', async () => {
     const { contextItems, MAX_CONTEXT_ITEMS } = await import('./commands')
     const rows = Array.from({ length: 300 }, (_, index) => ({

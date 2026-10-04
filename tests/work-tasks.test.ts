@@ -24,7 +24,7 @@ beforeEach(async()=>{
   for(const [id,name,role] of [[BOSS,'Szef','kierownik'],[WORKER,'Anna','pracownik'],[OTHER,'Jan','pracownik'],[PENDING,'Nowy','oczekujacy']]){
     await db.query('INSERT INTO profiles(user_id,email,display_name,role) VALUES($1,$2,$3,$4)',[id,`${name}@example.test`,name,role])
   }
-  await db.exec("TRUNCATE procedures, rate_limits; DELETE FROM settings WHERE key='agent_mode'")
+  await db.exec("TRUNCATE procedures, packing_rules, rate_limits; DELETE FROM settings WHERE key='agent_mode'")
   vi.stubEnv('GEMINI_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY','');vi.stubEnv('LLM_MODE','llm')
   vi.mocked(generateContent).mockReset()
   actor=BOSS
@@ -108,6 +108,23 @@ const help=(id:string)=>HELP(new Request(`http://test/api/tasks/${id}/help`,{met
 const addProcedure=async()=> (await db.query<{id:number}>("INSERT INTO procedures(topic,text) VALUES('Kartony','Policz kartony w strefie A. Sprawdź oznaczenia i zgłoś różnice kierownikowi.') RETURNING id"))[0].id
 const geminiResponse=(steps:unknown)=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({steps})}]}}]})
 describe('procedure assistance for assigned tasks',()=>{
+  test('uses current approved packing rules and excludes an obsolete note for the same product', async () => {
+    await addProcedure()
+    const [item] = await db.query<{id:number}>("SELECT id FROM items WHERE name='Kartony'")
+    const [packaging] = await db.query<{id:number}>("SELECT id FROM packaging_types WHERE name='Duży karton'")
+    const [rule] = await db.query<{id:number}>(`INSERT INTO packing_rules(item_id,packaging_id,quantity_per_package,notes,updated_by)
+      VALUES($1,$2,4,'Przed zamknięciem zabezpiecz przekładkami.','Szef') RETURNING id`,[item.id,packaging.id])
+    const id=await create();actor=WORKER
+    const response=await (await help(id)).json()
+    expect(response).toMatchObject({mode:'procedures',sources:[{id:-rule.id,kind:'packing_rule',topic:'Kartony'}]})
+    expect(response.sources[0].text).toContain('4 szt na opakowanie „Duży karton”')
+    expect(response.sources[0].text).toContain('zabezpiecz przekładkami')
+    expect(response.sources).toHaveLength(1)
+    await db.query("UPDATE packing_rules SET notes='Nowa zatwierdzona instrukcja.' WHERE id=$1",[rule.id])
+    const updated=await (await help(id)).json()
+    expect(updated.sources[0].text).toContain('Nowa zatwierdzona instrukcja.')
+    expect(generateContent).not.toHaveBeenCalled()
+  })
   test('own task returns complete procedures offline, without reading/completing or writing stock',async()=>{
     await addProcedure();const id=await create();actor=WORKER
     const before=await db.query('SELECT id,quantity FROM items ORDER BY id')

@@ -1,10 +1,11 @@
 import { levenshtein, matchWakeWord, normalizeSpeech } from './speech'
+import { matchInventoryNames, sameInventoryWord } from './inventoryNames'
 
 export type SpeechCorrection = { heard: string; name: string }
 
 // Only an item at the end of a simple read/stock command. Never scan arbitrary
 // prose: "bułki na półce" must not turn the shelf into another product.
-const COUNT = '(?:[0-9]+|jedn[ąa]|dwie|dwa|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć)'
+const COUNT = '(?:[0-9]+|jedn[ąa]|jeden|jedno|dwie|dwa|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|jedenaście|dwanaście)'
 const UNIT = '(?:palet[ęay]|palet|sztuk[iaę]?|rolk[iaę]|rolek|jednostk[iaę]|jednostek)'
 const ACTION = '(?:weź|wzięliśmy|pobraliśmy|zabraliśmy|wydaliśmy|przyjęliśmy|wziąłem|wzięłam|pobrałem|pobrałam|przyjąłem|przyjęłam|doszła|doszły|doszło)'
 const ITEM_SLOT = new RegExp(
@@ -25,10 +26,10 @@ export function correctInventorySpeech(text: string, names: readonly string[], p
   }
   const candidates = [...new Set(names)].map((name) => ({ name, folded: normalizeSpeech(name) }))
   // An existing exact name always wins, including homophones and duplicated spellings.
-  if (candidates.some((candidate) => candidate.folded === folded)) return { text, corrections: [] }
+  if (matchInventoryNames(heard, candidates).length) return { text, corrections: [] }
   const ranked = candidates
-    .filter((candidate) => candidate.folded.split(' ').length === folded.split(' ').length)
-    .map((candidate) => ({ ...candidate, distance: levenshtein(folded, candidate.folded) }))
+    .filter((candidate) => candidate.folded.length <= 100 && candidate.folded.split(' ').length === folded.split(' ').length)
+    .map((candidate) => ({ ...candidate, distance: nameDistance(folded, candidate.folded) }))
     .sort((a, b) => a.distance - b.distance)
   const best = ranked[0]
   const limit = folded.length >= 5 ? 2 : 1
@@ -39,6 +40,16 @@ export function correctInventorySpeech(text: string, names: readonly string[], p
     text: wake?.matched ? `${prefix}, ${corrected}` : corrected,
     corrections: [{ heard, name: best.name }],
   }
+}
+
+function nameDistance(heard: string, name: string): number {
+  const spoken = heard.split(' ')
+  return name.split(' ').reduce((total, word, index) => {
+    const token = spoken[index]
+    if (sameInventoryWord(token, word)) return total
+    const genitive = word.endsWith('ki') ? word.slice(0, -2) + 'ek' : word
+    return total + Math.min(levenshtein(token, word), levenshtein(token, genitive))
+  }, 0)
 }
 
 export function speechCorrectionNote(corrections: readonly SpeechCorrection[]): string {

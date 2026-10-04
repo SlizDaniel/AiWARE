@@ -45,6 +45,18 @@ describe('bufor wypowiedzi', () => {
     expect(ready).toHaveBeenCalledExactlyOnceWith('nowa komenda', null)
   })
 
+  it('keeps separate interim segments and orders them when final updates arrive out of order', () => {
+    const ready = vi.fn()
+    const buffer = createSpeechCommandBuffer(ready)
+    buffer.update(0, 'wzięliśmy', true, 10)
+    buffer.update(2, 'kartonów', false, 30)
+    expect(buffer.update(1, 'dwie palety', false, 20)).toBe('wzięliśmy dwie palety kartonów')
+    buffer.update(1, 'dwie palety', true, 20)
+    buffer.update(2, 'kartonów', true, 30)
+    vi.advanceTimersByTime(1000)
+    expect(ready).toHaveBeenCalledExactlyOnceWith('wzięliśmy dwie palety kartonów', 10)
+  })
+
   it('nowy prefiks oddziela komendy, a rewizja tego samego indeksu nie gubi początku', () => {
     const ready = vi.fn()
     const buffer = createSpeechCommandBuffer(ready)
