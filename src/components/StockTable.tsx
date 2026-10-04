@@ -7,6 +7,8 @@ import { StateMark, StateShape, stateTextClass } from './ui/StateMark'
 import { STOCK_LEVEL, rangePercent, rangeScale, stockLevel, type StockLevel } from './ui/stockLevel'
 import { buttonClass, fieldClass, panelClass } from './ui/styles'
 
+import { STOCK_FILTERS, STOCK_SORTS, selectStockItems, type StockFilter, type StockSort } from './ui/stockView'
+
 type StockState = 'loading' | 'ready' | 'error'
 
 const EDIT_FIELDS = [
@@ -41,14 +43,15 @@ export default function StockTable({
   pending?: { itemId: number; after: number } | null
 }) {
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<StockSort>('name')
+  const [filter, setFilter] = useState<StockFilter>('all')
   const [editing, setEditing] = useState<number | null>(null)
   const [draft, setDraft] = useState({ name: '', quantity: '', minimum: '', unit: '', location: '' })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const normalizedQuery = query.trim().toLocaleLowerCase('pl-PL')
   const filteredItems = useMemo(
-    () => items.filter((item) => item.name.toLocaleLowerCase('pl-PL').includes(normalizedQuery)),
-    [items, normalizedQuery],
+    () => selectStockItems(items, query, sort, filter),
+    [items, query, sort, filter],
   )
   const columnCount = canManage ? 5 : 4
 
@@ -83,6 +86,20 @@ export default function StockTable({
             className={`${fieldClass} h-10 pl-10`}
           />
         </label>
+        <label className="block min-w-44">
+          <span className="label-caps mb-1 block">Sortowanie</span>
+          <select aria-label="Sortowanie stanów" value={sort}
+            onChange={(event) => setSort(event.target.value as StockSort)} className={`${fieldClass} h-10`}>
+            {Object.entries(STOCK_SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="block min-w-44">
+          <span className="label-caps mb-1 block">Pokaż</span>
+          <select aria-label="Filtr stanów" value={filter}
+            onChange={(event) => setFilter(event.target.value as StockFilter)} className={`${fieldClass} h-10`}>
+            {Object.entries(STOCK_FILTERS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
         <p className="whitespace-nowrap text-sm text-ink-2" aria-live="polite">
           <span className="font-semibold tabular-nums text-ink">{filteredItems.length}</span> z{' '}
           <span className="tabular-nums">{items.length}</span> pozycji
@@ -93,10 +110,10 @@ export default function StockTable({
       {filteredItems.length === 0 ? (
         <div className="border-t border-line p-5">
           <Empty
-            text={`Nie znaleziono pozycji dla „${query.trim()}”.`}
+            text={query.trim() ? `Nie znaleziono pozycji dla „${query.trim()}” przy wybranym filtrze.` : 'Brak pozycji spełniających wybrany filtr.'}
             action={
-              <button type="button" onClick={() => setQuery('')} className={buttonClass('secondary', 'sm')}>
-                Wyczyść wyszukiwanie
+              <button type="button" onClick={() => { setQuery(''); setFilter('all') }} className={buttonClass('secondary', 'sm')}>
+                Wyczyść filtry
               </button>
             }
           />
