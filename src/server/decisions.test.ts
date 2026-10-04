@@ -113,10 +113,9 @@ describe('Mercury Decide hybrid command routing', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(65 * 1024))))
     expect(await setup().provider.interpret('wzięliśmy paletę kartonów', tools, context)).toEqual(fallbackResult)
   })
-  it('does not silently guess a decision without Gemini', async () => {
+  it('does not silently guess a decision without Gemini — the offline parser takes over', async () => {
     respond(answer('take', '1', 0.2))
-    const result = await setup(2000, false).provider.interpret('wzięliśmy paletę kartonów', tools, context)
-    expect(result.toolCall).toBeNull()
+    await expect(setup(2000, false).provider.interpret('wzięliśmy paletę kartonów', tools, context)).rejects.toThrow('use offline parser')
   })
   it('signals an outage to the offline pipeline without private errors', async () => {
     respond({ secret: 'private-body' }, 503)

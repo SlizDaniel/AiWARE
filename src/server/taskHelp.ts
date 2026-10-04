@@ -59,7 +59,7 @@ export async function taskHelp(db: Db, user: AppUser, id: string): Promise<TaskH
   const missing: TaskHelp = {task_id:id,mode:'missing',steps:[],sources:[],warning:'Nie znaleziono pasującej procedury w zakresie wyszukiwania. Poproś kierownika o instrukcję; nie wykonuj zadania na podstawie domysłów.'}
   if (!sources.length) return missing
   const fallback: TaskHelp = {task_id:id,mode:'procedures',steps:[],sources,warning:'Nie wygenerowano planu AI. Sprawdź pełne procedury poniżej i w razie niejasności zapytaj kierownika.'}
-  if ((await getAgentModeStatus(db)).effective_mode !== 'llm') return fallback
+  if (!geminiApiKey() || (await getAgentModeStatus(db)).effective_mode !== 'llm') return fallback
   // Bounded, complete documents only. If they cannot all fit, show the local sources instead.
   if (JSON.stringify(sources).length > 24000) return fallback
   try {

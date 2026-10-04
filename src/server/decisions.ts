@@ -93,7 +93,8 @@ export class DecisionHybridProvider implements LLMProvider {
       }
     }
     if (this.#fallback) return this.#fallback.interpret(text, tools, context)
-    return { toolCall: null, clarification: 'Doprecyzuj polecenie: podaj jeden towar i jednoznaczną ilość. Dla trudniejszych komend skonfiguruj Gemini.' }
+    // Bez Gemini parser offline obsłuży resztę komend (zamówienia, strefy, zadania, doprecyzowania).
+    throw new LLMProviderError('Mercury Decide did not resolve the command; use offline parser')
   }
 
   private async decide(text: string, tools: ToolSchema[], context: string): Promise<Interpretation | null> {
