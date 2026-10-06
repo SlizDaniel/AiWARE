@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - codex/portfolio-cleanup
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GEMINI_API_KEY: ""
+  GOOGLE_API_KEY: ""
+  GOOGLE_GENERATIVE_AI_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+  LLM_API_KEY: ""
+  STT_API_KEY: ""
+  DATABASE_URL: ""
+  POSTGRES_URL: ""
+  DEMO_DATABASE_URL: ""
+
+jobs:
+  web:
+    name: Web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v7
+
+      - name: Przygotuj Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Zainstaluj zależności web
+        run: npm ci
+
+      - name: Sprawdź lint
+        run: npm run lint
+
+      - name: Sprawdź typy web
+        run: npm run typecheck
+
+      - name: Uruchom testy web
+        run: npm test -- --exclude "tests/mobile-*.test.ts" --passWithNoTests=false
+
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v7
+
+      - name: Przygotuj Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - name: Zainstaluj główne zależności
+        run: npm ci
+
+      - name: Zainstaluj zależności mobile
+        run: npm --prefix mobile ci
+
+      - name: Sprawdź obecność Expo i plików testowych
+        run: |
+          test -f mobile/node_modules/expo/package.json
+          compgen -G "tests/mobile-*.test.ts" > /dev/null
+
+      - name: Sprawdź typy mobile
+        run: npm run mobile:typecheck
+
+      - name: Uruchom testy mobile
+        run: npm test -- tests/mobile- --passWithNoTests=false
+
+  python:
+    name: Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v7
+
+      - name: Przygotuj Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Przygotuj uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+          cache-dependency-glob: legacy/backend/uv.lock
+
+      - name: Zainstaluj zależności legacy
+        working-directory: legacy/backend
+        run: uv sync --frozen --python 3.11
+
+      - name: Uruchom testy skryptów Python
+        run: python -m unittest discover -s scripts -p "test_*.py" -v
+
+      - name: Uruchom testy backendu legacy
+        working-directory: legacy/backend
+        run: |
+          test_temp="$(mktemp -d "$RUNNER_TEMP/legacy-pytest.XXXXXX")"
+          uv run --frozen pytest -q --basetemp "$test_temp"
