@@ -110,6 +110,9 @@ public/                 Excel demo i zasoby marki
 scripts/                Inicjalizacja bazy, demo i próby AI
 docs/                   PRD, koncept, instrukcje i karty zadań
 gui-test-screenshots/    Zrzuty z prób interfejsu
+presentation/           Źródła prezentacji i screenshoty web/mobile
+output/pdf/             Finalna prezentacja i przewodnik
+archive/                Zachowane materiały organizacyjne hackathonu
 legacy/                 Poprzednia wersja FastAPI / SQLite / Vite
 ```
 
@@ -408,6 +411,10 @@ Tryby `offline` / `mock` wyłączają interpretację i mapowanie przez LLM, lecz
 - [Kontrakt API dashboardu](docs/manager-dashboard-api.md)
 - [Demo offline](docs/demo-offline.md)
 - [Przykładowe procedury i scenariusze](docs/sample-warehouse-procedures.md)
+- [Skan sekretów — zakres i wynik](docs/security-audit.md)
+- [Porządkowanie materiałów portfolio](docs/portfolio-cleanup.md)
+- [Źródła i odtwarzanie prezentacji](presentation/README.md)
+- [Archiwum regulaminów HackYeah 2026](archive/hackyeah-2026/README.md)
 
 Projekt zespołu MAGAZYNIER na HackYeah 2026. Autorzy widoczni w historii Git: **SlizDaniel, Michał Szyszło, Jakub Gawlik i mtomasik30**. Repozytorium przedstawia pracę zespołową; poszczególne moduły były rozwijane i integrowane przez różne osoby.
 

@@ -10,10 +10,10 @@ from reportlab.platypus import Paragraph
 from pypdf import PdfReader
 import pypdfium2 as pdfium
 
-ROOT=Path(__file__).resolve().parents[2]
-ASSETS=ROOT/'tmp/presentation/assets'
+ROOT=Path(__file__).resolve().parents[1]
+ASSETS=ROOT/'presentation/assets'
 OUT=ROOT/'output/pdf/MAGAZYNIER-prezentacja-10-slajdow.pdf'
-RENDER=ROOT/'tmp/presentation/render10'
+RENDER=ROOT/'presentation/render10'
 RENDER.mkdir(parents=True,exist_ok=True)
 for name,file in [('Segoe','segoeui.ttf'),('SegoeBold','segoeuib.ttf')]:
     pdfmetrics.registerFont(TTFont(name,str(Path('C:/Windows/Fonts')/file)))

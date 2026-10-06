@@ -2,9 +2,9 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from pypdf import PdfReader
 from PIL import Image,ImageOps,ImageDraw
-root=Path(__file__).resolve().parents[2]
+root=Path(__file__).resolve().parents[1]
 p=root/'output/pdf/MAGAZYNIER-przewodnik-web-mobile.pdf'
-dest=root/'tmp/presentation/render';dest.mkdir(parents=True,exist_ok=True)
+dest=root/'presentation/render';dest.mkdir(parents=True,exist_ok=True)
 doc=pdfium.PdfDocument(p)
 for i in range(len(doc)):
     page=doc[i];im=page.render(scale=1).to_pil();im.save(dest/f'page-{i+1:02}.png')
