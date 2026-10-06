@@ -9,8 +9,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, Table, TableStyle
 import json
 
-ROOT=Path(__file__).resolve().parents[2]
-ASSETS=ROOT/'tmp/presentation/assets'
+ROOT=Path(__file__).resolve().parents[1]
+ASSETS=ROOT/'presentation/assets'
 OUT=ROOT/'output/pdf/MAGAZYNIER-przewodnik-web-mobile.pdf'
 OUT.parent.mkdir(parents=True,exist_ok=True)
 for name,file in [('Segoe','segoeui.ttf'),('SegoeBold','segoeuib.ttf'),('SegoeLight','segoeuil.ttf')]:
@@ -152,6 +152,6 @@ for i,s in enumerate(slides,1):
     C.drawRightString(1216,14,f'{i:02d} / {len(slides):02d}')
     C.showPage()
 C.save()
-(ROOT/'tmp/presentation/slide-content.json').write_text(json.dumps(slides,ensure_ascii=False,indent=2),encoding='utf8')
-(ROOT/'tmp/presentation/layout.json').write_text(json.dumps(layout,ensure_ascii=False,indent=2),encoding='utf8')
+(ROOT/'presentation/slide-content.json').write_text(json.dumps(slides,ensure_ascii=False,indent=2),encoding='utf8')
+(ROOT/'presentation/layout.json').write_text(json.dumps(layout,ensure_ascii=False,indent=2),encoding='utf8')
 print(f'Created {OUT} | {len(slides)} pages')

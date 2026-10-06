@@ -32,3 +32,15 @@ venv/
 .env*
 
 .next-demo/
+
+# Odtwarzalne podglądy prezentacji; PDF-y, źródła i screenshoty pozostają w Git.
+presentation/render/
+presentation/render10/
+output/pdf/*-podglad.png
+
+# Nieużywana kopia public/brand/mascot.jpg.
+graphics/RkP3prMCRoIqeMD6M3ZuQ_9s62DIot.jpg
+
+# Szablony muszą pozostać dozwolone także po ogólnej regule .env* powyżej.
+!.env.example
+!mobile/.env.example
