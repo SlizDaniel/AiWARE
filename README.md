@@ -10,9 +10,9 @@ Głosowy asystent magazynu, który łączy **stany, lokalizacje, procedury i zad
 
 **Next.js 16 · TypeScript · Supabase · Gemini · Expo**
 
-Projekt stworzony podczas **HackYeah 2026 — Open Task ARTIFICIAL INTELLIGENCE**.
+Prototyp stworzony przez **czteroosobowy zespół podczas HackYeah 2026 — Open Task ARTIFICIAL INTELLIGENCE**.
 
-[Szybki start](#szybki-start) · [Funkcjonalności](#funkcjonalności) · [Role](#role-i-uprawnienia) · [Konfiguracja](#konfiguracja) · [Mobile](#aplikacja-mobilna) · [Demo offline](#demo-offline)
+[Szybki start](#szybki-start) · [Rozwiązania techniczne](#rozwiązania-techniczne) · [Architektura](#architektura) · [Pierwotny backend Python](legacy/README.md) · [Testy](#testy-i-skrypty) · [Zespół](#dokumentacja-autorzy-i-licencja)
 
 </div>
 
@@ -21,6 +21,10 @@ Projekt stworzony podczas **HackYeah 2026 — Open Task ARTIFICIAL INTELLIGENCE*
 ## Co robi MAGAZYNIER?
 
 W małym magazynie Excel często przestaje odzwierciedlać rzeczywistość: ktoś pobrał towar, zapomniał poprawić stan, a instrukcja pakowania została w głowie jednej osoby. MAGAZYNIER skraca drogę od wykonanej pracy do aktualnych danych. Pracownik mówi lub wpisuje zdanie po polsku, a agent zamienia je w odpowiedź albo czytelną propozycję operacji.
+
+Bieżąca aplikacja wykorzystuje Next.js, TypeScript i PostgreSQL/PGlite oraz klienta mobilnego Expo. Repozytorium zachowuje również **pierwotny backend Python/FastAPI/SQLite**, będący punktem odniesienia dla migracji — jego architekturę, kod i testy opisuje [przewodnik po `legacy/`](legacy/README.md).
+
+Projekt rozwijano z wykorzystaniem narzędzi AI do wspomagania programowania. Integracje LLM i rozpoznawania mowy są też częścią samej aplikacji; ich zakres opisuje sekcja [Prywatność, AI i granice projektu](#prywatność-ai-i-granice-projektu).
 
 **„Wzięliśmy paletę kartonów” → karta `Kartony 13 → 11` → zatwierdzenie → aktualny stan i historia.** Jeśli zapas spadnie poniżej minimum, aplikacja tworzy szkic zamówienia do decyzji kierownika. Pytania „gdzie leży szkło?” i „jak pakujemy szkło?” pozwalają odszukać lokalizację i zapisaną instrukcję bez szukania w arkuszach.
 
@@ -50,43 +54,74 @@ Operacje zapisu proponowane przez agenta wymagają zatwierdzenia karty. Pytania 
 
 Szkic zamówienia jest wewnętrzną propozycją: **jego zatwierdzenie nie wysyła zamówienia do dostawcy ani ERP**.
 
-## Role i uprawnienia
+To prototyp hackathonowy. Mapa z przejść telefonu ma szacowane wymiary; nie jest dokładnym skanem hali ani systemem SLAM. Testy automatyczne nie zastępują pomiarów na urządzeniu i weryfikacji usług zewnętrznych.
 
-**Pracownik** obsługuje codzienną pracę magazynu. **Kierownik** zarządza danymi, procedurami, zakupami i dostępem zespołu. Uprawnienia egzekwuje API, również dla klienta mobilnego.
+## Rozwiązania techniczne
 
-| Operacja | Pracownik | Kierownik |
-|---|:---:|:---:|
-| Komendy głosowe i tekstowe, pytania do agenta | ✓ | ✓ |
-| Przygotowanie i zatwierdzanie kart zmian stanów | ✓ | ✓ |
-| Dodanie nieznanego produktu przez kartę agenta | ✓ | ✓ |
-| Podgląd stanów, mapy, historii i procedur | ✓ | ✓ |
-| Eksport stanów CSV/XLSX | ✓ | ✓ |
-| Dodawanie stref, zapis ścieżek i sektorów, przypisania towarów do sektorów | ✓ | ✓ |
-| Usuwanie ścieżek i sektorów | — | ✓ |
-| Bezpośrednia edycja i usuwanie produktów | — | ✓ |
-| Import XLSX/CSV i zatwierdzenie mapowania | — | ✓ |
-| Podgląd szkiców zamówień | ✓ | ✓ |
-| Zatwierdzanie i odrzucanie szkiców zamówień | — | ✓ |
-| Cofnięcie zmiany stanu w historii | — | ✓ |
-| Tworzenie i aktualizacja reguł pakowania, powiązanie opakowań | — | ✓ |
-| Podgląd zadań i pomoc z procedur | Własne zadania | Wszystkie zadania |
-| Oznaczenie zadania jako przeczytane lub wykonane | Własne zadania | — |
-| Przydzielanie i anulowanie zadań | — | ✓ |
-| Pytania o zadania innych osób | — | ✓ |
-| Dashboard, raporty i powiadomienia kierownika | — | ✓ |
-| Podgląd ustawień | ✓ | ✓ |
-| Zmiana ustawień i trybu agenta | — | ✓ |
-| Lista użytkowników, akceptacja kont i zmiana ról | — | ✓ |
-| Reset bazy w trybie demo | — | ✓ |
+| Problem | Rozwiązanie w kodzie | Weryfikacja |
+|---|---|---|
+| Model może zwrócić błędne narzędzie lub argumenty | [Provider LLM](src/server/llm.ts), walidacja kontraktu i [obsługa komendy](src/server/commands.ts); przy błędzie parser offline. | [Testy providera](src/server/llm.test.ts) i [komend](src/server/commands.test.ts). |
+| Stan może zmienić się, gdy użytkownik ogląda kartę | Zapisany snapshot jest porównywany pod blokadą rekordu w transakcji; nieaktualna karta jest odrzucana. | [Scenariusze konfliktów stanów](tests/stale-stock-proposals.test.ts). |
+| Ponowienie lub równoczesne żądanie może zdublować operację | [Potwierdzenie propozycji](src/server/commands.ts), [transakcje i decyzje reorder](src/server/db.ts), unikalność oczekującego szkicu w bazie. | [Kontrakty API](tests/api.test.ts) i [testy reorder](src/server/reorder.test.ts). |
+| Cofnięcie operacji powinno zachować historię | Undo tworzy wpis kompensujący zamiast usuwać audyt; późniejsze zmiany zapasu pozostają zachowane. | [Testy undo](src/server/undo.test.ts). |
+| Demo nie może zależeć wyłącznie od chmury | Parser deterministyczny, wejście tekstowe i [launcher Python](scripts/start-demo.py) z osobną bazą i buildem. | [Testy launchera](scripts/test_start_demo.py) i [instrukcja demo](docs/demo-offline.md). |
+| Mapowanie wymaga obsługi niepewnych danych czujnika | [Detektor kroków i geometria PDR](src/lib/pdr.ts) oddzielone od [obsługi czujników webowych](src/lib/pdrSensors.ts); klient mobilny ma [prowadzone mapowanie alejek](mobile/src/lib/guidedScan.ts). | [Testy sygnału syntetycznego i geometrii](src/lib/pdr.test.ts), [testy mapowania mobilnego](tests/mobile-guided-scan.test.ts). |
 
-### Pierwsze logowanie i akceptacja kont
+Testy adaptera postgres.js korzystają również z PGlite przez protokół PostgreSQL. Nie jest to pełne odtworzenie niezależnych sesji produkcyjnego Postgresa; ograniczenia testów współbieżności opisano w [karcie nieaktualnych propozycji](docs/tasks/17-nieaktualne-karty-zapasu.md).
 
-1. Pierwsze rzeczywiste konto logujące się do nowej bazy otrzymuje rolę **kierownika**.
-2. Kolejne konta otrzymują status **`oczekujacy`**. Do czasu akceptacji nie mają dostępu do danych ani operacji magazynowych.
-3. Kierownik w **Ustawienia → Użytkownicy** nadaje rolę pracownika lub kierownika. Może przywrócić status oczekujący.
-4. Aplikacja blokuje odebranie uprawnień ostatniemu rzeczywistemu kierownikowi.
+## Architektura
 
-Lokalnie, bez Supabase Auth, serwer deweloperski działa jako **„Kierownik (bez logowania)”**. Do sprawdzenia rozdzielenia ról skonfiguruj Supabase i użyj osobnych kont.
+```mermaid
+flowchart LR
+    WEB[Przeglądarka] --> API[Next.js API]
+    MOBILE[Expo / React Native] --> API
+    AUTH[Supabase Auth] --> API
+    API --> AGENT[Interpretacja i walidacja]
+    AGENT --> AI[Gemini / Mercury Decide]
+    AGENT --> OFFLINE[Parser offline]
+    AGENT --> CARD[Karta zmiany]
+    CARD --> CONFIRM[Zatwierdzenie użytkownika]
+    CONFIRM --> DB[(Postgres / PGlite)]
+    DB --> AUDIT[Audyt i szkice uzupełnień]
+```
+
+| Warstwa | Technologia i zastosowanie |
+|---|---|
+| Web | Next.js 16 App Router, React i TypeScript; wspólny projekt UI i API. |
+| Interfejs | Tailwind CSS 4; responsywne widoki, karty i mapa. |
+| Serwer | Route handlery `src/app/api/*`, logika domenowa `src/server/*`. |
+| Dane | PostgreSQL przez `postgres.js`; lokalnie i w testach PGlite przez wspólny `Db`. |
+| Tożsamość | Supabase Auth: cookies w webie, Bearer na telefonie, role w `profiles`. |
+| AI i mowa | Gemini, opcjonalnie Mercury Decide przez OpenRouter i Whisper przez Groq. |
+| Mobile | Expo, React Native, NativeWind 4 / Tailwind 3; osobne zależności i lockfile. |
+| Odświeżanie | Polling `GET /api/version`; zapis zwiększa licznik, klient odświeża dane. |
+| Testy | Vitest dla domeny i kontraktów, TypeScript i oxlint. |
+
+### Struktura repozytorium
+
+```text
+src/
+  app/                  Strony, logowanie i API
+  components/           Widoki magazynu, dashboard i agent
+  lib/                  Klient API, Supabase, polling, głos i typy
+  server/               Baza, role, narzędzia, import, zadania, LLM i STT
+mobile/                 Klient Expo / React Native
+public/                 Excel demo i zasoby marki
+scripts/                Inicjalizacja bazy, demo i próby AI
+docs/                   PRD, koncept, instrukcje i karty zadań
+gui-test-screenshots/    Zrzuty z prób interfejsu
+legacy/                 Poprzednia wersja FastAPI / SQLite / Vite
+```
+
+### Ewolucja projektu
+
+Pierwotna implementacja łączyła **Python/FastAPI, SQLite i WebSocket** z frontendem **React/Vite**. Podczas hackathonu zespół przeniósł aplikację do Next.js na Vercel: backend działa obecnie w TypeScript, dane przechowuje PostgreSQL/PGlite, a aktualizacje interfejsu korzystają z pollingu. Migrację dokumentuje [commit `b08b793`](https://github.com/SlizDaniel/AiWARE/commit/b08b793).
+
+Kod poprzedniej wersji zachowano w `legacy/`. **Bieżąca aplikacja nie uruchamia tego backendu Python.** Część logiki domenowej i kontraktów testowych została przeniesiona do obecnej implementacji; przewodnik [Pierwotny backend Python](legacy/README.md) wskazuje pliki, testy i przykładowe odpowiedniki po migracji.
+
+Python pozostaje też w bieżących narzędziach: [launcherze demo](scripts/start-demo.py), [diagnostyce intencji Gemini](scripts/check-gemini.py) i [loaderze przykładowych procedur](scripts/load-sample-procedures.py).
+
+Obowiązujący stack webowy opisuje również [AGENTS.md](AGENTS.md); zastępuje pierwotny stack w PRD. Bieżącą aplikację uruchamiasz z katalogu głównego przez npm.
 
 ## Szybki start
 
@@ -130,6 +165,67 @@ npm run dev
 Otwórz **[localhost:3000](http://localhost:3000)**. Wpisz `ile mamy szkła?`, a następnie przetestuj komendę zmiany stanu i zatwierdzenie karty.
 
 **[/api/health](http://localhost:3000/api/health)** pokazuje tryb agenta, rodzaj bazy i tryb logowania. Nie jest pełnym testem dostępności zewnętrznych dostawców AI.
+
+## Testy i skrypty
+
+| Polecenie | Zastosowanie |
+|---|---|
+| `npm run dev` | Serwer deweloperski. |
+| `npm run build` / `npm start` | Build i serwer produkcyjny. |
+| `npm test` / `npm run test:watch` | Vitest jednorazowo / obserwacja. |
+| `npm run typecheck` | Typy aplikacji webowej. |
+| `npm run lint` | oxlint dla `src/`. |
+| `npm run db:setup` | Inicjalizacja PostgreSQL, seed i sprawdzenie RLS; wymaga connection stringa. |
+| `npm run demo:reset` | Reset osobnej bazy demo przy konfiguracji demo; wcześniej zatrzymaj serwer. |
+| `npm run check:gemini` | Prawdziwy model na syntetycznych komendach; wymaga klucza, wywołuje API. |
+| `npm run check:decisions` | Porównanie Mercury i Gemini; wymaga obu kluczy, wywołuje API. |
+| `npm run mobile:start` | Expo po instalacji zależności `mobile/`. |
+| `npm run mobile:typecheck` | Typy klienta mobilnego. |
+| `python -m unittest discover -s scripts -p test_start_demo.py` | Testy launchera demo. |
+
+Testy obejmują parser, narzędzia, potwierdzanie, konflikty stanów, import/eksport, reorder, undo, role, transport mobilny i kontrakty AI z mockami. Nie zastępują testu mikrofonu, czujników i logowania na fizycznym telefonie ani prób dostawców z aktywnymi kluczami.
+
+Vitest pomija `tests/mobile-*.test.ts`, jeżeli zależności Expo w `mobile/` nie są zainstalowane. Aby uwzględnić te testy, wykonaj najpierw `npm ci` również w katalogu `mobile/`. Testy historycznego backendu Python są osobnym zestawem — zobacz [instrukcję w `legacy/`](legacy/README.md#uruchomienie-i-testy).
+
+Rozszerzone scenariusze Gemini i raporty JSON: [docs/python-llm-readiness.md](docs/python-llm-readiness.md).
+
+## Role i uprawnienia
+
+**Pracownik** obsługuje codzienną pracę magazynu. **Kierownik** zarządza danymi, procedurami, zakupami i dostępem zespołu. Uprawnienia egzekwuje API, również dla klienta mobilnego.
+
+| Operacja | Pracownik | Kierownik |
+|---|:---:|:---:|
+| Komendy głosowe i tekstowe, pytania do agenta | ✓ | ✓ |
+| Przygotowanie i zatwierdzanie kart zmian stanów | ✓ | ✓ |
+| Dodanie nieznanego produktu przez kartę agenta | ✓ | ✓ |
+| Podgląd stanów, mapy, historii i procedur | ✓ | ✓ |
+| Eksport stanów CSV/XLSX | ✓ | ✓ |
+| Dodawanie stref, zapis ścieżek i sektorów, przypisania towarów do sektorów | ✓ | ✓ |
+| Usuwanie ścieżek i sektorów | — | ✓ |
+| Bezpośrednia edycja i usuwanie produktów | — | ✓ |
+| Import XLSX/CSV i zatwierdzenie mapowania | — | ✓ |
+| Podgląd szkiców zamówień | ✓ | ✓ |
+| Zatwierdzanie i odrzucanie szkiców zamówień | — | ✓ |
+| Cofnięcie zmiany stanu w historii | — | ✓ |
+| Tworzenie i aktualizacja reguł pakowania, powiązanie opakowań | — | ✓ |
+| Podgląd zadań i pomoc z procedur | Własne zadania | Wszystkie zadania |
+| Oznaczenie zadania jako przeczytane lub wykonane | Własne zadania | — |
+| Przydzielanie i anulowanie zadań | — | ✓ |
+| Pytania o zadania innych osób | — | ✓ |
+| Dashboard, raporty i powiadomienia kierownika | — | ✓ |
+| Podgląd ustawień | ✓ | ✓ |
+| Zmiana ustawień i trybu agenta | — | ✓ |
+| Lista użytkowników, akceptacja kont i zmiana ról | — | ✓ |
+| Reset bazy w trybie demo | — | ✓ |
+
+### Pierwsze logowanie i akceptacja kont
+
+1. Pierwsze rzeczywiste konto logujące się do nowej bazy otrzymuje rolę **kierownika**.
+2. Kolejne konta otrzymują status **`oczekujacy`**. Do czasu akceptacji nie mają dostępu do danych ani operacji magazynowych.
+3. Kierownik w **Ustawienia → Użytkownicy** nadaje rolę pracownika lub kierownika. Może przywrócić status oczekujący.
+4. Aplikacja blokuje odebranie uprawnień ostatniemu rzeczywistemu kierownikowi.
+
+Lokalnie, bez Supabase Auth, serwer deweloperski działa jako **„Kierownik (bez logowania)”**. Do sprawdzenia rozdzielenia ról skonfiguruj Supabase i użyj osobnych kont.
 
 ## Konfiguracja
 
@@ -272,73 +368,6 @@ npm start
 
 Skonfiguruj Supabase Auth. Do lokalnej próby bez logowania możesz jawnie ustawić `AUTH_DISABLED=1`; do izolowanej prezentacji użyj launchera demo.
 
-## Architektura
-
-```mermaid
-flowchart LR
-    WEB[Przeglądarka] --> API[Next.js API]
-    MOBILE[Expo / React Native] --> API
-    AUTH[Supabase Auth] --> API
-    API --> AGENT[Interpretacja i walidacja]
-    AGENT --> AI[Gemini / Mercury Decide]
-    AGENT --> OFFLINE[Parser offline]
-    AGENT --> CARD[Karta zmiany]
-    CARD --> CONFIRM[Zatwierdzenie użytkownika]
-    CONFIRM --> DB[(Postgres / PGlite)]
-    DB --> AUDIT[Audyt i szkice uzupełnień]
-```
-
-| Warstwa | Technologia i zastosowanie |
-|---|---|
-| Web | Next.js 16 App Router, React i TypeScript; wspólny projekt UI i API. |
-| Interfejs | Tailwind CSS 4; responsywne widoki, karty i mapa. |
-| Serwer | Route handlery `src/app/api/*`, logika domenowa `src/server/*`. |
-| Dane | PostgreSQL przez `postgres.js`; lokalnie i w testach PGlite przez wspólny `Db`. |
-| Tożsamość | Supabase Auth: cookies w webie, Bearer na telefonie, role w `profiles`. |
-| AI i mowa | Gemini, opcjonalnie Mercury Decide przez OpenRouter i Whisper przez Groq. |
-| Mobile | Expo, React Native, NativeWind 4 / Tailwind 3; osobne zależności i lockfile. |
-| Odświeżanie | Polling `GET /api/version`; zapis zwiększa licznik, klient odświeża dane. |
-| Testy | Vitest dla domeny i kontraktów, TypeScript i oxlint. |
-
-### Struktura repozytorium
-
-```text
-src/
-  app/                  Strony, logowanie i API
-  components/           Widoki magazynu, dashboard i agent
-  lib/                  Klient API, Supabase, polling, głos i typy
-  server/               Baza, role, narzędzia, import, zadania, LLM i STT
-mobile/                 Klient Expo / React Native
-public/                 Excel demo i zasoby marki
-scripts/                Inicjalizacja bazy, demo i próby AI
-docs/                   PRD, koncept, instrukcje i karty zadań
-gui-test-screenshots/    Zrzuty z prób interfejsu
-legacy/                 Poprzednia wersja FastAPI / SQLite / Vite
-```
-
-Obowiązujący stack webowy opisuje [AGENTS.md](AGENTS.md); zastępuje pierwotny stack w PRD. `legacy/` jest punktem odniesienia migracji — bieżącą aplikację uruchamiasz z katalogu głównego przez npm.
-
-## Testy i skrypty
-
-| Polecenie | Zastosowanie |
-|---|---|
-| `npm run dev` | Serwer deweloperski. |
-| `npm run build` / `npm start` | Build i serwer produkcyjny. |
-| `npm test` / `npm run test:watch` | Vitest jednorazowo / obserwacja. |
-| `npm run typecheck` | Typy aplikacji webowej. |
-| `npm run lint` | oxlint dla `src/`. |
-| `npm run db:setup` | Inicjalizacja PostgreSQL, seed i sprawdzenie RLS; wymaga connection stringa. |
-| `npm run demo:reset` | Reset osobnej bazy demo przy konfiguracji demo; wcześniej zatrzymaj serwer. |
-| `npm run check:gemini` | Prawdziwy model na syntetycznych komendach; wymaga klucza, wywołuje API. |
-| `npm run check:decisions` | Porównanie Mercury i Gemini; wymaga obu kluczy, wywołuje API. |
-| `npm run mobile:start` | Expo po instalacji zależności `mobile/`. |
-| `npm run mobile:typecheck` | Typy klienta mobilnego. |
-| `python -m unittest discover -s scripts -p test_start_demo.py` | Testy launchera demo. |
-
-Testy obejmują parser, narzędzia, potwierdzanie, konflikty stanów, import/eksport, reorder, undo, role, transport mobilny i kontrakty AI z mockami. Nie zastępują testu mikrofonu, czujników i logowania na fizycznym telefonie ani prób dostawców z aktywnymi kluczami.
-
-Rozszerzone scenariusze Gemini i raporty JSON: [docs/python-llm-readiness.md](docs/python-llm-readiness.md).
-
 ## Rozwiązywanie problemów
 
 | Objaw | Co sprawdzić |
@@ -380,6 +409,8 @@ Tryby `offline` / `mock` wyłączają interpretację i mapowanie przez LLM, lecz
 - [Demo offline](docs/demo-offline.md)
 - [Przykładowe procedury i scenariusze](docs/sample-warehouse-procedures.md)
 
-Projekt zespołu MAGAZYNIER na HackYeah 2026. Wkład autorów: [contributors](https://github.com/SlizDaniel/AiWARE/graphs/contributors) i [historia zmian](https://github.com/SlizDaniel/AiWARE/commits/main/).
+Projekt zespołu MAGAZYNIER na HackYeah 2026. Autorzy widoczni w historii Git: **SlizDaniel, Michał Szyszło, Jakub Gawlik i mtomasik30**. Repozytorium przedstawia pracę zespołową; poszczególne moduły były rozwijane i integrowane przez różne osoby.
+
+Wkład można prześledzić przez [contributors](https://github.com/SlizDaniel/AiWARE/graphs/contributors), [historię zmian](https://github.com/SlizDaniel/AiWARE/commits/main/) oraz [wybrane zmiany pierwotnej implementacji](legacy/README.md#historia-i-wybrane-zmiany). Autorstwo commita wskazuje dostarczoną zmianę, nie wyłączną własność całego modułu.
 
 Kod udostępniono na licencji **[Apache 2.0](LICENSE)**.
